@@ -3,20 +3,30 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Trading bot API for Trading 212
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: bot
+    description: Bot control operations
+  - name: trades
+    description: Trade history
+  - name: positions
+    description: Open positions
+  - name: instruments
+    description: Watchlist instruments
+  - name: signals
+    description: MA crossover signals
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +34,356 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /bot/status:
+    get:
+      operationId: getBotStatus
+      tags: [bot]
+      summary: Get current bot status and config
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/start:
+    post:
+      operationId: startBot
+      tags: [bot]
+      summary: Start the trading bot
+      responses:
+        "200":
+          description: Bot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/stop:
+    post:
+      operationId: stopBot
+      tags: [bot]
+      summary: Stop the trading bot
+      responses:
+        "200":
+          description: Bot stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/config:
+    patch:
+      operationId: updateBotConfig
+      tags: [bot]
+      summary: Update bot strategy configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotConfigInput"
+      responses:
+        "200":
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /trades:
+    get:
+      operationId: listTrades
+      tags: [trades]
+      summary: List trade history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Trade list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trade"
+
+  /positions:
+    get:
+      operationId: listPositions
+      tags: [positions]
+      summary: Get open positions from Trading 212
+      responses:
+        "200":
+          description: Open positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Position"
+
+  /account:
+    get:
+      operationId: getAccount
+      tags: [bot]
+      summary: Get Trading 212 account summary
+      responses:
+        "200":
+          description: Account info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSummary"
+
+  /instruments:
+    get:
+      operationId: listInstruments
+      tags: [instruments]
+      summary: List watchlist instruments
+      responses:
+        "200":
+          description: Instrument list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Instrument"
+    post:
+      operationId: addInstrument
+      tags: [instruments]
+      summary: Add instrument to watchlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstrumentInput"
+      responses:
+        "201":
+          description: Instrument added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instrument"
+
+  /instruments/{id}:
+    delete:
+      operationId: deleteInstrument
+      tags: [instruments]
+      summary: Remove instrument from watchlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /signals:
+    get:
+      operationId: listSignals
+      tags: [signals]
+      summary: Get recent MA crossover signals
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Signal list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Signal"
+
+  /signals/run:
+    post:
+      operationId: runSignalCheck
+      tags: [signals]
+      summary: Manually trigger a signal check for all instruments
+      responses:
+        "200":
+          description: Signals generated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Signal"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    BotStatus:
+      type: object
+      required: [running, config]
+      properties:
+        running:
+          type: boolean
+        lastRunAt:
+          type: ["string", "null"]
+        nextRunAt:
+          type: ["string", "null"]
+        config:
+          $ref: "#/components/schemas/BotConfig"
+
+    BotConfig:
+      type: object
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun]
+      properties:
+        shortPeriod:
+          type: integer
+          description: Short MA period (e.g. 9)
+        longPeriod:
+          type: integer
+          description: Long MA period (e.g. 21)
+        tradeAmount:
+          type: number
+          description: Amount in account currency per trade
+        intervalMinutes:
+          type: integer
+          description: How often to run signal check (minutes)
+        dryRun:
+          type: boolean
+          description: If true, log signals but do not place orders
+
+    BotConfigInput:
+      type: object
+      properties:
+        shortPeriod:
+          type: integer
+        longPeriod:
+          type: integer
+        tradeAmount:
+          type: number
+        intervalMinutes:
+          type: integer
+        dryRun:
+          type: boolean
+
+    Trade:
+      type: object
+      required: [id, ticker, side, quantity, price, executedAt, status]
+      properties:
+        id:
+          type: integer
+        ticker:
+          type: string
+        side:
+          type: string
+          enum: [BUY, SELL]
+        quantity:
+          type: number
+        price:
+          type: number
+        total:
+          type: number
+        executedAt:
+          type: string
+        status:
+          type: string
+          enum: [FILLED, FAILED, DRY_RUN]
+        errorMessage:
+          type: ["string", "null"]
+        orderId:
+          type: ["string", "null"]
+
+    Position:
+      type: object
+      required: [ticker, quantity, averagePrice, currentPrice, pnl, pnlPercent]
+      properties:
+        ticker:
+          type: string
+        quantity:
+          type: number
+        averagePrice:
+          type: number
+        currentPrice:
+          type: number
+        pnl:
+          type: number
+        pnlPercent:
+          type: number
+
+    AccountSummary:
+      type: object
+      required: [cash, invested, result, total]
+      properties:
+        cash:
+          type: number
+        invested:
+          type: number
+        result:
+          type: number
+        total:
+          type: number
+        currency:
+          type: ["string", "null"]
+
+    Instrument:
+      type: object
+      required: [id, ticker, name, enabled]
+      properties:
+        id:
+          type: integer
+        ticker:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        addedAt:
+          type: string
+
+    InstrumentInput:
+      type: object
+      required: [ticker, name]
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+
+    Signal:
+      type: object
+      required: [id, ticker, signal, shortMa, longMa, price, createdAt]
+      properties:
+        id:
+          type: integer
+        ticker:
+          type: string
+        signal:
+          type: string
+          enum: [BUY, SELL, HOLD]
+        shortMa:
+          type: number
+        longMa:
+          type: number
+        price:
+          type: number
+        createdAt:
+          type: string
+        tradeExecuted:
+          type: boolean
