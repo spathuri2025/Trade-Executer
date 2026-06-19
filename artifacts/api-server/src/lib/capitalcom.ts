@@ -16,9 +16,10 @@ let sessionInFlight: Promise<Session> | null = null;
 async function createSession(): Promise<Session> {
   const apiKey = process.env.CAPITALCOM_API_KEY;
   const password = process.env.CAPITALCOM_PASSWORD;
+  const identifier = process.env.CAPITALCOM_IDENTIFIER;
 
-  if (!apiKey || !password) {
-    throw new Error("CAPITALCOM_API_KEY and CAPITALCOM_PASSWORD must be set");
+  if (!apiKey || !password || !identifier) {
+    throw new Error("CAPITALCOM_API_KEY, CAPITALCOM_PASSWORD and CAPITALCOM_IDENTIFIER must be set");
   }
 
   const res = await fetch(`${BASE_URL}/session`, {
@@ -28,7 +29,7 @@ async function createSession(): Promise<Session> {
       "X-CAP-API-KEY": apiKey,
     },
     body: JSON.stringify({
-      identifier: apiKey,
+      identifier,
       password,
       encryptedPassword: false,
     }),
