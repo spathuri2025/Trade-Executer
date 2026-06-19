@@ -5,6 +5,7 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { BotConfigInputBroker } from './botConfigInputBroker';
 
 export interface BotConfigInput {
   shortPeriod?: number;
@@ -12,4 +13,5 @@ export interface BotConfigInput {
   tradeAmount?: number;
   intervalMinutes?: number;
   dryRun?: boolean;
+  broker?: BotConfigInputBroker;
 }

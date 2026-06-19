@@ -15,6 +15,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Play, Square } from "lucide-react";
 
+type BrokerName = "trading212" | "capitalcom";
+
+const BROKER_LABELS: Record<BrokerName, string> = {
+  trading212: "Trading 212",
+  capitalcom: "Capital.com",
+};
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -28,12 +35,20 @@ export default function Settings() {
     longPeriod: 21,
     tradeAmount: 100,
     intervalMinutes: 15,
-    dryRun: true
+    dryRun: true,
+    broker: "capitalcom" as BrokerName,
   });
 
   useEffect(() => {
     if (botStatus?.config) {
-      setConfig(botStatus.config);
+      setConfig({
+        shortPeriod: botStatus.config.shortPeriod,
+        longPeriod: botStatus.config.longPeriod,
+        tradeAmount: botStatus.config.tradeAmount,
+        intervalMinutes: botStatus.config.intervalMinutes,
+        dryRun: botStatus.config.dryRun,
+        broker: botStatus.config.broker as BrokerName,
+      });
     }
   }, [botStatus]);
 
@@ -43,8 +58,9 @@ export default function Settings() {
         queryClient.invalidateQueries({ queryKey: getGetBotStatusQueryKey() });
         toast({ title: "Configuration saved successfully" });
       },
-      onError: (err: any) => {
-        toast({ title: "Failed to save configuration", description: err.message, variant: "destructive" });
+      onError: (err: unknown) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        toast({ title: "Failed to save configuration", description: message, variant: "destructive" });
       }
     }
   });
@@ -62,7 +78,7 @@ export default function Settings() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetBotStatusQueryKey() });
-        toast({ title: "Bot stopped", variant: "destructive" });
+        toast({ title: "Bot stopped" });
       }
     }
   });
@@ -93,24 +109,37 @@ export default function Settings() {
           <div className="space-y-1">
             <div className="text-lg font-bold">
               {botStatus?.running ? (
-                <span className="text-primary flex items-center gap-2"><Play className="h-5 w-5" /> RUNNING</span>
+                <span className="text-primary flex items-center gap-2">
+                  <Play className="h-5 w-5" /> RUNNING
+                </span>
               ) : (
-                <span className="text-muted-foreground flex items-center gap-2"><Square className="h-5 w-5" /> STOPPED</span>
+                <span className="text-muted-foreground flex items-center gap-2">
+                  <Square className="h-5 w-5" /> STOPPED
+                </span>
               )}
             </div>
             {botStatus?.running && (
               <div className="text-sm text-muted-foreground font-mono">
-                Next run: {botStatus.nextRunAt ? new Date(botStatus.nextRunAt).toLocaleString() : 'Pending'}
+                Next run: {botStatus.nextRunAt ? new Date(botStatus.nextRunAt).toLocaleString() : "Pending"}
               </div>
             )}
           </div>
           <div>
             {botStatus?.running ? (
-              <Button variant="destructive" onClick={() => stopBot.mutate()} disabled={stopBot.isPending}>
+              <Button
+                variant="destructive"
+                onClick={() => stopBot.mutate()}
+                disabled={stopBot.isPending}
+                data-testid="button-stop-bot"
+              >
                 <Square className="mr-2 h-4 w-4" /> Stop Engine
               </Button>
             ) : (
-              <Button onClick={() => startBot.mutate()} disabled={startBot.isPending}>
+              <Button
+                onClick={() => startBot.mutate()}
+                disabled={startBot.isPending}
+                data-testid="button-start-bot"
+              >
                 <Play className="mr-2 h-4 w-4" /> Start Engine
               </Button>
             )}
@@ -121,29 +150,58 @@ export default function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Strategy Configuration</CardTitle>
-          <CardDescription>Moving Average Crossover settings</CardDescription>
+          <CardDescription>Moving Average Crossover — broker, periods, and trade size</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSave} className="space-y-6 max-w-xl">
+
+            {/* Broker selector */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Active Broker</label>
+              <div className="grid grid-cols-2 gap-3">
+                {(["capitalcom", "trading212"] as BrokerName[]).map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    data-testid={`button-broker-${b}`}
+                    onClick={() => setConfig({ ...config, broker: b })}
+                    className={[
+                      "rounded-lg border px-4 py-3 text-sm font-medium transition-all text-left",
+                      config.broker === b
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted/20 text-muted-foreground hover:border-primary/40",
+                    ].join(" ")}
+                  >
+                    <div className="font-semibold">{BROKER_LABELS[b]}</div>
+                    <div className="text-xs mt-0.5 opacity-70">
+                      {b === "capitalcom" ? "Capital.com live account" : "Trading 212 live account"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Short MA Period</label>
-                <Input 
-                  type="number" 
-                  value={config.shortPeriod} 
+                <Input
+                  type="number"
+                  value={config.shortPeriod}
                   onChange={(e) => setConfig({ ...config, shortPeriod: Number(e.target.value) })}
                   className="font-mono"
                   min={1}
+                  data-testid="input-short-period"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Long MA Period</label>
-                <Input 
-                  type="number" 
-                  value={config.longPeriod} 
+                <Input
+                  type="number"
+                  value={config.longPeriod}
                   onChange={(e) => setConfig({ ...config, longPeriod: Number(e.target.value) })}
                   className="font-mono"
                   min={2}
+                  data-testid="input-long-period"
                 />
               </div>
             </div>
@@ -151,23 +209,25 @@ export default function Settings() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Trade Amount</label>
-                <Input 
-                  type="number" 
-                  value={config.tradeAmount} 
+                <Input
+                  type="number"
+                  value={config.tradeAmount}
                   onChange={(e) => setConfig({ ...config, tradeAmount: Number(e.target.value) })}
                   className="font-mono"
                   min={1}
                   step={0.01}
+                  data-testid="input-trade-amount"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Interval (Minutes)</label>
-                <Input 
-                  type="number" 
-                  value={config.intervalMinutes} 
+                <Input
+                  type="number"
+                  value={config.intervalMinutes}
                   onChange={(e) => setConfig({ ...config, intervalMinutes: Number(e.target.value) })}
                   className="font-mono"
                   min={1}
+                  data-testid="input-interval-minutes"
                 />
               </div>
             </div>
@@ -176,16 +236,21 @@ export default function Settings() {
               <div className="space-y-0.5">
                 <label className="text-sm font-medium">Dry Run Mode</label>
                 <div className="text-xs text-muted-foreground">
-                  Log signals without executing real trades on Trading 212
+                  Log signals without executing real trades on {BROKER_LABELS[config.broker]}
                 </div>
               </div>
-              <Switch 
-                checked={config.dryRun} 
-                onCheckedChange={(checked) => setConfig({ ...config, dryRun: checked })} 
+              <Switch
+                checked={config.dryRun}
+                onCheckedChange={(checked) => setConfig({ ...config, dryRun: checked })}
+                data-testid="switch-dry-run"
               />
             </div>
 
-            <Button type="submit" disabled={updateConfig.isPending}>
+            <Button
+              type="submit"
+              disabled={updateConfig.isPending}
+              data-testid="button-save-config"
+            >
               {updateConfig.isPending ? "Saving..." : "Save Configuration"}
             </Button>
           </form>

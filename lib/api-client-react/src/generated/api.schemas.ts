@@ -9,6 +9,17 @@ export interface HealthStatus {
   status: string;
 }
 
+/**
+ * Which broker to route trades through
+ */
+export type BotConfigBroker = typeof BotConfigBroker[keyof typeof BotConfigBroker];
+
+
+export const BotConfigBroker = {
+  trading212: 'trading212',
+  capitalcom: 'capitalcom',
+} as const;
+
 export interface BotConfig {
   /** Short MA period (e.g. 9) */
   shortPeriod: number;
@@ -20,6 +31,8 @@ export interface BotConfig {
   intervalMinutes: number;
   /** If true, log signals but do not place orders */
   dryRun: boolean;
+  /** Which broker to route trades through */
+  broker: BotConfigBroker;
 }
 
 export interface BotStatus {
@@ -31,12 +44,21 @@ export interface BotStatus {
   config: BotConfig;
 }
 
+export type BotConfigInputBroker = typeof BotConfigInputBroker[keyof typeof BotConfigInputBroker];
+
+
+export const BotConfigInputBroker = {
+  trading212: 'trading212',
+  capitalcom: 'capitalcom',
+} as const;
+
 export interface BotConfigInput {
   shortPeriod?: number;
   longPeriod?: number;
   tradeAmount?: number;
   intervalMinutes?: number;
   dryRun?: boolean;
+  broker?: BotConfigInputBroker;
 }
 
 export type TradeSide = typeof TradeSide[keyof typeof TradeSide];

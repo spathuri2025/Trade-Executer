@@ -1,24 +1,17 @@
 import { Router, type IRouter } from "express";
-import { getPositions } from "../lib/trading212";
+import { getBrokerPositions } from "../lib/broker";
+import { getBotStatus } from "../lib/botEngine";
 
 const router: IRouter = Router();
 
 router.get("/positions", async (req, res): Promise<void> => {
+  const { config } = getBotStatus();
   try {
-    const positions = await getPositions();
-    res.json(
-      positions.map((p) => ({
-        ticker: p.ticker,
-        quantity: p.quantity,
-        averagePrice: p.averagePrice,
-        currentPrice: p.currentPrice,
-        pnl: p.ppl,
-        pnlPercent: p.averagePrice > 0 ? ((p.currentPrice - p.averagePrice) / p.averagePrice) * 100 : 0,
-      }))
-    );
+    const positions = await getBrokerPositions(config.broker);
+    res.json(positions);
   } catch (err) {
-    req.log.error({ err }, "Failed to fetch positions");
-    res.status(502).json({ error: "Failed to fetch positions from Trading 212" });
+    req.log.error({ err, broker: config.broker }, "Failed to fetch positions");
+    res.status(502).json({ error: `Failed to fetch positions from ${config.broker}` });
   }
 });
 

@@ -5,6 +5,7 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { BotConfigBroker } from './botConfigBroker';
 
 export interface BotConfig {
   /** Short MA period (e.g. 9) */
@@ -17,4 +18,6 @@ export interface BotConfig {
   intervalMinutes: number;
   /** If true, log signals but do not place orders */
   dryRun: boolean;
+  /** Which broker to route trades through */
+  broker: BotConfigBroker;
 }

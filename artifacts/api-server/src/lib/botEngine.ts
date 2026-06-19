@@ -1,7 +1,7 @@
 import { db, instrumentsTable, tradesTable, signalsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
-import { getPositions, getAccountCash, placeMarketOrder, getCurrentPrice } from "./trading212";
+import { placeBrokerOrder, getBrokerPriceHistory, type BrokerName } from "./broker";
 import { computeMASignal } from "./maStrategy";
 
 export interface BotConfig {
@@ -10,6 +10,7 @@ export interface BotConfig {
   tradeAmount: number;
   intervalMinutes: number;
   dryRun: boolean;
+  broker: BrokerName;
 }
 
 interface BotState {
@@ -30,6 +31,7 @@ const state: BotState = {
     tradeAmount: 50,
     intervalMinutes: 60,
     dryRun: false,
+    broker: "capitalcom",
   },
   intervalHandle: null,
 };
@@ -79,27 +81,6 @@ export function stopBot() {
   return getBotStatus();
 }
 
-async function fetchPriceHistory(ticker: string, count: number): Promise<number[]> {
-  try {
-    const { getPositions: _getPositions, ...t212 } = await import("./trading212");
-    const positions = await getPositions();
-    const pos = positions.find((p) => p.ticker === ticker);
-    if (pos) {
-      const price = pos.currentPrice;
-      const prices: number[] = [];
-      for (let i = 0; i < count; i++) {
-        const jitter = 1 + (Math.random() - 0.5) * 0.02;
-        prices.push(price * jitter);
-      }
-      prices[prices.length - 1] = price;
-      return prices;
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
 export async function runCycle(): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
   state.lastRunAt = new Date();
   if (state.running) {
@@ -113,18 +94,19 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     .where(eq(instrumentsTable.enabled, true));
 
   const results: Array<{ ticker: string; signal: string; tradeExecuted: boolean }> = [];
+  const { broker, shortPeriod, longPeriod, tradeAmount, dryRun } = state.config;
 
   for (const instrument of instruments) {
     try {
-      const prices = await fetchPriceHistory(instrument.ticker, state.config.longPeriod + 5);
+      const prices = await getBrokerPriceHistory(broker, instrument.ticker, longPeriod + 5);
 
-      if (prices.length < state.config.longPeriod + 1) {
-        logger.warn({ ticker: instrument.ticker }, "Not enough price data for MA computation");
+      if (prices.length < longPeriod + 1) {
+        logger.warn({ ticker: instrument.ticker, broker }, "Not enough price data for MA computation");
         continue;
       }
 
       const currentPrice = prices[prices.length - 1];
-      const maResult = computeMASignal(prices, state.config.shortPeriod, state.config.longPeriod);
+      const maResult = computeMASignal(prices, shortPeriod, longPeriod);
 
       if (!maResult) continue;
 
@@ -132,45 +114,45 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
       let tradeExecuted = false;
 
       if (signal !== "HOLD") {
-        if (state.config.dryRun) {
-          logger.info({ ticker: instrument.ticker, signal, dryRun: true }, "Dry-run signal");
+        const quantity = tradeAmount / currentPrice;
+
+        if (dryRun) {
+          logger.info({ ticker: instrument.ticker, signal, broker, dryRun: true }, "Dry-run signal");
           await db.insert(tradesTable).values({
             ticker: instrument.ticker,
             side: signal,
-            quantity: String(state.config.tradeAmount / currentPrice),
+            quantity: String(quantity),
             price: String(currentPrice),
-            total: String(state.config.tradeAmount),
+            total: String(tradeAmount),
             status: "DRY_RUN",
           });
           tradeExecuted = true;
         } else {
           try {
-            const quantity = state.config.tradeAmount / currentPrice;
-            const order = await placeMarketOrder(instrument.ticker, quantity, signal);
-
+            const order = await placeBrokerOrder(broker, instrument.ticker, quantity, signal);
             await db.insert(tradesTable).values({
               ticker: instrument.ticker,
               side: signal,
               quantity: String(quantity),
               price: String(currentPrice),
-              total: String(state.config.tradeAmount),
+              total: String(tradeAmount),
               status: "FILLED",
               orderId: order.id,
             });
             tradeExecuted = true;
-            logger.info({ ticker: instrument.ticker, signal, orderId: order.id }, "Trade executed");
+            logger.info({ ticker: instrument.ticker, signal, broker, orderId: order.id }, "Trade executed");
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             await db.insert(tradesTable).values({
               ticker: instrument.ticker,
               side: signal,
-              quantity: String(state.config.tradeAmount / currentPrice),
+              quantity: String(quantity),
               price: String(currentPrice),
-              total: String(state.config.tradeAmount),
+              total: String(tradeAmount),
               status: "FAILED",
               errorMessage: msg,
             });
-            logger.error({ ticker: instrument.ticker, signal, err: msg }, "Trade failed");
+            logger.error({ ticker: instrument.ticker, signal, broker, err: msg }, "Trade failed");
           }
         }
       }
@@ -186,7 +168,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
 
       results.push({ ticker: instrument.ticker, signal, tradeExecuted });
     } catch (err) {
-      logger.error({ ticker: instrument.ticker, err }, "Error processing instrument");
+      logger.error({ ticker: instrument.ticker, broker, err }, "Error processing instrument");
     }
   }
 

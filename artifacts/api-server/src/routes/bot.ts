@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { getBotStatus, startBot, stopBot, updateConfig } from "../lib/botEngine";
 import { UpdateBotConfigBody } from "@workspace/api-zod";
-import { getAccountCash, getAccountInfo } from "../lib/trading212";
+import { getBrokerAccount } from "../lib/broker";
 
 const router: IRouter = Router();
 
@@ -30,18 +30,13 @@ router.patch("/bot/config", async (req, res): Promise<void> => {
 });
 
 router.get("/account", async (req, res): Promise<void> => {
+  const { config } = getBotStatus();
   try {
-    const [info, cash] = await Promise.all([getAccountInfo(), getAccountCash()]);
-    res.json({
-      cash: cash.free,
-      invested: cash.invested,
-      result: cash.result,
-      total: cash.total,
-      currency: info.currencyCode ?? null,
-    });
+    const account = await getBrokerAccount(config.broker);
+    res.json(account);
   } catch (err) {
-    req.log.error({ err }, "Failed to fetch account");
-    res.status(502).json({ error: "Failed to fetch account from Trading 212" });
+    req.log.error({ err, broker: config.broker }, "Failed to fetch account");
+    res.status(502).json({ error: `Failed to fetch account from ${config.broker}` });
   }
 });
 

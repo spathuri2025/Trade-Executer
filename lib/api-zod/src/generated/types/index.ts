@@ -8,7 +8,9 @@
 
 export * from './accountSummary';
 export * from './botConfig';
+export * from './botConfigBroker';
 export * from './botConfigInput';
+export * from './botConfigInputBroker';
 export * from './botStatus';
 export * from './healthStatus';
 export * from './instrument';

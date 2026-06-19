@@ -249,7 +249,7 @@ components:
 
     BotConfig:
       type: object
-      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun]
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker]
       properties:
         shortPeriod:
           type: integer
@@ -266,6 +266,10 @@ components:
         dryRun:
           type: boolean
           description: If true, log signals but do not place orders
+        broker:
+          type: string
+          enum: [trading212, capitalcom]
+          description: Which broker to route trades through
 
     BotConfigInput:
       type: object
@@ -280,6 +284,9 @@ components:
           type: integer
         dryRun:
           type: boolean
+        broker:
+          type: string
+          enum: [trading212, capitalcom]
 
     Trade:
       type: object

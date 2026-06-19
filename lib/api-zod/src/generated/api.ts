@@ -28,7 +28,8 @@ export const GetBotStatusResponse = zod.object({
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
   "tradeAmount": zod.number().describe('Amount in account currency per trade'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
-  "dryRun": zod.boolean().describe('If true, log signals but do not place orders')
+  "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
 })
 })
 
@@ -45,7 +46,8 @@ export const StartBotResponse = zod.object({
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
   "tradeAmount": zod.number().describe('Amount in account currency per trade'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
-  "dryRun": zod.boolean().describe('If true, log signals but do not place orders')
+  "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
 })
 })
 
@@ -62,7 +64,8 @@ export const StopBotResponse = zod.object({
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
   "tradeAmount": zod.number().describe('Amount in account currency per trade'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
-  "dryRun": zod.boolean().describe('If true, log signals but do not place orders')
+  "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
 })
 })
 
@@ -75,7 +78,8 @@ export const UpdateBotConfigBody = zod.object({
   "longPeriod": zod.number().optional(),
   "tradeAmount": zod.number().optional(),
   "intervalMinutes": zod.number().optional(),
-  "dryRun": zod.boolean().optional()
+  "dryRun": zod.boolean().optional(),
+  "broker": zod.enum(['trading212', 'capitalcom']).optional()
 })
 
 export const UpdateBotConfigResponse = zod.object({
@@ -87,7 +91,8 @@ export const UpdateBotConfigResponse = zod.object({
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
   "tradeAmount": zod.number().describe('Amount in account currency per trade'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
-  "dryRun": zod.boolean().describe('If true, log signals but do not place orders')
+  "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
 })
 })
 
