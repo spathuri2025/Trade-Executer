@@ -23,12 +23,14 @@ import type {
   AccountSummary,
   BotConfigInput,
   BotStatus,
+  GetMarketNewsParams,
   GetScannerResultsParams,
   HealthStatus,
   Instrument,
   InstrumentInput,
   ListSignalsParams,
   ListTradesParams,
+  NewsItem,
   Position,
   RunScan200,
   ScannerConfigInput,
@@ -1242,6 +1244,90 @@ export const useRunScan = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRunScanMutationOptions(options));
     }
+
+export const getGetMarketNewsUrl = (params?: GetMarketNewsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/news?${stringifiedParams}` : `/api/news`
+}
+
+/**
+ * @summary Get high-impact market news filtered by importance
+ */
+export const getMarketNews = async (params?: GetMarketNewsParams, options?: RequestInit): Promise<NewsItem[]> => {
+
+  return customFetch<NewsItem[]>(getGetMarketNewsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMarketNewsQueryKey = (params?: GetMarketNewsParams,) => {
+    return [
+    `/api/news`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMarketNewsQueryOptions = <TData = Awaited<ReturnType<typeof getMarketNews>>, TError = ErrorType<unknown>>(params?: GetMarketNewsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketNews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMarketNewsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketNews>>> = ({ signal }) => getMarketNews(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMarketNews>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMarketNewsQueryResult = NonNullable<Awaited<ReturnType<typeof getMarketNews>>>
+export type GetMarketNewsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get high-impact market news filtered by importance
+ */
+
+export function useGetMarketNews<TData = Awaited<ReturnType<typeof getMarketNews>>, TError = ErrorType<unknown>>(
+ params?: GetMarketNewsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketNews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMarketNewsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetScannerResultsUrl = (params?: GetScannerResultsParams,) => {
   const normalizedParams = new URLSearchParams();

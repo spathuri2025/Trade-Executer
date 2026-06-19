@@ -287,6 +287,24 @@ export const RunScanResponse = zod.object({
 
 
 /**
+ * @summary Get high-impact market news filtered by importance
+ */
+export const GetMarketNewsQueryParams = zod.object({
+  "limit": zod.coerce.number().optional()
+})
+
+export const GetMarketNewsResponseItem = zod.object({
+  "title": zod.string(),
+  "url": zod.string(),
+  "source": zod.string(),
+  "publishedAt": zod.string(),
+  "impactScore": zod.number(),
+  "impactLabel": zod.enum(['HIGH', 'MEDIUM'])
+})
+export const GetMarketNewsResponse = zod.array(GetMarketNewsResponseItem)
+
+
+/**
  * @summary Get recent scanner hits
  */
 export const GetScannerResultsQueryParams = zod.object({

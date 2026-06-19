@@ -276,6 +276,26 @@ paths:
                   hits:
                     type: integer
 
+  /news:
+    get:
+      operationId: getMarketNews
+      tags: [news]
+      summary: Get high-impact market news filtered by importance
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of high-impact news items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NewsItem"
+
   /scanner/results:
     get:
       operationId: getScannerResults
@@ -477,6 +497,24 @@ components:
           type: string
         tradeExecuted:
           type: boolean
+
+    NewsItem:
+      type: object
+      required: [title, url, source, publishedAt, impactScore, impactLabel]
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+        source:
+          type: string
+        publishedAt:
+          type: string
+        impactScore:
+          type: integer
+        impactLabel:
+          type: string
+          enum: [HIGH, MEDIUM]
 
     ScannerStatus:
       type: object

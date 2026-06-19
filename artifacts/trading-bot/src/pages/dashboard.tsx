@@ -9,10 +9,13 @@ import {
   getListPositionsQueryKey,
   useListSignals,
   getListSignalsQueryKey,
+  useGetMarketNews,
+  getGetMarketNewsQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ExternalLink, Flame, AlertTriangle } from "lucide-react";
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -24,7 +27,11 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: getListPositionsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSignalsQueryKey({ limit: 5 }) });
     }, 180000);
-    return () => clearInterval(interval);
+    // Refresh news every 15 minutes
+    const newsInterval = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: getGetMarketNewsQueryKey() });
+    }, 15 * 60 * 1000);
+    return () => { clearInterval(interval); clearInterval(newsInterval); };
   }, [queryClient]);
 
   const { data: botStatus, isLoading: botLoading } = useGetBotStatus(undefined, {
@@ -41,6 +48,10 @@ export default function Dashboard() {
 
   const { data: signals, isLoading: signalsLoading } = useListSignals({ limit: 5 }, {
     query: { queryKey: getListSignalsQueryKey({ limit: 5 }) },
+  });
+
+  const { data: news, isLoading: newsLoading } = useGetMarketNews({ limit: 8 }, {
+    query: { queryKey: getGetMarketNewsQueryKey(), staleTime: 15 * 60 * 1000 },
   });
 
   return (
@@ -179,6 +190,65 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Market-moving news */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Flame className="h-5 w-5 text-orange-500" />
+            Market-Moving News
+            <span className="ml-auto text-xs text-muted-foreground font-normal">Refreshes every 15 min</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {newsLoading ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          ) : !news || news.length === 0 ? (
+            <div className="text-muted-foreground text-sm py-4 text-center">No high-impact news at the moment</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {news.map((item, i) => (
+                <a
+                  key={i}
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-3 py-3 hover:bg-muted/20 rounded px-2 -mx-2 transition-colors group"
+                >
+                  <div className="mt-0.5 shrink-0">
+                    {item.impactLabel === "HIGH" ? (
+                      <Flame className="h-4 w-4 text-orange-500" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                      {item.title}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">{item.source}</span>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground">
+                        {item.publishedAt ? new Date(item.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={`ml-auto text-xs ${item.impactLabel === "HIGH" ? "border-orange-500 text-orange-500" : "border-yellow-500 text-yellow-500"}`}
+                      >
+                        {item.impactLabel}
+                      </Badge>
+                    </div>
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
+                </a>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -153,6 +153,23 @@ export interface Signal {
   tradeExecuted?: boolean;
 }
 
+export type NewsItemImpactLabel = typeof NewsItemImpactLabel[keyof typeof NewsItemImpactLabel];
+
+
+export const NewsItemImpactLabel = {
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+} as const;
+
+export interface NewsItem {
+  title: string;
+  url: string;
+  source: string;
+  publishedAt: string;
+  impactScore: number;
+  impactLabel: NewsItemImpactLabel;
+}
+
 export interface ScannerConfig {
   scanEnabled: boolean;
   autoTrade: boolean;
@@ -218,6 +235,10 @@ limit?: number;
 export type RunScan200 = {
   scanned: number;
   hits: number;
+};
+
+export type GetMarketNewsParams = {
+limit?: number;
 };
 
 export type GetScannerResultsParams = {
