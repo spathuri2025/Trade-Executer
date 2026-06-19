@@ -35,13 +35,13 @@ export function Sidebar() {
               className={`relative flex items-center gap-3 px-4 py-3 rounded text-sm transition-colors ${
                 active
                   ? "text-white"
-                  : "text-white/40 hover:text-white/70"
+                  : "text-white/55 hover:text-white/80"
               }`}
             >
               {active && (
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-primary" />
               )}
-              <link.icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-white/30"}`} />
+              <link.icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-white/45"}`} />
               <span className={active ? "font-medium" : "font-normal"}>{link.label}</span>
             </Link>
           );

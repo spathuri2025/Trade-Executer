@@ -64,44 +64,44 @@
 }
 
 :root {
-  /* ── Obsidian Noir palette ── */
-  --background: 0 0% 3.1%;          /* #080808 */
-  --foreground: 0 0% 100%;
+  /* ── Obsidian Noir palette (high-contrast revision) ── */
+  --background: 222 22% 6%;         /* #0b0e16 — dark navy, not pure black */
+  --foreground: 0 0% 96%;           /* #f5f5f5 — slightly off-white, easier on eyes */
 
-  --card: 0 0% 6.7%;                /* #111111 */
-  --card-foreground: 0 0% 100%;
-  --card-border: 0 0% 12%;          /* ~rgba(255,255,255,0.08) on black */
+  --card: 222 18% 11%;              /* #161820 — visible lift off the navy bg */
+  --card-foreground: 0 0% 96%;
+  --card-border: 222 20% 18%;       /* clearly visible hairline */
 
-  --popover: 0 0% 6.7%;
-  --popover-foreground: 0 0% 100%;
-  --popover-border: 0 0% 12%;
+  --popover: 222 18% 11%;
+  --popover-foreground: 0 0% 96%;
+  --popover-border: 222 20% 18%;
 
   --primary: 161.4 93.5% 30.4%;    /* #10b981 emerald */
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 0 0% 6.7%;
-  --secondary-foreground: 0 0% 100%;
+  --secondary: 222 18% 11%;
+  --secondary-foreground: 0 0% 96%;
 
-  --muted: 0 0% 6.7%;
-  --muted-foreground: 0 0% 42%;     /* white/40 on black ≈ #6b6b6b */
+  --muted: 222 18% 11%;
+  --muted-foreground: 220 10% 62%;  /* #969aad — readable blue-gray */
 
-  --accent: 0 0% 10%;
-  --accent-foreground: 0 0% 100%;
+  --accent: 222 20% 15%;
+  --accent-foreground: 0 0% 96%;
 
   --destructive: 0 91.3% 71%;      /* #f87171 soft red */
   --destructive-foreground: 0 0% 100%;
 
-  --border: 0 0% 12%;              /* hairline */
-  --input: 0 0% 10%;
+  --border: 222 20% 18%;           /* matches card-border */
+  --input: 222 20% 14%;
   --ring: 161.4 93.5% 30.4%;
 
-  --sidebar: 0 0% 5.9%;            /* #0f0f0f */
-  --sidebar-foreground: 0 0% 100%;
-  --sidebar-border: 0 0% 9%;       /* ~rgba(255,255,255,0.06) */
+  --sidebar: 222 24% 5%;           /* #090c14 — slightly darker than bg */
+  --sidebar-foreground: 0 0% 96%;
+  --sidebar-border: 222 20% 14%;
   --sidebar-primary: 161.4 93.5% 30.4%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 0 0% 10%;
-  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-accent: 222 20% 15%;
+  --sidebar-accent-foreground: 0 0% 96%;
   --sidebar-ring: 161.4 93.5% 30.4%;
 
   --chart-1: 161.4 93.5% 30.4%;   /* emerald */
@@ -139,7 +139,7 @@
   text-transform: uppercase;
   letter-spacing: 0.15em;
   font-weight: 600;
-  color: hsl(0 0% 42%);
+  color: hsl(220 10% 62%);
 }
 
 /* Emerald glow for positive P&L numbers */
