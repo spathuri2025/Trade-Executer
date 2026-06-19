@@ -38,8 +38,10 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="p-4 border-t border-border text-xs text-muted-foreground font-mono">
-        v1.0.0
+      <div className="p-4 border-t border-border text-xs text-muted-foreground space-y-0.5">
+        <div className="font-mono">v1.0.0</div>
+        <div>&copy; {new Date().getFullYear()} ClinAITech Limited</div>
+        <div className="opacity-70">United Kingdom</div>
       </div>
     </div>
   );
