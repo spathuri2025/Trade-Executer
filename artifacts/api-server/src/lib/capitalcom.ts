@@ -1,8 +1,6 @@
 import { logger } from "./logger";
 
 const LIVE_BASE = "https://api-capital.backend-capital.com/api/v1";
-const DEMO_BASE = "https://demo-api-capital.backend-capital.com/api/v1";
-
 const BASE_URL = LIVE_BASE;
 
 interface Session {
@@ -12,6 +10,8 @@ interface Session {
 }
 
 let cachedSession: Session | null = null;
+let sessionCooldownUntil = 0;
+let sessionInFlight: Promise<Session> | null = null;
 
 async function createSession(): Promise<Session> {
   const apiKey = process.env.CAPITALCOM_API_KEY;
@@ -30,8 +30,14 @@ async function createSession(): Promise<Session> {
     body: JSON.stringify({
       identifier: apiKey,
       password,
+      encryptedPassword: false,
     }),
   });
+
+  if (res.status === 429) {
+    sessionCooldownUntil = Date.now() + 60_000;
+    throw new Error("Capital.com rate limit hit — session creation paused for 60s");
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -42,7 +48,9 @@ async function createSession(): Promise<Session> {
   const securityToken = res.headers.get("X-SECURITY-TOKEN") ?? "";
 
   if (!cst || !securityToken) {
-    throw new Error("Capital.com did not return session tokens");
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const bodyStr = JSON.stringify(body);
+    throw new Error(`Capital.com did not return session tokens. Body: ${bodyStr}`);
   }
 
   const session: Session = {
@@ -52,48 +60,58 @@ async function createSession(): Promise<Session> {
   };
 
   cachedSession = session;
+  sessionCooldownUntil = 0;
   logger.info("Capital.com session created");
   return session;
 }
 
 async function getSession(): Promise<Session> {
-  if (cachedSession && cachedSession.expiresAt > Date.now() + 30_000) {
-    return cachedSession;
+  const validSession = cachedSession && cachedSession.expiresAt > Date.now() + 30_000;
+  if (validSession) return cachedSession!;
+
+  if (Date.now() < sessionCooldownUntil) {
+    if (cachedSession) {
+      logger.warn("Capital.com rate-limit cooldown active — reusing stale session");
+      return cachedSession;
+    }
+    throw new Error(`Capital.com rate-limit cooldown active. Retry after ${Math.ceil((sessionCooldownUntil - Date.now()) / 1000)}s`);
   }
-  return createSession();
+
+  if (sessionInFlight) return sessionInFlight;
+
+  sessionInFlight = createSession().finally(() => { sessionInFlight = null; });
+  return sessionInFlight;
 }
 
 async function capitalFetch(path: string, options: RequestInit = {}): Promise<unknown> {
   const session = await getSession();
   const url = `${BASE_URL}${path}`;
 
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      CST: session.cst,
-      "X-SECURITY-TOKEN": session.securityToken,
-      ...(options.headers ?? {}),
-    },
-  });
-
-  if (res.status === 401) {
-    cachedSession = null;
-    const freshSession = await createSession();
-    const retry = await fetch(url, {
+  const makeRequest = async (s: Session) =>
+    fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        CST: freshSession.cst,
-        "X-SECURITY-TOKEN": freshSession.securityToken,
+        CST: s.cst,
+        "X-SECURITY-TOKEN": s.securityToken,
         ...(options.headers ?? {}),
       },
     });
-    if (!retry.ok) {
-      const text = await retry.text().catch(() => "");
-      throw new Error(`Capital.com API ${retry.status}: ${text}`);
+
+  let res = await makeRequest(session);
+
+  if (res.status === 401) {
+    cachedSession = null;
+    if (Date.now() < sessionCooldownUntil) {
+      throw new Error("Capital.com session expired and rate-limit cooldown active");
     }
-    return retry.json();
+    const freshSession = await createSession();
+    res = await makeRequest(freshSession);
+  }
+
+  if (res.status === 429) {
+    sessionCooldownUntil = Date.now() + 60_000;
+    throw new Error("Capital.com rate limit hit on request");
   }
 
   if (!res.ok) {

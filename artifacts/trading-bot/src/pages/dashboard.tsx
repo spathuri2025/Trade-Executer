@@ -23,7 +23,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: getGetAccountQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListPositionsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSignalsQueryKey({ limit: 5 }) });
-    }, 30000);
+    }, 180000);
     return () => clearInterval(interval);
   }, [queryClient]);
 
