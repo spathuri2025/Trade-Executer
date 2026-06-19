@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBotStatus,
@@ -12,11 +12,40 @@ import {
   useGetMarketNews,
   getGetMarketNewsQueryKey,
 } from "@workspace/api-client-react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ExternalLink, Flame, AlertTriangle, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      className="pl-1"
+      style={{
+        fontSize: "10px",
+        textTransform: "uppercase",
+        letterSpacing: "0.15em",
+        fontWeight: 600,
+        color: "rgba(255,255,255,0.4)",
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function TickerAvatar({ ticker }: { ticker: string }) {
+  const abbr = ticker.replace("_", "").slice(0, 3).toUpperCase();
+  return (
+    <div
+      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+      style={{ backgroundColor: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.7)" }}
+    >
+      {abbr}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -28,7 +57,6 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: getListPositionsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSignalsQueryKey({ limit: 5 }) });
     }, 180000);
-    // Refresh news every 15 minutes
     const newsInterval = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: getGetMarketNewsQueryKey() });
     }, 15 * 60 * 1000);
@@ -38,19 +66,15 @@ export default function Dashboard() {
   const { data: botStatus, isLoading: botLoading } = useGetBotStatus(undefined, {
     query: { queryKey: getGetBotStatusQueryKey() },
   });
-
   const { data: account, isLoading: accountLoading } = useGetAccount(undefined, {
     query: { queryKey: getGetAccountQueryKey() },
   });
-
   const { data: positions, isLoading: positionsLoading } = useListPositions(undefined, {
     query: { queryKey: getListPositionsQueryKey() },
   });
-
   const { data: signals, isLoading: signalsLoading } = useListSignals({ limit: 5 }, {
     query: { queryKey: getListSignalsQueryKey({ limit: 5 }) },
   });
-
   const { data: news, isLoading: newsLoading, isFetching: newsFetching } = useGetMarketNews({ limit: 8 }, {
     query: { queryKey: getGetMarketNewsQueryKey(), staleTime: 15 * 60 * 1000 },
   });
@@ -59,211 +83,298 @@ export default function Dashboard() {
     queryClient.invalidateQueries({ queryKey: getGetMarketNewsQueryKey() });
   }, [queryClient]);
 
+  const pnl = account?.result ?? 0;
+  const pnlPositive = pnl >= 0;
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-end">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        {botLoading ? (
-          <Skeleton className="h-6 w-24" />
-        ) : (
-          <Badge variant={botStatus?.running ? "default" : "destructive"}>
-            {botStatus?.running ? "BOT ACTIVE" : "BOT STOPPED"}
-            {botStatus?.config.dryRun ? " (DRY RUN)" : ""}
-          </Badge>
-        )}
-      </div>
+    <div className="space-y-12">
+      {/* Header */}
+      <header className="flex items-end justify-between">
+        <div className="flex items-center gap-4">
+          <h1 className="text-4xl font-light tracking-tight">Dashboard</h1>
+          {!botLoading && (
+            <div
+              className="px-2 py-0.5 rounded mb-1"
+              style={{
+                fontSize: "10px",
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                fontWeight: 700,
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "rgba(255,255,255,0.5)",
+              }}
+            >
+              {botStatus?.running ? "Live" : "Bot Stopped"}
+              {botStatus?.config.dryRun ? " · Dry Run" : ""}
+            </div>
+          )}
+        </div>
+        <div className="text-xs tabular-nums" style={{ color: "rgba(255,255,255,0.4)" }}>
+          Last updated: Just now
+        </div>
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Account Value</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {accountLoading ? (
-              <Skeleton className="h-8 w-32" />
-            ) : (
-              <div className="text-2xl font-mono font-bold">
-                {account?.total.toFixed(2)} {account?.currency || "USD"}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Invested</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {accountLoading ? (
-              <Skeleton className="h-8 w-32" />
-            ) : (
-              <div className="text-2xl font-mono font-bold">
-                {account?.invested.toFixed(2)} {account?.currency || "USD"}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total PnL</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {accountLoading ? (
-              <Skeleton className="h-8 w-32" />
-            ) : (
-              <div className={`text-2xl font-mono font-bold ${account?.result && account.result >= 0 ? "text-primary" : "text-destructive"}`}>
-                {account?.result && account.result > 0 ? "+" : ""}
-                {account?.result.toFixed(2)} {account?.currency || "USD"}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Stats Row */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Account Value */}
+        <div
+          className="p-6 rounded-lg flex flex-col gap-4"
+          style={{ backgroundColor: "#111111", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <SectionLabel>Account Value</SectionLabel>
+          {accountLoading ? (
+            <Skeleton className="h-9 w-36" />
+          ) : (
+            <div className="text-3xl tabular-nums font-medium">
+              {account?.total.toFixed(2)} {account?.currency || "GBP"}
+            </div>
+          )}
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Live Positions</CardTitle>
-          </CardHeader>
-          <CardContent>
+        {/* Invested */}
+        <div
+          className="p-6 rounded-lg flex flex-col gap-4"
+          style={{ backgroundColor: "#111111", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <SectionLabel>Invested</SectionLabel>
+          {accountLoading ? (
+            <Skeleton className="h-9 w-36" />
+          ) : (
+            <div className="text-3xl tabular-nums font-medium">
+              {account?.invested.toFixed(2)} {account?.currency || "GBP"}
+            </div>
+          )}
+        </div>
+
+        {/* Total P&L */}
+        <div
+          className="p-6 rounded-lg flex flex-col gap-4"
+          style={{ backgroundColor: "#111111", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <SectionLabel>Total P&amp;L</SectionLabel>
+          {accountLoading ? (
+            <Skeleton className="h-9 w-36" />
+          ) : (
+            <div
+              className="text-3xl tabular-nums font-medium"
+              style={
+                pnlPositive
+                  ? { color: "#10b981", textShadow: "0 0 8px rgba(16,185,129,0.4)" }
+                  : { color: "#f87171" }
+              }
+            >
+              {pnlPositive && pnl !== 0 ? "+" : ""}
+              {pnl.toFixed(2)} {account?.currency || "GBP"}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Two-column: Positions + Signals */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Live Positions */}
+        <div className="space-y-6">
+          <SectionLabel>Live Positions</SectionLabel>
+          <div
+            className="rounded-lg overflow-hidden"
+            style={{ backgroundColor: "#111111", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
             {positionsLoading ? (
-              <div className="space-y-4">
+              <div className="p-5 space-y-4">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : positions && positions.length > 0 ? (
-              <div className="space-y-4">
-                {positions.map((pos) => (
-                  <div key={pos.ticker} className="flex justify-between items-center border-b border-border pb-3 last:border-0 last:pb-0">
-                    <div>
-                      <div className="font-bold font-mono">{pos.ticker}</div>
-                      <div className="text-sm text-muted-foreground">{pos.quantity} shares</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono text-sm">Avg: {pos.averagePrice.toFixed(2)}</div>
-                      <div className={`font-mono text-sm ${pos.pnl >= 0 ? "text-primary" : "text-destructive"}`}>
-                        {pos.pnl >= 0 ? "+" : ""}{pos.pnl.toFixed(2)} ({pos.pnlPercent.toFixed(2)}%)
+              <div>
+                {positions.map((pos, idx) => {
+                  const profit = pos.pnl >= 0;
+                  return (
+                    <div
+                      key={pos.ticker}
+                      className="flex items-center justify-between p-5"
+                      style={idx < positions.length - 1 ? { borderBottom: "1px solid rgba(255,255,255,0.05)" } : {}}
+                    >
+                      <div className="flex items-center gap-4">
+                        <TickerAvatar ticker={pos.ticker} />
+                        <div>
+                          <div className="text-sm font-medium">{pos.ticker}</div>
+                          <div className="text-xs tabular-nums mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                            {pos.quantity} units · avg {pos.averagePrice.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div
+                          className="text-sm font-medium tabular-nums"
+                          style={
+                            profit
+                              ? { color: "#10b981", textShadow: "0 0 8px rgba(16,185,129,0.4)" }
+                              : { color: "#f87171" }
+                          }
+                        >
+                          {profit ? "+" : ""}£{pos.pnl.toFixed(2)}
+                        </div>
+                        <div
+                          className="text-xs tabular-nums mt-0.5"
+                          style={{ color: profit ? "rgba(16,185,129,0.7)" : "rgba(248,113,113,0.7)" }}
+                        >
+                          {profit ? "+" : ""}{pos.pnlPercent.toFixed(2)}%
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <div className="text-muted-foreground text-sm py-4">No open positions</div>
+              <div className="p-5 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
+                No open positions
+              </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Signals</CardTitle>
-          </CardHeader>
-          <CardContent>
+        {/* Recent Signals */}
+        <div className="space-y-6">
+          <SectionLabel>Recent Signals</SectionLabel>
+          <div
+            className="p-2 rounded-lg"
+            style={{ backgroundColor: "#111111", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
             {signalsLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+              <div className="p-3 space-y-4">
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
               </div>
             ) : signals && signals.length > 0 ? (
-              <div className="space-y-4">
-                {signals.map((sig) => (
-                  <div key={sig.id} className="flex justify-between items-center border-b border-border pb-3 last:border-0 last:pb-0">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold font-mono">{sig.ticker}</span>
-                        <Badge variant="outline" className={
-                          sig.signal === "BUY" ? "text-primary border-primary bg-primary/10" :
-                          sig.signal === "SELL" ? "text-destructive border-destructive bg-destructive/10" :
-                          "text-amber-500 border-amber-500 bg-amber-500/10"
-                        }>
-                          {sig.signal}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {new Date(sig.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="text-right font-mono text-sm">
-                      <div>Price: {sig.price.toFixed(2)}</div>
-                      <div className="text-muted-foreground text-xs">MA: {sig.shortMa.toFixed(2)} / {sig.longMa.toFixed(2)}</div>
+              signals.map((sig) => (
+                <div
+                  key={sig.id}
+                  className="flex items-center justify-between p-3 rounded transition-colors"
+                  style={{ cursor: "default" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                >
+                  <div>
+                    <div className="text-sm font-medium">{sig.ticker}</div>
+                    <div className="text-xs mt-0.5 tabular-nums" style={{ color: "rgba(255,255,255,0.3)" }}>
+                      {new Date(sig.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="text-right text-xs tabular-nums"
+                      style={{ color: "rgba(255,255,255,0.4)" }}
+                    >
+                      <div>Price: {sig.price.toFixed(2)}</div>
+                      <div>MA: {sig.shortMa.toFixed(2)} / {sig.longMa.toFixed(2)}</div>
+                    </div>
+                    <div
+                      className="px-2.5 py-1 rounded text-[10px] font-bold tracking-wider"
+                      style={
+                        sig.signal === "BUY"
+                          ? { color: "#10b981", backgroundColor: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }
+                          : sig.signal === "SELL"
+                          ? { color: "#f87171", backgroundColor: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)" }
+                          : { color: "#d97706", backgroundColor: "rgba(217,119,6,0.1)", border: "1px solid rgba(217,119,6,0.2)" }
+                      }
+                    >
+                      {sig.signal}
+                    </div>
+                  </div>
+                </div>
+              ))
             ) : (
-              <div className="text-muted-foreground text-sm py-4">No recent signals</div>
+              <div className="p-3 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
+                No recent signals
+              </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </section>
 
-      {/* Market-moving news */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <Flame className="h-5 w-5 text-orange-500" />
-            Market-Moving News
-            <span className="text-xs text-muted-foreground font-normal">· auto-refreshes every 15 min</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto h-7 w-7"
-              onClick={refreshNews}
-              disabled={newsFetching}
-              title="Refresh news"
+      {/* Market News */}
+      <section className="space-y-6">
+        <div className="flex items-center justify-between pl-1">
+          <div className="flex items-center gap-3">
+            <SectionLabel>Market News</SectionLabel>
+            <span
+              style={{
+                fontSize: "10px",
+                color: "rgba(255,255,255,0.25)",
+                letterSpacing: "0.05em",
+              }}
             >
-              <RefreshCw className={`h-4 w-4 ${newsFetching ? "animate-spin" : ""}`} />
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+              · auto-refreshes every 15 min
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-white/30 hover:text-white/60"
+            onClick={refreshNews}
+            disabled={newsFetching}
+            title="Refresh news"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${newsFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+
+        <div
+          className="rounded-lg overflow-hidden"
+          style={{ backgroundColor: "#111111", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
           {newsLoading ? (
-            <div className="space-y-3">
+            <div className="p-5 space-y-4">
               {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
             </div>
           ) : !news || news.length === 0 ? (
-            <div className="text-muted-foreground text-sm py-4 text-center">No high-impact news at the moment</div>
+            <div className="p-5 text-sm text-center" style={{ color: "rgba(255,255,255,0.4)" }}>
+              No high-impact news at the moment
+            </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div>
               {news.map((item, i) => (
                 <a
                   key={i}
                   href={item.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 py-3 hover:bg-muted/20 rounded px-2 -mx-2 transition-colors group"
+                  className="flex items-start gap-4 p-5 transition-colors group"
+                  style={i < news.length - 1 ? { borderBottom: "1px solid rgba(255,255,255,0.05)" } : {}}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
                 >
-                  <div className="mt-0.5 shrink-0">
-                    {item.impactLabel === "HIGH" ? (
-                      <Flame className="h-4 w-4 text-orange-500" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                    )}
-                  </div>
+                  {/* Impact dot */}
+                  <div
+                    className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: item.impactLabel === "HIGH" ? "#f87171" : "#fbbf24" }}
+                  />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                    <p className="text-sm font-medium leading-snug line-clamp-2" style={{ color: "rgba(255,255,255,0.9)" }}>
                       {item.title}
                     </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-muted-foreground">{item.source}</span>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground">
-                        {item.publishedAt ? new Date(item.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{item.source}</span>
+                      <span
+                        className="w-1 h-1 rounded-full"
+                        style={{ backgroundColor: "rgba(255,255,255,0.2)" }}
+                      />
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+                        {item.publishedAt
+                          ? new Date(item.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                          : ""}
                       </span>
-                      <Badge
-                        variant="outline"
-                        className={`ml-auto text-xs ${item.impactLabel === "HIGH" ? "border-orange-500 text-orange-500" : "border-yellow-500 text-yellow-500"}`}
-                      >
-                        {item.impactLabel}
-                      </Badge>
                     </div>
                   </div>
-                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
+                  <ExternalLink
+                    className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-40 transition-opacity"
+                  />
                 </a>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
