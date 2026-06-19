@@ -1,5 +1,4 @@
-import { useEffect, useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useCallback } from "react";
 import {
   useGetBotStatus,
   getGetBotStatusQueryKey,
@@ -12,6 +11,7 @@ import {
   useGetMarketNews,
   getGetMarketNewsQueryKey,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,11 +27,41 @@ const emeraldGlow = "0 0 8px rgba(16,185,129,0.35)";
 const red = "#f87171";
 const amber = "#d97706";
 
+const NEWS_INTERVAL_MS = 15 * 60_000; // always 15 min
+
+/** Returns "Xm Ys" until the next refetch based on dataUpdatedAt + interval */
+function useCountdown(dataUpdatedAt: number, intervalMs: number) {
+  const [remaining, setRemaining] = useState("");
+  useEffect(() => {
+    if (!dataUpdatedAt || !intervalMs) return;
+    const tick = () => {
+      const nextAt = dataUpdatedAt + intervalMs;
+      const diff = Math.max(0, nextAt - Date.now());
+      const m = Math.floor(diff / 60_000);
+      const s = Math.floor((diff % 60_000) / 1000);
+      setRemaining(m > 0 ? `${m}m ${s}s` : `${s}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [dataUpdatedAt, intervalMs]);
+  return remaining;
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, color: muted }}>
       {children}
     </p>
+  );
+}
+
+function RefreshBadge({ countdown }: { countdown: string }) {
+  if (!countdown) return null;
+  return (
+    <span className="tabular-nums" style={{ fontSize: 10, color: mutedLo, letterSpacing: "0.05em" }}>
+      · next in {countdown}
+    </span>
   );
 }
 
@@ -50,24 +80,52 @@ function TickerAvatar({ ticker }: { ticker: string }) {
 export default function Dashboard() {
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    const iv = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: getGetBotStatusQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getGetAccountQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getListPositionsQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getListSignalsQueryKey({ limit: 5 }) });
-    }, 180_000);
-    const newsIv = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: getGetMarketNewsQueryKey() });
-    }, 15 * 60_000);
-    return () => { clearInterval(iv); clearInterval(newsIv); };
-  }, [queryClient]);
+  /* ── Bot status: poll every 30 s — drives all other intervals ── */
+  const { data: botStatus, isLoading: botLoading } = useGetBotStatus(undefined, {
+    query: {
+      queryKey: getGetBotStatusQueryKey(),
+      refetchInterval: 30_000,
+    },
+  });
 
-  const { data: botStatus, isLoading: botLoading } = useGetBotStatus(undefined, { query: { queryKey: getGetBotStatusQueryKey() } });
-  const { data: account, isLoading: accountLoading } = useGetAccount(undefined, { query: { queryKey: getGetAccountQueryKey() } });
-  const { data: positions, isLoading: positionsLoading } = useListPositions(undefined, { query: { queryKey: getListPositionsQueryKey() } });
-  const { data: signals, isLoading: signalsLoading } = useListSignals({ limit: 5 }, { query: { queryKey: getListSignalsQueryKey({ limit: 5 }) } });
-  const { data: news, isLoading: newsLoading, isFetching: newsFetching } = useGetMarketNews({ limit: 8 }, { query: { queryKey: getGetMarketNewsQueryKey(), staleTime: 15 * 60_000 } });
+  /* Derive intervals from live config */
+  const botIntervalMs = (botStatus?.config?.intervalMinutes ?? 15) * 60_000;
+
+  /* ── Account + positions: refresh on the bot's own interval ── */
+  const { data: account, isLoading: accountLoading } = useGetAccount(undefined, {
+    query: {
+      queryKey: getGetAccountQueryKey(),
+      refetchInterval: botIntervalMs,
+    },
+  });
+
+  const { data: positions, isLoading: positionsLoading } = useListPositions(undefined, {
+    query: {
+      queryKey: getListPositionsQueryKey(),
+      refetchInterval: botIntervalMs,
+    },
+  });
+
+  /* ── Signals: refresh exactly at the bot's scan interval ── */
+  const signalsQuery = useListSignals({ limit: 5 }, {
+    query: {
+      queryKey: getListSignalsQueryKey({ limit: 5 }),
+      refetchInterval: botIntervalMs,
+    },
+  });
+  const { data: signals, isLoading: signalsLoading, dataUpdatedAt: signalsUpdatedAt } = signalsQuery;
+  const signalsCountdown = useCountdown(signalsUpdatedAt, botIntervalMs);
+
+  /* ── News: strictly every 15 minutes ── */
+  const newsQuery = useGetMarketNews({ limit: 8 }, {
+    query: {
+      queryKey: getGetMarketNewsQueryKey(),
+      refetchInterval: NEWS_INTERVAL_MS,
+      staleTime: NEWS_INTERVAL_MS,
+    },
+  });
+  const { data: news, isLoading: newsLoading, isFetching: newsFetching, dataUpdatedAt: newsUpdatedAt } = newsQuery;
+  const newsCountdown = useCountdown(newsUpdatedAt, NEWS_INTERVAL_MS);
 
   const refreshNews = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetMarketNewsQueryKey() });
@@ -80,12 +138,12 @@ export default function Dashboard() {
     <div className="space-y-12">
 
       {/* ── Header ── */}
-      <header className="flex items-end justify-between">
+      <header className="flex items-end justify-between flex-wrap gap-2">
         <div className="flex items-center gap-4">
-          <h1 className="text-4xl font-light tracking-tight">Dashboard</h1>
+          <h1 className="text-3xl md:text-4xl font-light tracking-tight">Dashboard</h1>
           {!botLoading && (
             <span
-              className="mb-1 rounded px-2 py-0.5"
+              className="mb-0.5 rounded px-2 py-0.5"
               style={{
                 fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700,
                 border: "1px solid hsl(var(--border))", color: muted,
@@ -96,7 +154,11 @@ export default function Dashboard() {
             </span>
           )}
         </div>
-        <span className="text-xs tabular-nums" style={{ color: mutedLo }}>Last updated: Just now</span>
+        {botStatus?.config && (
+          <span className="text-xs tabular-nums" style={{ color: mutedLo }}>
+            Scan interval: {botStatus.config.intervalMinutes} min
+          </span>
+        )}
       </header>
 
       {/* ── Stats Row ── */}
@@ -178,7 +240,10 @@ export default function Dashboard() {
 
         {/* Recent Signals */}
         <div className="space-y-5">
-          <SectionLabel>Recent Signals</SectionLabel>
+          <div className="flex items-center gap-3">
+            <SectionLabel>Recent Signals</SectionLabel>
+            <RefreshBadge countdown={signalsCountdown} />
+          </div>
           <div className="p-2 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
             {signalsLoading ? (
               <div className="p-3 space-y-4"><Skeleton className="h-9 w-full" /><Skeleton className="h-9 w-full" /></div>
@@ -225,7 +290,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <SectionLabel>Market News</SectionLabel>
-            <span style={{ fontSize: 10, color: mutedLo, letterSpacing: "0.05em" }}>· auto-refreshes every 15 min</span>
+            <RefreshBadge countdown={newsCountdown} />
           </div>
           <Button
             variant="ghost" size="icon"

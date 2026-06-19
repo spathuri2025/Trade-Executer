@@ -1,4 +1,10 @@
-import { useListSignals, getListSignalsQueryKey } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
+import {
+  useListSignals,
+  getListSignalsQueryKey,
+  useGetBotStatus,
+  getGetBotStatusQueryKey,
+} from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Check, X } from "lucide-react";
@@ -24,14 +30,61 @@ function SignalBadge({ signal }: { signal: string }) {
   return <Badge variant="outline" className={cls}>{signal}</Badge>;
 }
 
+function useCountdown(dataUpdatedAt: number, intervalMs: number) {
+  const [remaining, setRemaining] = useState("");
+  useEffect(() => {
+    if (!dataUpdatedAt || !intervalMs) return;
+    const tick = () => {
+      const nextAt = dataUpdatedAt + intervalMs;
+      const diff = Math.max(0, nextAt - Date.now());
+      const m = Math.floor(diff / 60_000);
+      const s = Math.floor((diff % 60_000) / 1000);
+      setRemaining(m > 0 ? `${m}m ${s}s` : `${s}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [dataUpdatedAt, intervalMs]);
+  return remaining;
+}
+
 export default function Signals() {
-  const { data: signals, isLoading } = useListSignals(undefined, {
-    query: { queryKey: getListSignalsQueryKey() }
+  /* Bot status drives the refresh interval */
+  const { data: botStatus } = useGetBotStatus(undefined, {
+    query: {
+      queryKey: getGetBotStatusQueryKey(),
+      refetchInterval: 30_000,
+    },
   });
+
+  const botIntervalMs = (botStatus?.config?.intervalMinutes ?? 15) * 60_000;
+
+  const { data: signals, isLoading, dataUpdatedAt } = useListSignals(undefined, {
+    query: {
+      queryKey: getListSignalsQueryKey(),
+      refetchInterval: botIntervalMs,
+    },
+  });
+
+  const countdown = useCountdown(dataUpdatedAt, botIntervalMs);
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <h1 className="text-2xl md:text-4xl font-light tracking-tight">Signal Log</h1>
+      <div className="flex items-end justify-between flex-wrap gap-2">
+        <h1 className="text-2xl md:text-4xl font-light tracking-tight">Signal Log</h1>
+        <div className="flex items-center gap-2 mb-0.5">
+          {botStatus?.config && (
+            <span className="text-xs" style={{ color: muted }}>
+              Interval: {botStatus.config.intervalMinutes} min
+            </span>
+          )}
+          {countdown && (
+            <span className="text-xs tabular-nums" style={{ color: muted }}>
+              · next in {countdown}
+            </span>
+          )}
+        </div>
+      </div>
 
       {isLoading ? (
         <div className="space-y-3">
