@@ -30,7 +30,7 @@ const state: BotState = {
     longPeriod: 21,
     tradeAmount: 50,
     intervalMinutes: 60,
-    dryRun: false,
+    dryRun: true,
     broker: "capitalcom",
   },
   intervalHandle: null,
