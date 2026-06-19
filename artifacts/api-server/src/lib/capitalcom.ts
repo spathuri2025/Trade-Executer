@@ -84,6 +84,10 @@ async function getSession(): Promise<Session> {
   return sessionInFlight;
 }
 
+export async function capitalAuthFetch(path: string, options: RequestInit = {}): Promise<unknown> {
+  return capitalFetch(path, options);
+}
+
 async function capitalFetch(path: string, options: RequestInit = {}): Promise<unknown> {
   const session = await getSession();
   const url = `${BASE_URL}${path}`;

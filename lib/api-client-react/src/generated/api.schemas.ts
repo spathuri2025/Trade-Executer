@@ -153,11 +153,74 @@ export interface Signal {
   tradeExecuted?: boolean;
 }
 
+export interface ScannerConfig {
+  scanEnabled: boolean;
+  autoTrade: boolean;
+  /** Minimum % gap between short and long MA to qualify as a hit */
+  minTrendStrength: number;
+  scanIntervalMinutes: number;
+  instrumentTypes: string[];
+  maxInstrumentsPerScan: number;
+}
+
+export interface ScannerStatus {
+  running: boolean;
+  scanning: boolean;
+  /** @nullable */
+  lastRunAt: string | null;
+  /** @nullable */
+  nextRunAt: string | null;
+  lastScanCount: number;
+  lastHitCount: number;
+  config: ScannerConfig;
+}
+
+export interface ScannerConfigInput {
+  scanEnabled?: boolean;
+  autoTrade?: boolean;
+  minTrendStrength?: number;
+  scanIntervalMinutes?: number;
+  instrumentTypes?: string[];
+  maxInstrumentsPerScan?: number;
+}
+
+export type ScannerResultSignal = typeof ScannerResultSignal[keyof typeof ScannerResultSignal];
+
+
+export const ScannerResultSignal = {
+  BUY: 'BUY',
+  SELL: 'SELL',
+} as const;
+
+export interface ScannerResult {
+  id: number;
+  ticker: string;
+  name: string;
+  signal: ScannerResultSignal;
+  shortMa: number;
+  longMa: number;
+  price: number;
+  trendStrength: number;
+  autoTraded: boolean;
+  /** @nullable */
+  orderId?: string | null;
+  scannedAt: string;
+}
+
 export type ListTradesParams = {
 limit?: number;
 };
 
 export type ListSignalsParams = {
+limit?: number;
+};
+
+export type RunScan200 = {
+  scanned: number;
+  hits: number;
+};
+
+export type GetScannerResultsParams = {
 limit?: number;
 };
 

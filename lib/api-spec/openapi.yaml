@@ -225,6 +225,77 @@ paths:
                 items:
                   $ref: "#/components/schemas/Signal"
 
+  /scanner/status:
+    get:
+      operationId: getScannerStatus
+      tags: [scanner]
+      summary: Get scanner status and configuration
+      responses:
+        "200":
+          description: Scanner status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScannerStatus"
+
+  /scanner/config:
+    post:
+      operationId: updateScannerConfig
+      tags: [scanner]
+      summary: Update scanner configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScannerConfigInput"
+      responses:
+        "200":
+          description: Updated scanner status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScannerStatus"
+
+  /scanner/run:
+    post:
+      operationId: runScan
+      tags: [scanner]
+      summary: Manually trigger a market scan
+      responses:
+        "200":
+          description: Scan results summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scanned, hits]
+                properties:
+                  scanned:
+                    type: integer
+                  hits:
+                    type: integer
+
+  /scanner/results:
+    get:
+      operationId: getScannerResults
+      tags: [scanner]
+      summary: Get recent scanner hits
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of scanner hits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScannerResult"
+
 components:
   schemas:
     HealthStatus:
@@ -406,3 +477,88 @@ components:
           type: string
         tradeExecuted:
           type: boolean
+
+    ScannerStatus:
+      type: object
+      required: [running, scanning, lastRunAt, nextRunAt, lastScanCount, lastHitCount, config]
+      properties:
+        running:
+          type: boolean
+        scanning:
+          type: boolean
+        lastRunAt:
+          type: ["string", "null"]
+        nextRunAt:
+          type: ["string", "null"]
+        lastScanCount:
+          type: integer
+        lastHitCount:
+          type: integer
+        config:
+          $ref: "#/components/schemas/ScannerConfig"
+
+    ScannerConfig:
+      type: object
+      required: [scanEnabled, autoTrade, minTrendStrength, scanIntervalMinutes, instrumentTypes, maxInstrumentsPerScan]
+      properties:
+        scanEnabled:
+          type: boolean
+        autoTrade:
+          type: boolean
+        minTrendStrength:
+          type: number
+          description: Minimum % gap between short and long MA to qualify as a hit
+        scanIntervalMinutes:
+          type: integer
+        instrumentTypes:
+          type: array
+          items:
+            type: string
+        maxInstrumentsPerScan:
+          type: integer
+
+    ScannerConfigInput:
+      type: object
+      properties:
+        scanEnabled:
+          type: boolean
+        autoTrade:
+          type: boolean
+        minTrendStrength:
+          type: number
+        scanIntervalMinutes:
+          type: integer
+        instrumentTypes:
+          type: array
+          items:
+            type: string
+        maxInstrumentsPerScan:
+          type: integer
+
+    ScannerResult:
+      type: object
+      required: [id, ticker, name, signal, shortMa, longMa, price, trendStrength, autoTraded, scannedAt]
+      properties:
+        id:
+          type: integer
+        ticker:
+          type: string
+        name:
+          type: string
+        signal:
+          type: string
+          enum: [BUY, SELL]
+        shortMa:
+          type: number
+        longMa:
+          type: number
+        price:
+          type: number
+        trendStrength:
+          type: number
+        autoTraded:
+          type: boolean
+        orderId:
+          type: ["string", "null"]
+        scannedAt:
+          type: string

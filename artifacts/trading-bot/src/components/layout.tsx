@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings } from "lucide-react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch } from "lucide-react";
 
 export function Sidebar() {
   const [location] = useLocation();
@@ -8,6 +8,7 @@ export function Sidebar() {
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/trades", label: "Trades", icon: ListOrdered },
     { href: "/signals", label: "Signals", icon: Activity },
+    { href: "/scanner", label: "Scanner", icon: ScanSearch },
     { href: "/instruments", label: "Instruments", icon: LineChart },
     { href: "/settings", label: "Settings", icon: Settings },
   ];

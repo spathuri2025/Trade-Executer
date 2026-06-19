@@ -6,6 +6,7 @@ import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import Trades from "@/pages/trades";
 import Signals from "@/pages/signals";
+import Scanner from "@/pages/scanner";
 import Instruments from "@/pages/instruments";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
@@ -19,6 +20,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/trades" component={Trades} />
         <Route path="/signals" component={Signals} />
+        <Route path="/scanner" component={Scanner} />
         <Route path="/instruments" component={Instruments} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />

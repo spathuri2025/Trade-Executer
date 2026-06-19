@@ -226,3 +226,86 @@ export const RunSignalCheckResponseItem = zod.object({
 export const RunSignalCheckResponse = zod.array(RunSignalCheckResponseItem)
 
 
+/**
+ * @summary Get scanner status and configuration
+ */
+export const GetScannerStatusResponse = zod.object({
+  "running": zod.boolean(),
+  "scanning": zod.boolean(),
+  "lastRunAt": zod.string().nullable(),
+  "nextRunAt": zod.string().nullable(),
+  "lastScanCount": zod.number(),
+  "lastHitCount": zod.number(),
+  "config": zod.object({
+  "scanEnabled": zod.boolean(),
+  "autoTrade": zod.boolean(),
+  "minTrendStrength": zod.number().describe('Minimum % gap between short and long MA to qualify as a hit'),
+  "scanIntervalMinutes": zod.number(),
+  "instrumentTypes": zod.array(zod.string()),
+  "maxInstrumentsPerScan": zod.number()
+})
+})
+
+
+/**
+ * @summary Update scanner configuration
+ */
+export const UpdateScannerConfigBody = zod.object({
+  "scanEnabled": zod.boolean().optional(),
+  "autoTrade": zod.boolean().optional(),
+  "minTrendStrength": zod.number().optional(),
+  "scanIntervalMinutes": zod.number().optional(),
+  "instrumentTypes": zod.array(zod.string()).optional(),
+  "maxInstrumentsPerScan": zod.number().optional()
+})
+
+export const UpdateScannerConfigResponse = zod.object({
+  "running": zod.boolean(),
+  "scanning": zod.boolean(),
+  "lastRunAt": zod.string().nullable(),
+  "nextRunAt": zod.string().nullable(),
+  "lastScanCount": zod.number(),
+  "lastHitCount": zod.number(),
+  "config": zod.object({
+  "scanEnabled": zod.boolean(),
+  "autoTrade": zod.boolean(),
+  "minTrendStrength": zod.number().describe('Minimum % gap between short and long MA to qualify as a hit'),
+  "scanIntervalMinutes": zod.number(),
+  "instrumentTypes": zod.array(zod.string()),
+  "maxInstrumentsPerScan": zod.number()
+})
+})
+
+
+/**
+ * @summary Manually trigger a market scan
+ */
+export const RunScanResponse = zod.object({
+  "scanned": zod.number(),
+  "hits": zod.number()
+})
+
+
+/**
+ * @summary Get recent scanner hits
+ */
+export const GetScannerResultsQueryParams = zod.object({
+  "limit": zod.coerce.number().optional()
+})
+
+export const GetScannerResultsResponseItem = zod.object({
+  "id": zod.number(),
+  "ticker": zod.string(),
+  "name": zod.string(),
+  "signal": zod.enum(['BUY', 'SELL']),
+  "shortMa": zod.number(),
+  "longMa": zod.number(),
+  "price": zod.number(),
+  "trendStrength": zod.number(),
+  "autoTraded": zod.boolean(),
+  "orderId": zod.string().nullish(),
+  "scannedAt": zod.string()
+})
+export const GetScannerResultsResponse = zod.array(GetScannerResultsResponseItem)
+
+
