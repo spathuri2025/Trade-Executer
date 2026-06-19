@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBotStatus,
@@ -15,7 +15,8 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ExternalLink, Flame, AlertTriangle } from "lucide-react";
+import { ExternalLink, Flame, AlertTriangle, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -50,9 +51,13 @@ export default function Dashboard() {
     query: { queryKey: getListSignalsQueryKey({ limit: 5 }) },
   });
 
-  const { data: news, isLoading: newsLoading } = useGetMarketNews({ limit: 8 }, {
+  const { data: news, isLoading: newsLoading, isFetching: newsFetching } = useGetMarketNews({ limit: 8 }, {
     query: { queryKey: getGetMarketNewsQueryKey(), staleTime: 15 * 60 * 1000 },
   });
+
+  const refreshNews = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: getGetMarketNewsQueryKey() });
+  }, [queryClient]);
 
   return (
     <div className="space-y-6">
@@ -197,7 +202,17 @@ export default function Dashboard() {
           <CardTitle className="flex items-center gap-2">
             <Flame className="h-5 w-5 text-orange-500" />
             Market-Moving News
-            <span className="ml-auto text-xs text-muted-foreground font-normal">Refreshes every 15 min</span>
+            <span className="text-xs text-muted-foreground font-normal">· auto-refreshes every 15 min</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto h-7 w-7"
+              onClick={refreshNews}
+              disabled={newsFetching}
+              title="Refresh news"
+            >
+              <RefreshCw className={`h-4 w-4 ${newsFetching ? "animate-spin" : ""}`} />
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
