@@ -16,7 +16,7 @@ export function Sidebar() {
     <div className="w-64 border-r border-border bg-sidebar h-screen flex flex-col">
       <div className="p-4 border-b border-border flex items-center gap-2 text-primary font-bold">
         <LineChart className="h-6 w-6" />
-        <span>AlgoTerm</span>
+        <span>TradeBuzz</span>
       </div>
       <nav className="flex-1 p-2 space-y-1">
         {links.map((link) => {
