@@ -95,7 +95,7 @@ export default function Settings() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+        <h1 className="text-2xl md:text-4xl font-light tracking-tight">Settings</h1>
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -103,13 +103,14 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Bot Controls & Settings</h1>
+      <h1 className="text-2xl md:text-4xl font-light tracking-tight">Bot Controls &amp; Settings</h1>
 
+      {/* Engine status */}
       <Card className="border-primary/20">
         <CardHeader>
           <CardTitle>Engine Status</CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-between">
+        <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-1">
             <div className="text-lg font-bold">
               {botStatus?.running ? (
@@ -132,6 +133,7 @@ export default function Settings() {
             {botStatus?.running ? (
               <Button
                 variant="destructive"
+                className="w-full sm:w-auto"
                 onClick={() => stopBot.mutate()}
                 disabled={stopBot.isPending}
                 data-testid="button-stop-bot"
@@ -140,6 +142,7 @@ export default function Settings() {
               </Button>
             ) : (
               <Button
+                className="w-full sm:w-auto"
                 onClick={() => startBot.mutate()}
                 disabled={startBot.isPending}
                 data-testid="button-start-bot"
@@ -151,18 +154,19 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      {/* Strategy config */}
       <Card>
         <CardHeader>
           <CardTitle>Strategy Configuration</CardTitle>
           <CardDescription>Moving Average Crossover — broker, periods, and trade size</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSave} className="space-y-6 max-w-xl">
+          <form onSubmit={handleSave} className="space-y-6">
 
             {/* Broker selector */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Active Broker</label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(["capitalcom", "trading212"] as BrokerName[]).map((b) => (
                   <button
                     key={b}
@@ -185,7 +189,7 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Short MA Period</label>
                 <Input
@@ -210,7 +214,7 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Risk Per Trade (%)</label>
                 <Input
@@ -218,14 +222,12 @@ export default function Settings() {
                   value={config.riskPerTradePercent}
                   onChange={(e) => setConfig({ ...config, riskPerTradePercent: Number(e.target.value) })}
                   className="font-mono"
-                  min={0}
-                  max={10}
-                  step={0.1}
+                  min={0} max={10} step={0.1}
                   data-testid="input-risk-per-trade"
                 />
                 <p className="text-xs text-muted-foreground">
                   {config.riskPerTradePercent > 0
-                    ? `Position sized to ${config.riskPerTradePercent}% of account value. Set to 0 to use fixed Trade Amount.`
+                    ? `Sizes position to ${config.riskPerTradePercent}% of account. Set 0 to use fixed amount.`
                     : "Using fixed Trade Amount below."}
                 </p>
               </div>
@@ -236,31 +238,28 @@ export default function Settings() {
                   value={config.stopLossPercent}
                   onChange={(e) => setConfig({ ...config, stopLossPercent: Number(e.target.value) })}
                   className="font-mono"
-                  min={0}
-                  max={20}
-                  step={0.1}
+                  min={0} max={20} step={0.1}
                   data-testid="input-stop-loss"
                 />
                 <p className="text-xs text-muted-foreground">
                   {config.stopLossPercent > 0
-                    ? `Stop-loss placed ${config.stopLossPercent}% away from entry. Set to 0 to disable.`
+                    ? `Stop ${config.stopLossPercent}% from entry. Set 0 to disable.`
                     : "No stop-loss (not recommended for live trading)."}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className={`text-sm font-medium ${config.riskPerTradePercent > 0 ? "text-muted-foreground" : ""}`}>
-                  Fixed Trade Amount {config.riskPerTradePercent > 0 ? "(overridden by Risk %)" : ""}
+                  Fixed Trade Amount {config.riskPerTradePercent > 0 ? "(overridden)" : ""}
                 </label>
                 <Input
                   type="number"
                   value={config.tradeAmount}
                   onChange={(e) => setConfig({ ...config, tradeAmount: Number(e.target.value) })}
                   className="font-mono"
-                  min={1}
-                  step={0.01}
+                  min={1} step={0.01}
                   disabled={config.riskPerTradePercent > 0}
                   data-testid="input-trade-amount"
                 />
@@ -279,7 +278,7 @@ export default function Settings() {
             </div>
 
             <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/20">
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 pr-4">
                 <label className="text-sm font-medium">Dry Run Mode</label>
                 <div className="text-xs text-muted-foreground">
                   Log signals without executing real trades on {BROKER_LABELS[config.broker]}
@@ -294,10 +293,11 @@ export default function Settings() {
 
             <Button
               type="submit"
+              className="w-full sm:w-auto"
               disabled={updateConfig.isPending}
               data-testid="button-save-config"
             >
-              {updateConfig.isPending ? "Saving..." : "Save Configuration"}
+              {updateConfig.isPending ? "Saving…" : "Save Configuration"}
             </Button>
           </form>
         </CardContent>
