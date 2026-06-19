@@ -12,7 +12,7 @@ export interface BotConfig {
   shortPeriod: number;
   /** Long MA period (e.g. 21) */
   longPeriod: number;
-  /** Amount in account currency per trade */
+  /** Fixed amount in account currency per trade (ignored when riskPerTradePercent > 0) */
   tradeAmount: number;
   /** How often to run signal check (minutes) */
   intervalMinutes: number;
@@ -20,4 +20,8 @@ export interface BotConfig {
   dryRun: boolean;
   /** Which broker to route trades through */
   broker: BotConfigBroker;
+  /** Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss. */
+  stopLossPercent: number;
+  /** Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount. */
+  riskPerTradePercent: number;
 }

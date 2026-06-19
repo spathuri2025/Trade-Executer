@@ -117,14 +117,25 @@ export async function getBrokerPriceHistory(
   }
 }
 
+export interface StopLossParams {
+  stopLossPercent: number;
+  entryPrice: number;
+}
+
 export async function placeBrokerOrder(
   broker: BrokerName,
   ticker: string,
   quantity: number,
-  side: "BUY" | "SELL"
+  side: "BUY" | "SELL",
+  stopLoss?: StopLossParams
 ): Promise<NormalizedOrder> {
   if (broker === "capitalcom") {
-    const result = await placeCapitalOrder(ticker, quantity, side);
+    const stopLevel = stopLoss
+      ? side === "BUY"
+        ? stopLoss.entryPrice * (1 - stopLoss.stopLossPercent / 100)
+        : stopLoss.entryPrice * (1 + stopLoss.stopLossPercent / 100)
+      : undefined;
+    const result = await placeCapitalOrder(ticker, quantity, side, stopLevel);
     return { id: result.dealReference };
   }
 

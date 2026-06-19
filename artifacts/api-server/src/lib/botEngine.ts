@@ -1,7 +1,7 @@
 import { db, instrumentsTable, tradesTable, signalsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
-import { placeBrokerOrder, getBrokerPriceHistory, type BrokerName } from "./broker";
+import { placeBrokerOrder, getBrokerPriceHistory, getBrokerAccount, type BrokerName } from "./broker";
 import { computeMASignal } from "./maStrategy";
 
 export interface BotConfig {
@@ -11,6 +11,8 @@ export interface BotConfig {
   intervalMinutes: number;
   dryRun: boolean;
   broker: BrokerName;
+  stopLossPercent: number;
+  riskPerTradePercent: number;
 }
 
 interface BotState {
@@ -32,6 +34,8 @@ const state: BotState = {
     intervalMinutes: 60,
     dryRun: true,
     broker: "capitalcom",
+    stopLossPercent: 2,
+    riskPerTradePercent: 1,
   },
   intervalHandle: null,
 };
@@ -94,7 +98,18 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     .where(eq(instrumentsTable.enabled, true));
 
   const results: Array<{ ticker: string; signal: string; tradeExecuted: boolean }> = [];
-  const { broker, shortPeriod, longPeriod, tradeAmount, dryRun } = state.config;
+  const { broker, shortPeriod, longPeriod, tradeAmount, dryRun, stopLossPercent, riskPerTradePercent } = state.config;
+
+  // Fetch account balance once per cycle for position sizing
+  let accountBalance: number | null = null;
+  if (riskPerTradePercent > 0) {
+    try {
+      const account = await getBrokerAccount(broker);
+      accountBalance = account.total;
+    } catch (err) {
+      logger.warn({ broker, err }, "Could not fetch account balance for position sizing — falling back to fixed tradeAmount");
+    }
+  }
 
   for (const instrument of instruments) {
     try {
@@ -114,7 +129,17 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
       let tradeExecuted = false;
 
       if (signal !== "HOLD") {
-        const quantity = tradeAmount / currentPrice;
+        // Position sizing: % of account balance or fixed amount
+        const positionValue =
+          riskPerTradePercent > 0 && accountBalance !== null
+            ? accountBalance * (riskPerTradePercent / 100)
+            : tradeAmount;
+        const quantity = positionValue / currentPrice;
+
+        logger.info(
+          { ticker: instrument.ticker, signal, positionValue, quantity, stopLossPercent, riskPerTradePercent },
+          "Signal detected"
+        );
 
         if (dryRun) {
           logger.info({ ticker: instrument.ticker, signal, broker, dryRun: true }, "Dry-run signal");
@@ -123,19 +148,25 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
             side: signal,
             quantity: String(quantity),
             price: String(currentPrice),
-            total: String(tradeAmount),
+            total: String(positionValue),
             status: "DRY_RUN",
           });
           tradeExecuted = true;
         } else {
           try {
-            const order = await placeBrokerOrder(broker, instrument.ticker, quantity, signal);
+            const order = await placeBrokerOrder(
+              broker,
+              instrument.ticker,
+              quantity,
+              signal,
+              stopLossPercent > 0 ? { stopLossPercent, entryPrice: currentPrice } : undefined
+            );
             await db.insert(tradesTable).values({
               ticker: instrument.ticker,
               side: signal,
               quantity: String(quantity),
               price: String(currentPrice),
-              total: String(tradeAmount),
+              total: String(positionValue),
               status: "FILLED",
               orderId: order.id,
             });
@@ -148,7 +179,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
               side: signal,
               quantity: String(quantity),
               price: String(currentPrice),
-              total: String(tradeAmount),
+              total: String(positionValue),
               status: "FAILED",
               errorMessage: msg,
             });

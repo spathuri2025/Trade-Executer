@@ -37,6 +37,8 @@ export default function Settings() {
     intervalMinutes: 15,
     dryRun: true,
     broker: "capitalcom" as BrokerName,
+    stopLossPercent: 2,
+    riskPerTradePercent: 1,
   });
 
   useEffect(() => {
@@ -48,6 +50,8 @@ export default function Settings() {
         intervalMinutes: botStatus.config.intervalMinutes,
         dryRun: botStatus.config.dryRun,
         broker: botStatus.config.broker as BrokerName,
+        stopLossPercent: botStatus.config.stopLossPercent,
+        riskPerTradePercent: botStatus.config.riskPerTradePercent,
       });
     }
   }, [botStatus]);
@@ -208,7 +212,48 @@ export default function Settings() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Trade Amount</label>
+                <label className="text-sm font-medium">Risk Per Trade (%)</label>
+                <Input
+                  type="number"
+                  value={config.riskPerTradePercent}
+                  onChange={(e) => setConfig({ ...config, riskPerTradePercent: Number(e.target.value) })}
+                  className="font-mono"
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  data-testid="input-risk-per-trade"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {config.riskPerTradePercent > 0
+                    ? `Position sized to ${config.riskPerTradePercent}% of account value. Set to 0 to use fixed Trade Amount.`
+                    : "Using fixed Trade Amount below."}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Stop-Loss (%)</label>
+                <Input
+                  type="number"
+                  value={config.stopLossPercent}
+                  onChange={(e) => setConfig({ ...config, stopLossPercent: Number(e.target.value) })}
+                  className="font-mono"
+                  min={0}
+                  max={20}
+                  step={0.1}
+                  data-testid="input-stop-loss"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {config.stopLossPercent > 0
+                    ? `Stop-loss placed ${config.stopLossPercent}% away from entry. Set to 0 to disable.`
+                    : "No stop-loss (not recommended for live trading)."}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className={`text-sm font-medium ${config.riskPerTradePercent > 0 ? "text-muted-foreground" : ""}`}>
+                  Fixed Trade Amount {config.riskPerTradePercent > 0 ? "(overridden by Risk %)" : ""}
+                </label>
                 <Input
                   type="number"
                   value={config.tradeAmount}
@@ -216,6 +261,7 @@ export default function Settings() {
                   className="font-mono"
                   min={1}
                   step={0.01}
+                  disabled={config.riskPerTradePercent > 0}
                   data-testid="input-trade-amount"
                 />
               </div>

@@ -222,17 +222,24 @@ export async function getCapitalPriceHistory(epic: string, resolution: string = 
 export async function placeCapitalOrder(
   epic: string,
   size: number,
-  direction: "BUY" | "SELL"
+  direction: "BUY" | "SELL",
+  stopLevel?: number
 ): Promise<{ dealReference: string }> {
+  const body: Record<string, unknown> = {
+    epic,
+    direction,
+    size,
+    guaranteedStop: false,
+    trailingStop: false,
+  };
+
+  if (stopLevel !== undefined) {
+    body.stopLevel = Number(stopLevel.toFixed(5));
+  }
+
   const data = await capitalFetch("/positions", {
     method: "POST",
-    body: JSON.stringify({
-      epic,
-      direction,
-      size,
-      guaranteedStop: false,
-      trailingStop: false,
-    }),
+    body: JSON.stringify(body),
   }) as { dealReference: string };
   return data;
 }

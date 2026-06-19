@@ -26,10 +26,12 @@ export const GetBotStatusResponse = zod.object({
   "config": zod.object({
   "shortPeriod": zod.number().describe('Short MA period (e.g. 9)'),
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
-  "tradeAmount": zod.number().describe('Amount in account currency per trade'),
+  "tradeAmount": zod.number().describe('Fixed amount in account currency per trade (ignored when riskPerTradePercent > 0)'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
-  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
+  "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
 })
 })
 
@@ -44,10 +46,12 @@ export const StartBotResponse = zod.object({
   "config": zod.object({
   "shortPeriod": zod.number().describe('Short MA period (e.g. 9)'),
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
-  "tradeAmount": zod.number().describe('Amount in account currency per trade'),
+  "tradeAmount": zod.number().describe('Fixed amount in account currency per trade (ignored when riskPerTradePercent > 0)'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
-  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
+  "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
 })
 })
 
@@ -62,10 +66,12 @@ export const StopBotResponse = zod.object({
   "config": zod.object({
   "shortPeriod": zod.number().describe('Short MA period (e.g. 9)'),
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
-  "tradeAmount": zod.number().describe('Amount in account currency per trade'),
+  "tradeAmount": zod.number().describe('Fixed amount in account currency per trade (ignored when riskPerTradePercent > 0)'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
-  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
+  "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
 })
 })
 
@@ -79,7 +85,9 @@ export const UpdateBotConfigBody = zod.object({
   "tradeAmount": zod.number().optional(),
   "intervalMinutes": zod.number().optional(),
   "dryRun": zod.boolean().optional(),
-  "broker": zod.enum(['trading212', 'capitalcom']).optional()
+  "broker": zod.enum(['trading212', 'capitalcom']).optional(),
+  "stopLossPercent": zod.number().optional().describe('Stop-loss distance as % of entry price. 0 disables.'),
+  "riskPerTradePercent": zod.number().optional().describe('Account balance % to risk per trade. 0 uses fixed tradeAmount.')
 })
 
 export const UpdateBotConfigResponse = zod.object({
@@ -89,10 +97,12 @@ export const UpdateBotConfigResponse = zod.object({
   "config": zod.object({
   "shortPeriod": zod.number().describe('Short MA period (e.g. 9)'),
   "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
-  "tradeAmount": zod.number().describe('Amount in account currency per trade'),
+  "tradeAmount": zod.number().describe('Fixed amount in account currency per trade (ignored when riskPerTradePercent > 0)'),
   "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
-  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through')
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
+  "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
 })
 })
 

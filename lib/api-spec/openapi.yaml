@@ -249,7 +249,7 @@ components:
 
     BotConfig:
       type: object
-      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker]
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, riskPerTradePercent]
       properties:
         shortPeriod:
           type: integer
@@ -259,7 +259,7 @@ components:
           description: Long MA period (e.g. 21)
         tradeAmount:
           type: number
-          description: Amount in account currency per trade
+          description: Fixed amount in account currency per trade (ignored when riskPerTradePercent > 0)
         intervalMinutes:
           type: integer
           description: How often to run signal check (minutes)
@@ -270,6 +270,12 @@ components:
           type: string
           enum: [trading212, capitalcom]
           description: Which broker to route trades through
+        stopLossPercent:
+          type: number
+          description: Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.
+        riskPerTradePercent:
+          type: number
+          description: Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.
 
     BotConfigInput:
       type: object
@@ -287,6 +293,12 @@ components:
         broker:
           type: string
           enum: [trading212, capitalcom]
+        stopLossPercent:
+          type: number
+          description: Stop-loss distance as % of entry price. 0 disables.
+        riskPerTradePercent:
+          type: number
+          description: Account balance % to risk per trade. 0 uses fixed tradeAmount.
 
     Trade:
       type: object

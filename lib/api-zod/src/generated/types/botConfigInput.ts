@@ -14,4 +14,8 @@ export interface BotConfigInput {
   intervalMinutes?: number;
   dryRun?: boolean;
   broker?: BotConfigInputBroker;
+  /** Stop-loss distance as % of entry price. 0 disables. */
+  stopLossPercent?: number;
+  /** Account balance % to risk per trade. 0 uses fixed tradeAmount. */
+  riskPerTradePercent?: number;
 }
