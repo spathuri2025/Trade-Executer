@@ -1,4 +1,4 @@
-import { db, instrumentsTable, tradesTable, signalsTable } from "@workspace/db";
+import { db, instrumentsTable, tradesTable, signalsTable, botStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { placeBrokerOrder, getBrokerPriceHistory, getBrokerAccount, type BrokerName } from "./broker";
@@ -60,6 +60,26 @@ export function updateConfig(patch: Partial<BotConfig>) {
   return getBotStatus();
 }
 
+// Serialize persistence writes so the last logical state always wins, even when
+// updateConfig() triggers a stop (false) immediately followed by a start (true).
+let persistChain: Promise<void> = Promise.resolve();
+
+function persistRunning(running: boolean): void {
+  persistChain = persistChain
+    .catch(() => {})
+    .then(() =>
+      db
+        .insert(botStateTable)
+        .values({ id: 1, running, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: botStateTable.id,
+          set: { running, updatedAt: new Date() },
+        })
+        .then(() => {}),
+    )
+    .catch((err) => logger.error({ err }, "Failed to persist bot state"));
+}
+
 export function startBot() {
   if (state.running) return getBotStatus();
 
@@ -69,6 +89,8 @@ export function startBot() {
   const ms = state.config.intervalMinutes * 60 * 1000;
   state.intervalHandle = setInterval(() => runCycle(), ms);
   state.nextRunAt = new Date(Date.now() + ms);
+
+  persistRunning(true);
 
   logger.info({ config: state.config }, "Bot started");
   return getBotStatus();
@@ -81,8 +103,28 @@ export function stopBot() {
   }
   state.running = false;
   state.nextRunAt = null;
+
+  persistRunning(false);
+
   logger.info("Bot stopped");
   return getBotStatus();
+}
+
+// Called once on server boot: if the operator last left the bot running,
+// resume it automatically so the bot is truly always-on across restarts/deploys.
+export async function initBot(): Promise<void> {
+  try {
+    const rows = await db
+      .select()
+      .from(botStateTable)
+      .where(eq(botStateTable.id, 1));
+    if (rows[0]?.running) {
+      logger.info("Resuming bot from persisted running state");
+      startBot();
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to load persisted bot state on boot");
+  }
 }
 
 export async function runCycle(): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
