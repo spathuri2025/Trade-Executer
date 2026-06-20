@@ -101,13 +101,10 @@ interface CapitalMarket {
 }
 
 async function fetchMarkets(instrumentType: string, limit: number): Promise<CapitalMarket[]> {
-  const { CAPITALCOM_API_KEY, CAPITALCOM_IDENTIFIER, CAPITALCOM_PASSWORD } = process.env;
-  if (!CAPITALCOM_API_KEY || !CAPITALCOM_IDENTIFIER || !CAPITALCOM_PASSWORD) return [];
-
   try {
-    // Re-use the existing capitalFetch indirectly — fetch markets via a plain authenticated call
-    // We piggyback on getCapitalPriceHistory which internally handles session auth.
-    // Instead, call the markets endpoint directly with a session we borrow from the module.
+    // capitalAuthFetch handles credential resolution + session auth internally
+    // (reading CAPITAL_COM_API_KEY / CAPITAL_COM_EMAIL / CAPITAL_COM_PASSWORD).
+    // If credentials are missing or invalid it throws, and we return [] below.
     const { capitalAuthFetch } = await import("./capitalcom");
     const data = await capitalAuthFetch(
       `/markets?searchTerm=&instrumentTypes=${instrumentType}&limit=${limit}`
