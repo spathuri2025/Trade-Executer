@@ -39,6 +39,12 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-destructive-border: var(--destructive-border);
 
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
@@ -50,107 +56,94 @@
   --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
-  --font-sans: "Space Grotesk", var(--app-font-sans);
-  --font-mono: "Space Mono", var(--app-font-mono);
+  --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
+  --font-mono: var(--app-font-mono);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius: 0.5rem; /* 8px — Obsidian Noir */
 }
 
 :root {
-  --app-font-sans: 'Inter', sans-serif;
-  --app-font-serif: Georgia, serif;
-  --app-font-mono: Menlo, monospace;
-  --radius: 0.25rem;
+  /* ── Obsidian Noir palette (high-contrast revision) ── */
+  --background: 222 22% 6%;         /* #0b0e16 — dark navy, not pure black */
+  --foreground: 0 0% 96%;           /* #f5f5f5 — slightly off-white, easier on eyes */
 
-  --background: 220 40% 6%;
-  --foreground: 210 20% 90%;
+  --card: 222 18% 11%;              /* #161820 — visible lift off the navy bg */
+  --card-foreground: 0 0% 96%;
+  --card-border: 222 20% 18%;       /* clearly visible hairline */
 
-  --border: 220 20% 16%;
-  --input: 220 20% 16%;
-  --ring: 183 100% 45%;
+  --popover: 222 18% 11%;
+  --popover-foreground: 0 0% 96%;
+  --popover-border: 222 20% 18%;
 
-  --card: 220 30% 9%;
-  --card-foreground: 210 20% 90%;
-  --card-border: 220 20% 16%;
+  --primary: 161.4 93.5% 30.4%;    /* #10b981 emerald */
+  --primary-foreground: 0 0% 100%;
 
-  --sidebar: 220 30% 9%;
-  --sidebar-foreground: 210 20% 90%;
-  --sidebar-border: 220 20% 16%;
-  --sidebar-primary: 183 100% 45%;
-  --sidebar-primary-foreground: 220 40% 6%;
-  --sidebar-accent: 220 20% 16%;
-  --sidebar-accent-foreground: 183 100% 45%;
-  --sidebar-ring: 183 100% 45%;
+  --secondary: 222 18% 11%;
+  --secondary-foreground: 0 0% 96%;
 
-  --popover: 220 30% 9%;
-  --popover-foreground: 210 20% 90%;
-  --popover-border: 220 20% 16%;
+  --muted: 222 18% 11%;
+  --muted-foreground: 220 10% 62%;  /* #969aad — readable blue-gray */
 
-  --primary: 183 100% 45%;
-  --primary-foreground: 220 40% 6%;
+  --accent: 222 20% 15%;
+  --accent-foreground: 0 0% 96%;
 
-  --secondary: 220 20% 16%;
-  --secondary-foreground: 210 20% 90%;
+  --destructive: 0 91.3% 71%;      /* #f87171 soft red */
+  --destructive-foreground: 0 0% 100%;
 
-  --muted: 220 20% 16%;
-  --muted-foreground: 215 15% 60%;
+  --border: 222 20% 18%;           /* matches card-border */
+  --input: 222 20% 14%;
+  --ring: 161.4 93.5% 30.4%;
 
-  --accent: 183 100% 45%;
-  --accent-foreground: 220 40% 6%;
+  --sidebar: 222 24% 5%;           /* #090c14 — slightly darker than bg */
+  --sidebar-foreground: 0 0% 96%;
+  --sidebar-border: 222 20% 14%;
+  --sidebar-primary: 161.4 93.5% 30.4%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 222 20% 15%;
+  --sidebar-accent-foreground: 0 0% 96%;
+  --sidebar-ring: 161.4 93.5% 30.4%;
 
-  --destructive: 340 80% 55%;
-  --destructive-foreground: 210 20% 90%;
+  --chart-1: 161.4 93.5% 30.4%;   /* emerald */
+  --chart-2: 0 91.3% 71%;         /* soft red */
+  --chart-3: 43 96% 58%;          /* amber */
+  --chart-4: 217 91% 60%;
+  --chart-5: 280 65% 60%;
+
+  --app-font-sans: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  --app-font-mono: 'JetBrains Mono', 'Menlo', monospace;
 }
 
 .dark {
-  --background: 220 40% 6%;
-  --foreground: 210 20% 90%;
-
-  --border: 220 20% 16%;
-  --input: 220 20% 16%;
-  --ring: 183 100% 45%;
-
-  --card: 220 30% 9%;
-  --card-foreground: 210 20% 90%;
-  --card-border: 220 20% 16%;
-
-  --sidebar: 220 30% 9%;
-  --sidebar-foreground: 210 20% 90%;
-  --sidebar-border: 220 20% 16%;
-  --sidebar-primary: 183 100% 45%;
-  --sidebar-primary-foreground: 220 40% 6%;
-  --sidebar-accent: 220 20% 16%;
-  --sidebar-accent-foreground: 183 100% 45%;
-  --sidebar-ring: 183 100% 45%;
-
-  --popover: 220 30% 9%;
-  --popover-foreground: 210 20% 90%;
-  --popover-border: 220 20% 16%;
-
-  --primary: 183 100% 45%;
-  --primary-foreground: 220 40% 6%;
-
-  --secondary: 220 20% 16%;
-  --secondary-foreground: 210 20% 90%;
-
-  --muted: 220 20% 16%;
-  --muted-foreground: 215 15% 60%;
-
-  --accent: 183 100% 45%;
-  --accent-foreground: 220 40% 6%;
-
-  --destructive: 340 80% 55%;
-  --destructive-foreground: 210 20% 90%;
+  /* Already dark by default */
 }
 
 @layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  /* Tabular numbers on all numeric content */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── Obsidian Noir: card section label style ── */
+.section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: hsl(220 10% 62%);
+}
+
+/* Emerald glow for positive P&L numbers */
+.pnl-positive {
+  color: #10b981;
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
 }

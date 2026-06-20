@@ -1,99 +1,129 @@
-import { useState } from "react";
-import { useTrades } from "@/lib/engineApi";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ArrowUpRight, ArrowDownRight, Clock } from "lucide-react";
-import { format } from "date-fns";
+import { useListTrades, getListTradesQueryKey } from "@workspace/api-client-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+
+const card = "hsl(var(--card))";
+const cardBorder = "1px solid hsl(var(--card-border))";
+const divider = "1px solid hsl(var(--border))";
+const muted = "hsl(var(--muted-foreground))";
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, color: muted }}>
+      {children}
+    </p>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cls =
+    status === "FILLED" ? "text-primary border-primary bg-primary/10" :
+    status === "FAILED" ? "text-destructive border-destructive bg-destructive/10" :
+    "text-amber-500 border-amber-500 bg-amber-500/10";
+  return <Badge variant="outline" className={cls}>{status}</Badge>;
+}
 
 export default function Trades() {
-  const { data: trades, isLoading } = useTrades({ limit: 100 });
-  const [filter, setFilter] = useState("ALL"); // 'ALL' | 'OPEN' | 'CLOSED'
-
-  const filteredTrades = trades?.filter(t => filter === "ALL" ? true : t.status === filter) || [];
+  const { data: trades, isLoading } = useListTrades(undefined, {
+    query: { queryKey: getListTradesQueryKey() }
+  });
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Trade History</h2>
-        <p className="text-muted-foreground">Complete log of all executed trades.</p>
-      </div>
+    <div className="space-y-6 md:space-y-8">
+      <h1 className="text-2xl md:text-4xl font-light tracking-tight">Trade History</h1>
 
-      <div className="flex gap-2">
-        {['ALL', 'OPEN', 'CLOSED'].map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${filter === f ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+        </div>
+      ) : !trades || trades.length === 0 ? (
+        <div className="p-8 rounded-lg text-center text-sm" style={{ backgroundColor: card, border: cardBorder, color: muted }}>
+          No trades found.
+        </div>
+      ) : (
+        <>
+          {/* ── Mobile card list (hidden on md+) ── */}
+          <div className="md:hidden space-y-3">
+            {trades.map((trade) => {
+              const buy = trade.side === "BUY";
+              return (
+                <div key={trade.id} className="p-4 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="font-semibold text-sm">{trade.ticker}</div>
+                      <div className="text-xs mt-0.5" style={{ color: muted }}>
+                        {new Date(trade.executedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <StatusBadge status={trade.status} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 pt-3" style={{ borderTop: divider }}>
+                    <div>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Side</div>
+                      <div className={`text-sm font-semibold font-mono mt-0.5 ${buy ? "text-primary" : "text-destructive"}`}>
+                        {trade.side}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Qty</div>
+                      <div className="text-sm font-mono mt-0.5">{trade.quantity}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Price</div>
+                      <div className="text-sm font-mono mt-0.5">{trade.price.toFixed(2)}</div>
+                    </div>
+                  </div>
+                  {trade.total != null && (
+                    <div className="mt-2 pt-2 flex items-center justify-between" style={{ borderTop: divider }}>
+                      <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Total</span>
+                      <span className="text-sm font-mono font-medium">{trade.total.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-             <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-          ) : filteredTrades.length === 0 ? (
-             <div className="flex justify-center p-8 text-muted-foreground">No trades found.</div>
-          ) : (
+          {/* ── Desktop table (hidden on mobile) ── */}
+          <div className="hidden md:block rounded-lg overflow-hidden" style={{ backgroundColor: card, border: cardBorder }}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Time</th>
-                    <th className="px-6 py-4 font-medium">Symbol</th>
-                    <th className="px-6 py-4 font-medium">Type</th>
-                    <th className="px-6 py-4 font-medium">Entry/Exit</th>
-                    <th className="px-6 py-4 font-medium">Qty</th>
-                    <th className="px-6 py-4 font-medium">P&L</th>
-                    <th className="px-6 py-4 font-medium">Status</th>
+                <thead>
+                  <tr style={{ borderBottom: divider }}>
+                    {["Time", "Ticker", "Side", "Qty", "Price", "Total", "Status"].map((h) => (
+                      <th key={h} className="px-5 py-4">
+                        <SectionLabel>{h}</SectionLabel>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredTrades.map(trade => (
-                    <tr key={trade.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-muted-foreground font-mono">
-                        {trade.opened_at ? format(new Date(trade.opened_at), "yyyy-MM-dd HH:mm") : '--'}
+                <tbody className="font-mono">
+                  {trades.map((trade, idx) => (
+                    <tr
+                      key={trade.id}
+                      style={idx < trades.length - 1 ? { borderBottom: divider } : {}}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "hsl(var(--accent))")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                    >
+                      <td className="px-5 py-4 whitespace-nowrap text-xs" style={{ color: muted }}>
+                        {new Date(trade.executedAt).toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-bold">
-                        {trade.symbol}
+                      <td className="px-5 py-4 font-bold">{trade.ticker}</td>
+                      <td className={`px-5 py-4 font-semibold ${trade.side === "BUY" ? "text-primary" : "text-destructive"}`}>
+                        {trade.side}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {trade.direction === 'BUY' ? <ArrowUpRight className="w-4 h-4 text-green-500" /> : <ArrowDownRight className="w-4 h-4 text-red-500" />}
-                          <span className={trade.direction === 'BUY' ? 'text-green-500' : 'text-red-500'}>{trade.direction}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-mono">
-                        {trade.entry_price?.toFixed(4) || '--'} 
-                        {trade.exit_price ? ` / ${trade.exit_price.toFixed(4)}` : ''}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-mono">
-                        {trade.quantity?.toFixed(4) || '--'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {trade.pnl != null ? (
-                          <span className={`font-mono font-medium ${trade.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {trade.pnl > 0 ? '+' : ''}${trade.pnl.toFixed(2)}
-                            {trade.pnl_pct != null && ` (${(trade.pnl_pct * 100).toFixed(2)}%)`}
-                          </span>
-                        ) : '--'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          trade.status === 'OPEN' ? 'bg-blue-500/20 text-blue-500' : 'bg-gray-500/20 text-gray-400'
-                        }`}>
-                          {trade.status}
-                        </span>
-                      </td>
+                      <td className="px-5 py-4">{trade.quantity}</td>
+                      <td className="px-5 py-4">{trade.price.toFixed(2)}</td>
+                      <td className="px-5 py-4">{trade.total ? trade.total.toFixed(2) : "—"}</td>
+                      <td className="px-5 py-4"><StatusBadge status={trade.status} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </>
+      )}
     </div>
   );
 }

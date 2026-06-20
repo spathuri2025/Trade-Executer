@@ -1,1 +1,2 @@
-- [TradeBuzz architecture](tradebuzz-architecture.md) — Python bot is not its own deployable artifact; Node api-server proxies to it and supervises it in prod.
+- [Drizzle push on shared dev DB](drizzle-push-named-conflict.md) — `push`/`push-force` both hang on the named-conflict TTY prompt when the DB holds unrelated tables; drop stale tables first, then push clean.
+- [Orval hook arity](orval-hook-arity.md) — regenerated React Query hooks for paramless endpoints take `(options)` only, not `(undefined, options)`; re-running codegen can change call-site arity.

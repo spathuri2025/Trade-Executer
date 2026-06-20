@@ -1,194 +1,344 @@
-import { useBotStatus, useTrades, useSignals, useStartBot, useStopBot, usePauseBot, useResumeBot, useRunCycle } from "@/lib/engineApi";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useState, useEffect, useCallback } from "react";
+import {
+  useGetBotStatus,
+  getGetBotStatusQueryKey,
+  useGetAccount,
+  getGetAccountQueryKey,
+  useListPositions,
+  getListPositionsQueryKey,
+  useListSignals,
+  getListSignalsQueryKey,
+  useGetMarketNews,
+  getGetMarketNewsQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, Square, Pause, RefreshCw, TrendingUp, TrendingDown, ArrowRight, ArrowLeft, Activity } from "lucide-react";
-import { format } from "date-fns";
-import { toast } from "sonner";
+
+/* ── design tokens ── */
+const card = "hsl(var(--card))";
+const cardBorder = "1px solid hsl(var(--card-border))";
+const divider = "1px solid hsl(var(--border))";
+const muted = "hsl(var(--muted-foreground))";
+const mutedLo = "hsl(var(--muted-foreground) / 0.7)";
+const emerald = "#10b981";
+const emeraldGlow = "0 0 8px rgba(16,185,129,0.35)";
+const red = "#f87171";
+const amber = "#d97706";
+
+const NEWS_INTERVAL_MS = 15 * 60_000; // always 15 min
+
+/** Returns "Xm Ys" until the next refetch based on dataUpdatedAt + interval */
+function useCountdown(dataUpdatedAt: number, intervalMs: number) {
+  const [remaining, setRemaining] = useState("");
+  useEffect(() => {
+    if (!dataUpdatedAt || !intervalMs) return;
+    const tick = () => {
+      const nextAt = dataUpdatedAt + intervalMs;
+      const diff = Math.max(0, nextAt - Date.now());
+      const m = Math.floor(diff / 60_000);
+      const s = Math.floor((diff % 60_000) / 1000);
+      setRemaining(m > 0 ? `${m}m ${s}s` : `${s}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [dataUpdatedAt, intervalMs]);
+  return remaining;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, color: muted }}>
+      {children}
+    </p>
+  );
+}
+
+function RefreshBadge({ countdown }: { countdown: string }) {
+  if (!countdown) return null;
+  return (
+    <span className="tabular-nums" style={{ fontSize: 10, color: mutedLo, letterSpacing: "0.05em" }}>
+      · next in {countdown}
+    </span>
+  );
+}
+
+function TickerAvatar({ ticker }: { ticker: string }) {
+  const abbr = ticker.replace("_", "").slice(0, 3).toUpperCase();
+  return (
+    <div
+      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+      style={{ backgroundColor: "hsl(var(--accent))", color: muted }}
+    >
+      {abbr}
+    </div>
+  );
+}
 
 export default function Dashboard() {
-  const { data: botStatus, isLoading: botLoading } = useBotStatus();
-  const { data: trades, isLoading: tradesLoading } = useTrades({ limit: 10 });
-  const { data: signals, isLoading: signalsLoading } = useSignals({ limit: 10 });
-  
-  const startBot = useStartBot();
-  const stopBot = useStopBot();
-  const pauseBot = usePauseBot();
-  const resumeBot = useResumeBot();
-  const runCycle = useRunCycle();
+  const queryClient = useQueryClient();
 
-  const handleRunCycle = () => {
-    runCycle.mutate(undefined, {
-      onSuccess: (res) => toast.success(`Cycle completed`, { description: `Attempted ${res.trades_attempted} trades` }),
-      onError: (err) => toast.error("Cycle failed", { description: err.message })
-    });
-  };
+  /* ── Bot status: poll every 30 s — drives all other intervals ── */
+  const { data: botStatus, isLoading: botLoading } = useGetBotStatus({
+    query: {
+      queryKey: getGetBotStatusQueryKey(),
+      refetchInterval: 30_000,
+    },
+  });
 
-  const handleControl = (action: 'start' | 'stop' | 'pause' | 'resume') => {
-    const mutations = {
-      start: startBot,
-      stop: stopBot,
-      pause: pauseBot,
-      resume: resumeBot
-    };
-    mutations[action].mutate(undefined, {
-      onSuccess: () => toast.success(`Bot ${action}ed`),
-      onError: (err) => toast.error(`Failed to ${action}`, { description: err.message })
-    });
-  };
+  /* Derive intervals from live config */
+  const botIntervalMs = (botStatus?.config?.intervalMinutes ?? 15) * 60_000;
 
-  const isPending = startBot.isPending || stopBot.isPending || pauseBot.isPending || resumeBot.isPending;
+  /* ── Account + positions: refresh on the bot's own interval ── */
+  const { data: account, isLoading: accountLoading } = useGetAccount({
+    query: {
+      queryKey: getGetAccountQueryKey(),
+      refetchInterval: botIntervalMs,
+    },
+  });
 
-  const totalPnl = trades?.reduce((acc, t) => acc + (t.pnl || 0), 0) || 0;
-  const winRate = trades?.length ? trades.filter(t => (t.pnl || 0) > 0).length / trades.length : 0;
+  const { data: positions, isLoading: positionsLoading } = useListPositions({
+    query: {
+      queryKey: getListPositionsQueryKey(),
+      refetchInterval: botIntervalMs,
+    },
+  });
+
+  /* ── Signals: refresh exactly at the bot's scan interval ── */
+  const signalsQuery = useListSignals({ limit: 5 }, {
+    query: {
+      queryKey: getListSignalsQueryKey({ limit: 5 }),
+      refetchInterval: botIntervalMs,
+    },
+  });
+  const { data: signals, isLoading: signalsLoading, dataUpdatedAt: signalsUpdatedAt } = signalsQuery;
+  const signalsCountdown = useCountdown(signalsUpdatedAt, botIntervalMs);
+
+  /* ── News: strictly every 15 minutes ── */
+  const newsQuery = useGetMarketNews({ limit: 8 }, {
+    query: {
+      queryKey: getGetMarketNewsQueryKey(),
+      refetchInterval: NEWS_INTERVAL_MS,
+      staleTime: NEWS_INTERVAL_MS,
+    },
+  });
+  const { data: news, isLoading: newsLoading, isFetching: newsFetching, dataUpdatedAt: newsUpdatedAt } = newsQuery;
+  const newsCountdown = useCountdown(newsUpdatedAt, NEWS_INTERVAL_MS);
+
+  const refreshNews = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: getGetMarketNewsQueryKey() });
+  }, [queryClient]);
+
+  const pnl = account?.result ?? 0;
+  const pnlPositive = pnl >= 0;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Operations Overview</h2>
-          <p className="text-muted-foreground">Monitor and control your automated trading systems.</p>
+    <div className="space-y-12">
+
+      {/* ── Header ── */}
+      <header className="flex items-end justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl md:text-4xl font-light tracking-tight">Dashboard</h1>
+          {!botLoading && (
+            <span
+              className="mb-0.5 rounded px-2 py-0.5"
+              style={{
+                fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700,
+                border: "1px solid hsl(var(--border))", color: muted,
+              }}
+            >
+              {botStatus?.running ? "Live" : "Bot Stopped"}
+              {botStatus?.config.dryRun ? " · Dry Run" : ""}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2 bg-card p-2 rounded-md border border-border">
-          <Button variant={botStatus?.state === 'RUNNING' ? 'default' : 'outline'} size="sm" onClick={() => handleControl('start')} disabled={isPending || botStatus?.state === 'RUNNING'}>
-            <Play className="w-4 h-4 mr-2" /> Start
-          </Button>
-          <Button variant={botStatus?.state === 'PAUSED' ? 'default' : 'outline'} size="sm" onClick={() => botStatus?.state === 'PAUSED' ? handleControl('resume') : handleControl('pause')} disabled={isPending || botStatus?.state === 'STOPPED' || botStatus?.state === 'EMERGENCY_STOP'}>
-            <Pause className="w-4 h-4 mr-2" /> {botStatus?.state === 'PAUSED' ? 'Resume' : 'Pause'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleControl('stop')} disabled={isPending || botStatus?.state === 'STOPPED'}>
-            <Square className="w-4 h-4 mr-2 text-destructive" /> Stop
-          </Button>
-          <div className="w-px h-6 bg-border mx-2"></div>
-          <Button variant="secondary" size="sm" onClick={handleRunCycle} disabled={runCycle.isPending}>
-            {runCycle.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-            Force Cycle
-          </Button>
-        </div>
-      </div>
+        {botStatus?.config && (
+          <span className="text-xs tabular-nums" style={{ color: mutedLo }}>
+            Scan interval: {botStatus.config.intervalMinutes} min
+          </span>
+        )}
+      </header>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Session P&L</CardTitle>
-            <TrendingUp className={`h-4 w-4 ${totalPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              ${totalPnl.toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground">Across recent 10 trades</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Win Rate</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{(winRate * 100).toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">Recent session performance</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Bot Uptime</CardTitle>
-            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {botStatus?.started_at ? format(new Date(botStatus.started_at), 'HH:mm:ss') : '--:--:--'}
-            </div>
-            <p className="text-xs text-muted-foreground">Since last start</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Signals</CardTitle>
-            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{signals?.length || 0}</div>
-            <p className="text-xs text-muted-foreground">Recent generated signals</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
-          <CardHeader>
-            <CardTitle>Recent Trades</CardTitle>
-            <CardDescription>Latest execution history</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tradesLoading ? (
-              <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin" /></div>
-            ) : trades?.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No recent trades</p>
+      {/* ── Stats Row ── */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {[
+          {
+            label: "Account Value",
+            value: accountLoading ? null : `${account?.total.toFixed(2)} ${account?.currency || "GBP"}`,
+            style: {},
+          },
+          {
+            label: "Invested",
+            value: accountLoading ? null : `${account?.invested.toFixed(2)} ${account?.currency || "GBP"}`,
+            style: {},
+          },
+          {
+            label: "Total P&L",
+            value: accountLoading ? null : `${pnlPositive && pnl !== 0 ? "+" : ""}${pnl.toFixed(2)} ${account?.currency || "GBP"}`,
+            style: pnlPositive ? { color: emerald, textShadow: emeraldGlow } : { color: red },
+          },
+        ].map(({ label, value, style }) => (
+          <div key={label} className="p-6 rounded-lg flex flex-col gap-4" style={{ backgroundColor: card, border: cardBorder }}>
+            <SectionLabel>{label}</SectionLabel>
+            {value == null ? (
+              <Skeleton className="h-9 w-36" />
             ) : (
-              <div className="space-y-4">
-                {trades?.map((trade) => (
-                  <div key={trade.id} className="flex items-center justify-between border-b border-border pb-4 last:border-0 last:pb-0">
+              <div className="text-3xl tabular-nums font-medium" style={style}>{value}</div>
+            )}
+          </div>
+        ))}
+      </section>
+
+      {/* ── Positions + Signals ── */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+        {/* Live Positions */}
+        <div className="space-y-5">
+          <SectionLabel>Live Positions</SectionLabel>
+          <div className="rounded-lg overflow-hidden" style={{ backgroundColor: card, border: cardBorder }}>
+            {positionsLoading ? (
+              <div className="p-5 space-y-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+            ) : positions && positions.length > 0 ? (
+              positions.map((pos, idx) => {
+                const profit = pos.pnl >= 0;
+                return (
+                  <div
+                    key={pos.ticker}
+                    className="flex items-center justify-between p-5"
+                    style={idx < positions.length - 1 ? { borderBottom: divider } : {}}
+                  >
                     <div className="flex items-center gap-4">
-                      <div className={`w-2 h-2 rounded-full ${trade.direction === 'BUY' ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <TickerAvatar ticker={pos.ticker} />
                       <div>
-                        <p className="text-sm font-medium leading-none">{trade.symbol}</p>
-                        <p className="text-sm text-muted-foreground">{trade.direction} • {trade.quantity}</p>
+                        <div className="text-sm font-medium">{pos.ticker}</div>
+                        <div className="text-xs tabular-nums mt-0.5" style={{ color: muted }}>
+                          {pos.quantity} units · avg {pos.averagePrice.toFixed(2)}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-medium ${trade.pnl && trade.pnl >= 0 ? 'text-green-500' : trade.pnl && trade.pnl < 0 ? 'text-red-500' : ''}`}>
-                        {trade.pnl ? `$${trade.pnl.toFixed(2)}` : '--'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {trade.entry_price ? `@ $${trade.entry_price.toFixed(2)}` : ''}
-                      </p>
+                      <div
+                        className="text-sm font-medium tabular-nums"
+                        style={profit ? { color: emerald, textShadow: emeraldGlow } : { color: red }}
+                      >
+                        {profit ? "+" : ""}£{pos.pnl.toFixed(2)}
+                      </div>
+                      <div className="text-xs tabular-nums mt-0.5" style={{ color: profit ? "rgba(16,185,129,0.8)" : "rgba(248,113,113,0.8)" }}>
+                        {profit ? "+" : ""}{pos.pnlPercent.toFixed(2)}%
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>Latest Signals</CardTitle>
-            <CardDescription>Engine analysis feed</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {signalsLoading ? (
-              <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin" /></div>
-            ) : signals?.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No recent signals</p>
+                );
+              })
             ) : (
-              <div className="space-y-4">
-                {signals?.slice(0, 5).map((signal) => (
-                  <div key={signal.id} className="flex items-center justify-between border-b border-border pb-4 last:border-0 last:pb-0">
+              <div className="p-5 text-sm" style={{ color: muted }}>No open positions</div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Signals */}
+        <div className="space-y-5">
+          <div className="flex items-center gap-3">
+            <SectionLabel>Recent Signals</SectionLabel>
+            <RefreshBadge countdown={signalsCountdown} />
+          </div>
+          <div className="p-2 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
+            {signalsLoading ? (
+              <div className="p-3 space-y-4"><Skeleton className="h-9 w-full" /><Skeleton className="h-9 w-full" /></div>
+            ) : signals && signals.length > 0 ? (
+              signals.map((sig) => {
+                const badgeStyle =
+                  sig.signal === "BUY"  ? { color: emerald, backgroundColor: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)" }
+                  : sig.signal === "SELL" ? { color: red,     backgroundColor: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.25)" }
+                  :                         { color: amber,    backgroundColor: "rgba(217,119,6,0.12)",   border: "1px solid rgba(217,119,6,0.25)" };
+                return (
+                  <div
+                    key={sig.id}
+                    className="flex items-center justify-between p-3 rounded transition-colors"
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "hsl(var(--accent))")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                  >
                     <div>
-                      <p className="text-sm font-medium flex items-center gap-2">
-                        {signal.symbol} 
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${signal.signal_type === 'BUY' ? 'bg-green-500/20 text-green-500' : signal.signal_type === 'SELL' ? 'bg-red-500/20 text-red-500' : 'bg-gray-500/20 text-gray-500'}`}>
-                          {signal.signal_type}
-                        </span>
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1 truncate max-w-[150px]">{signal.reasoning || "Algorithm triggered"}</p>
+                      <div className="text-sm font-medium">{sig.ticker}</div>
+                      <div className="text-xs mt-0.5 tabular-nums" style={{ color: mutedLo }}>
+                        {new Date(sig.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-mono">{signal.confidence ? `${(signal.confidence * 100).toFixed(0)}% conf` : '--'}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {signal.created_at ? format(new Date(signal.created_at), 'HH:mm:ss') : ''}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right text-xs tabular-nums" style={{ color: muted }}>
+                        <div>Price: {sig.price.toFixed(2)}</div>
+                        <div>MA: {sig.shortMa.toFixed(2)} / {sig.longMa.toFixed(2)}</div>
+                      </div>
+                      <div className="px-2.5 py-1 rounded text-[10px] font-bold tracking-wider" style={badgeStyle}>
+                        {sig.signal}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })
+            ) : (
+              <div className="p-3 text-sm" style={{ color: muted }}>No recent signals</div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Market News ── */}
+      <section className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <SectionLabel>Market News</SectionLabel>
+            <RefreshBadge countdown={newsCountdown} />
+          </div>
+          <Button
+            variant="ghost" size="icon"
+            className="h-7 w-7"
+            style={{ color: muted }}
+            onClick={refreshNews} disabled={newsFetching} title="Refresh news"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${newsFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+
+        <div className="rounded-lg overflow-hidden" style={{ backgroundColor: card, border: cardBorder }}>
+          {newsLoading ? (
+            <div className="p-5 space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+          ) : !news || news.length === 0 ? (
+            <div className="p-5 text-sm text-center" style={{ color: muted }}>No high-impact news at the moment</div>
+          ) : (
+            news.map((item, i) => (
+              <a
+                key={i}
+                href={item.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-start gap-4 p-5 transition-colors group"
+                style={i < news.length - 1 ? { borderBottom: divider } : {}}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "hsl(var(--accent))")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+              >
+                <div
+                  className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: item.impactLabel === "HIGH" ? red : "#fbbf24" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                    {item.title}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-xs" style={{ color: muted }}>{item.source}</span>
+                    <span className="w-1 h-1 rounded-full" style={{ backgroundColor: "hsl(var(--border))" }} />
+                    <span className="text-xs" style={{ color: muted }}>
+                      {item.publishedAt ? new Date(item.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                    </span>
+                  </div>
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-60 transition-opacity" style={{ color: muted }} />
+              </a>
+            ))
+          )}
+        </div>
+      </section>
     </div>
   );
 }

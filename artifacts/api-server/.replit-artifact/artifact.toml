@@ -15,21 +15,19 @@ run = "pnpm --filter @workspace/api-server run dev"
 [services.production]
 
 [services.production.build]
-# Install the Python bot engine's dependencies, then build the Node API server.
-args = ["bash", "-c", "pip install -r artifacts/tradebuzz-bot-engine/requirements.txt && pnpm --filter @workspace/api-server run build"]
+args = ["pnpm", "--filter", "@workspace/api-server", "run", "build"]
 
 [services.production.build.env]
 NODE_ENV = "production"
 
 [services.production.run]
-# Launch the Python bot engine (port 8001, /engine) and the Node API server (/api)
-# together. The Node server proxies authenticated requests to the bot engine.
-args = ["bash", "artifacts/api-server/start-prod.sh"]
+# The bot's 24/7 trading loop runs inside this Node process (publish on a
+# Reserved VM so it stays alive continuously).
+args = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
 
 [services.production.run.env]
 PORT = "8080"
 NODE_ENV = "production"
-BOT_ENGINE_URL = "http://localhost:8001"
 
 [services.production.health.startup]
 path = "/api/healthz"

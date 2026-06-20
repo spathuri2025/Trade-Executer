@@ -1,75 +1,182 @@
-import { useState } from "react";
-import { useSignals } from "@/lib/engineApi";
-import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Activity, ShieldCheck, XCircle } from "lucide-react";
-import { format } from "date-fns";
+import { useState, useEffect } from "react";
+import {
+  useListSignals,
+  getListSignalsQueryKey,
+  useGetBotStatus,
+  getGetBotStatusQueryKey,
+} from "@workspace/api-client-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Check, X } from "lucide-react";
+
+const card = "hsl(var(--card))";
+const cardBorder = "1px solid hsl(var(--card-border))";
+const divider = "1px solid hsl(var(--border))";
+const muted = "hsl(var(--muted-foreground))";
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, color: muted }}>
+      {children}
+    </p>
+  );
+}
+
+function SignalBadge({ signal }: { signal: string }) {
+  const cls =
+    signal === "BUY"  ? "text-primary border-primary bg-primary/10" :
+    signal === "SELL" ? "text-destructive border-destructive bg-destructive/10" :
+    "text-amber-500 border-amber-500 bg-amber-500/10";
+  return <Badge variant="outline" className={cls}>{signal}</Badge>;
+}
+
+function useCountdown(dataUpdatedAt: number, intervalMs: number) {
+  const [remaining, setRemaining] = useState("");
+  useEffect(() => {
+    if (!dataUpdatedAt || !intervalMs) return;
+    const tick = () => {
+      const nextAt = dataUpdatedAt + intervalMs;
+      const diff = Math.max(0, nextAt - Date.now());
+      const m = Math.floor(diff / 60_000);
+      const s = Math.floor((diff % 60_000) / 1000);
+      setRemaining(m > 0 ? `${m}m ${s}s` : `${s}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [dataUpdatedAt, intervalMs]);
+  return remaining;
+}
 
 export default function Signals() {
-  const { data: signals, isLoading } = useSignals({ limit: 100 });
-  const [filter, setFilter] = useState("ALL"); // 'ALL' | 'BUY' | 'SELL'
+  /* Bot status drives the refresh interval */
+  const { data: botStatus } = useGetBotStatus({
+    query: {
+      queryKey: getGetBotStatusQueryKey(),
+      refetchInterval: 30_000,
+    },
+  });
 
-  const filteredSignals = signals?.filter(s => filter === "ALL" ? true : s.signal_type === filter) || [];
+  const botIntervalMs = (botStatus?.config?.intervalMinutes ?? 15) * 60_000;
+
+  const { data: signals, isLoading, dataUpdatedAt } = useListSignals(undefined, {
+    query: {
+      queryKey: getListSignalsQueryKey(),
+      refetchInterval: botIntervalMs,
+    },
+  });
+
+  const countdown = useCountdown(dataUpdatedAt, botIntervalMs);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Signal Feed</h2>
-        <p className="text-muted-foreground">Live analytical engine output.</p>
+    <div className="space-y-6 md:space-y-8">
+      <div className="flex items-end justify-between flex-wrap gap-2">
+        <h1 className="text-2xl md:text-4xl font-light tracking-tight">Signal Log</h1>
+        <div className="flex items-center gap-2 mb-0.5">
+          {botStatus?.config && (
+            <span className="text-xs" style={{ color: muted }}>
+              Interval: {botStatus.config.intervalMinutes} min
+            </span>
+          )}
+          {countdown && (
+            <span className="text-xs tabular-nums" style={{ color: muted }}>
+              · next in {countdown}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex gap-2">
-        {['ALL', 'BUY', 'SELL', 'HOLD'].map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${filter === f ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid gap-4">
-        {isLoading ? (
-          <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-        ) : filteredSignals.length === 0 ? (
-          <Card><CardContent className="p-8 text-center text-muted-foreground">No signals found.</CardContent></Card>
-        ) : (
-          filteredSignals.map(signal => (
-            <Card key={signal.id} className="overflow-hidden">
-              <div className="flex flex-col md:flex-row items-start md:items-center">
-                <div className={`w-full md:w-32 py-4 px-6 flex flex-col justify-center items-center md:border-r border-border md:h-full ${
-                  signal.signal_type === 'BUY' ? 'bg-green-500/10 text-green-500' :
-                  signal.signal_type === 'SELL' ? 'bg-red-500/10 text-red-500' :
-                  'bg-gray-500/10 text-gray-500'
-                }`}>
-                  <span className="text-2xl font-black tracking-widest">{signal.signal_type}</span>
-                  <span className="text-sm opacity-80 font-mono">{signal.symbol}</span>
-                </div>
-                
-                <div className="flex-1 p-6 flex flex-col md:flex-row gap-6 md:items-center justify-between w-full">
-                  <div className="space-y-2">
-                    <p className="text-sm text-foreground/80">{signal.reasoning || "Algorithmic rule met"}</p>
-                    <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground">
-                      <span>Price: ${signal.price_at_signal?.toFixed(4) || '--'}</span>
-                      <span>Conf: {signal.confidence ? `${(signal.confidence * 100).toFixed(1)}%` : '--'}</span>
-                      <span>Time: {signal.created_at ? format(new Date(signal.created_at), "HH:mm:ss yyyy-MM-dd") : '--'}</span>
+      {isLoading ? (
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+        </div>
+      ) : !signals || signals.length === 0 ? (
+        <div className="p-8 rounded-lg text-center text-sm" style={{ backgroundColor: card, border: cardBorder, color: muted }}>
+          No signals generated yet.
+        </div>
+      ) : (
+        <>
+          {/* ── Mobile card list ── */}
+          <div className="md:hidden space-y-3">
+            {signals.map((sig) => (
+              <div key={sig.id} className="p-4 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="font-semibold text-sm">{sig.ticker}</div>
+                    <div className="text-xs mt-0.5" style={{ color: muted }}>
+                      {new Date(sig.createdAt).toLocaleString()}
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-2 shrink-0 bg-muted/50 px-3 py-1.5 rounded-md border border-border/50">
-                    {signal.acted_on === 'TRADED' ? <Activity className="w-4 h-4 text-green-400" /> : 
-                     signal.acted_on === 'BLOCKED' ? <XCircle className="w-4 h-4 text-red-400" /> : 
-                     signal.acted_on === 'HOLD' ? <ShieldCheck className="w-4 h-4 text-yellow-400" /> :
-                     <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />}
-                    <span className="text-xs font-bold uppercase">{signal.acted_on || 'PENDING'}</span>
+                  <SignalBadge signal={sig.signal} />
+                </div>
+                <div className="grid grid-cols-3 gap-3 pt-3" style={{ borderTop: divider }}>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Price</div>
+                    <div className="text-sm font-mono mt-0.5">{sig.price.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Short MA</div>
+                    <div className="text-sm font-mono mt-0.5">{sig.shortMa.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Long MA</div>
+                    <div className="text-sm font-mono mt-0.5">{sig.longMa.toFixed(2)}</div>
                   </div>
                 </div>
+                <div className="mt-2 pt-2 flex items-center justify-between" style={{ borderTop: divider }}>
+                  <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Trade Executed</span>
+                  {sig.tradeExecuted
+                    ? <Check className="h-4 w-4 text-primary" />
+                    : <X className="h-4 w-4" style={{ color: muted }} />
+                  }
+                </div>
               </div>
-            </Card>
-          ))
-        )}
-      </div>
+            ))}
+          </div>
+
+          {/* ── Desktop table ── */}
+          <div className="hidden md:block rounded-lg overflow-hidden" style={{ backgroundColor: card, border: cardBorder }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr style={{ borderBottom: divider }}>
+                    {["Time", "Ticker", "Signal", "Price", "Short MA", "Long MA", "Executed"].map((h) => (
+                      <th key={h} className="px-5 py-4">
+                        <SectionLabel>{h}</SectionLabel>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {signals.map((sig, idx) => (
+                    <tr
+                      key={sig.id}
+                      style={idx < signals.length - 1 ? { borderBottom: divider } : {}}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "hsl(var(--accent))")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
+                    >
+                      <td className="px-5 py-4 whitespace-nowrap text-xs" style={{ color: muted }}>
+                        {new Date(sig.createdAt).toLocaleString()}
+                      </td>
+                      <td className="px-5 py-4 font-bold">{sig.ticker}</td>
+                      <td className="px-5 py-4"><SignalBadge signal={sig.signal} /></td>
+                      <td className="px-5 py-4">{sig.price.toFixed(2)}</td>
+                      <td className="px-5 py-4">{sig.shortMa.toFixed(2)}</td>
+                      <td className="px-5 py-4">{sig.longMa.toFixed(2)}</td>
+                      <td className="px-5 py-4">
+                        {sig.tradeExecuted
+                          ? <Check className="h-4 w-4 text-primary" />
+                          : <X className="h-4 w-4" style={{ color: muted }} />
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

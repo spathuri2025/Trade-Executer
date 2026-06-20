@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11"]
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -9,28 +9,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "TradeBuzz Bot Engine"
-
-[[workflows.workflow]]
-name = "TradeBuzz Bot Engine"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pip install -r artifacts/tradebuzz-bot-engine/requirements.txt -q && python artifacts/tradebuzz-bot-engine/run.py"
-waitForPort = 8001
 
 [agent]
 stack = "PNPM_WORKSPACE"

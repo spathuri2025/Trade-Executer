@@ -1,186 +1,153 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuthStatus, useLogout, useBotStatus, useRiskStatus, useEmergencyStop, useClearEmergencyStop } from "@/lib/engineApi";
-import { Button } from "@/components/ui/button";
-import { Loader2, AlertTriangle, Activity, ActivityIcon, FileText, Settings, ShieldAlert, LogOut, PowerOff, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { useEffect, useState } from "react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, Menu, X, LogOut } from "lucide-react";
 
-export function Layout({ children }: { children: React.ReactNode }) {
-  const { data: auth, isLoading: authLoading } = useAuthStatus();
-  const [, setLocation] = useLocation();
-
-  const authenticated = auth?.authenticated;
-  useEffect(() => {
-    if (!authLoading && !authenticated) {
-      setLocation("/login");
-    }
-  }, [authLoading, authenticated, setLocation]);
-
-  if (authLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+async function logout() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  } finally {
+    window.location.reload();
   }
+}
 
-  if (!authenticated) {
-    return null;
-  }
+const links = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/trades", label: "Trades", icon: ListOrdered },
+  { href: "/signals", label: "Signals", icon: Activity },
+  { href: "/scanner", label: "Scanner", icon: ScanSearch },
+  { href: "/instruments", label: "Instruments", icon: LineChart },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
 
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const [location] = useLocation();
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background dark text-foreground">
-      <Sidebar />
-      <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
-        <TopBar />
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          {children}
-        </div>
-      </main>
+    <nav className="flex-1 px-4 py-2 space-y-0.5">
+      {links.map((link) => {
+        const active = location === link.href;
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            onClick={onNavigate}
+            className={`relative flex items-center gap-3 px-4 py-3 rounded text-sm transition-colors ${
+              active ? "text-white" : "text-white/55 hover:text-white/80"
+            }`}
+          >
+            {active && (
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-primary" />
+            )}
+            <link.icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-white/45"}`} />
+            <span className={active ? "font-medium" : "font-normal"}>{link.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function SidebarFooter() {
+  return (
+    <div className="p-8 space-y-5">
+      <button
+        onClick={logout}
+        className="flex items-center gap-2 text-xs text-white/45 hover:text-white/80 transition-colors"
+      >
+        <LogOut className="h-3.5 w-3.5" />
+        Sign out
+      </button>
+      <div className="text-[10px] uppercase tracking-widest text-white/30 space-y-0.5">
+        <div className="font-mono">v1.0.0</div>
+        <div>&copy; {new Date().getFullYear()} ClinAITech Limited</div>
+        <div>United Kingdom</div>
+      </div>
     </div>
   );
 }
 
-function Sidebar() {
-  const [location] = useLocation();
-  const navItems = [
-    { href: "/", label: "Dashboard", icon: Activity },
-    { href: "/trades", label: "Trades", icon: FileText },
-    { href: "/signals", label: "Signals", icon: ActivityIcon },
-    { href: "/strategies", label: "Strategies", icon: Settings },
-    { href: "/risk", label: "Risk Limits", icon: ShieldCheck },
-    { href: "/logs", label: "System Logs", icon: FileText },
-  ];
+export function Layout({ children }: { children: React.ReactNode }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  return (
-    <aside className="w-full md:w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
-      <div className="p-6 border-b border-sidebar-border">
-        <h1 className="text-2xl font-bold text-primary tracking-tight">TradeBuzz<span className="text-muted-foreground text-sm font-mono ml-2">v1.0</span></h1>
-      </div>
-      <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => (
-          <Link key={item.href} href={item.href}>
-            <span className={`flex items-center gap-3 px-4 py-3 rounded-md transition-colors cursor-pointer ${location === item.href ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium' : 'text-sidebar-foreground hover:bg-sidebar-accent/50'}`}>
-              <item.icon className="w-5 h-5" />
-              {item.label}
-            </span>
-          </Link>
-        ))}
-      </nav>
-      <div className="p-4 border-t border-sidebar-border">
-        <LogoutButton />
-      </div>
-    </aside>
-  );
-}
-
-function LogoutButton() {
-  const logout = useLogout();
-  const [, setLocation] = useLocation();
-
-  const handleLogout = () => {
-    logout.mutate(undefined, {
-      onSuccess: () => {
-        setLocation("/login");
-      }
-    });
+  const sidebarStyle = {
+    backgroundColor: "hsl(var(--sidebar))",
+    borderColor: "hsl(var(--sidebar-border))",
   };
 
   return (
-    <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={handleLogout} disabled={logout.isPending}>
-      {logout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogOut className="w-4 h-4 mr-2" />}
-      Disconnect
-    </Button>
-  );
-}
+    <div className="flex h-screen bg-background text-foreground dark">
 
-function TopBar() {
-  const { data: botStatus } = useBotStatus();
-  const { data: riskStatus } = useRiskStatus();
-  const emergencyStop = useEmergencyStop();
-  const clearEmergencyStop = useClearEmergencyStop();
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const handleEmergencyStop = () => {
-    emergencyStop.mutate({ reason: "Manual operator intervention" }, {
-      onSuccess: () => {
-        toast.error("EMERGENCY STOP ENGAGED", { description: "All active trading halted." });
-        setShowConfirm(false);
-      }
-    });
-  };
-  
-  const handleClearEmergencyStop = () => {
-    clearEmergencyStop.mutate(undefined, {
-      onSuccess: () => {
-        toast.success("Emergency Stop Cleared", { description: "Bot is ready to be restarted." });
-      }
-    });
-  };
-
-  return (
-    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 md:px-8">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground uppercase tracking-wider font-mono">Status:</span>
-          {botStatus ? (
-            <span className={`px-2 py-0.5 text-xs font-bold rounded-sm ${
-              botStatus.state === 'RUNNING' ? 'bg-green-500/20 text-green-400' :
-              botStatus.state === 'EMERGENCY_STOP' ? 'bg-destructive/20 text-destructive' :
-              botStatus.state === 'PAUSED' ? 'bg-yellow-500/20 text-yellow-400' :
-              'bg-muted text-muted-foreground'
-            }`}>
-              {botStatus.state}
-            </span>
-          ) : (
-            <Skeleton className="h-6 w-20" />
-          )}
+      {/* ── Desktop sidebar (hidden on mobile) ── */}
+      <aside
+        className="hidden md:flex flex-col w-52 h-screen shrink-0 border-r"
+        style={sidebarStyle}
+      >
+        <div className="h-24 flex items-center px-8">
+          <div className="w-2 h-2 rounded-full bg-primary mr-3 shrink-0" />
+          <span className="font-semibold text-lg tracking-wide text-white">TradeBuzz</span>
         </div>
-        
-        {botStatus?.mode && (
+        <NavLinks />
+        <SidebarFooter />
+      </aside>
+
+      {/* ── Mobile drawer backdrop ── */}
+      {drawerOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+          onClick={() => setDrawerOpen(false)}
+        />
+      )}
+
+      {/* ── Mobile slide-out drawer ── */}
+      <aside
+        className={`md:hidden fixed top-0 left-0 h-full z-50 w-64 flex flex-col border-r transition-transform duration-300 ${
+          drawerOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={sidebarStyle}
+      >
+        <div className="h-16 flex items-center justify-between px-6">
           <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 text-xs font-bold rounded-sm border ${
-              botStatus.mode === 'PAPER' ? 'border-blue-500 text-blue-400 bg-blue-500/10' : 'border-destructive text-destructive bg-destructive/10'
-            }`}>
-              {botStatus.mode} TRADING
-            </span>
+            <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+            <span className="font-semibold tracking-wide text-white">TradeBuzz</span>
           </div>
-        )}
-      </div>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            className="p-1.5 rounded text-white/50 hover:text-white transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <NavLinks onNavigate={() => setDrawerOpen(false)} />
+        <SidebarFooter />
+      </aside>
 
-      <div className="flex items-center gap-4">
-        {riskStatus?.emergency_stop_active ? (
-          <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" onClick={handleClearEmergencyStop} disabled={clearEmergencyStop.isPending}>
-            {clearEmergencyStop.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
-            Clear Emergency Stop
-          </Button>
-        ) : (
-          <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-            <Button variant="destructive" onClick={() => setShowConfirm(true)} className="font-bold">
-              <PowerOff className="w-4 h-4 mr-2" />
-              E-STOP
-            </Button>
-            <DialogContent className="dark bg-card border-destructive text-foreground">
-              <DialogHeader>
-                <DialogTitle className="text-destructive flex items-center gap-2 text-xl">
-                  <ShieldAlert className="w-6 h-6" />
-                  ENGAGE EMERGENCY STOP?
-                </DialogTitle>
-                <DialogDescription className="text-base mt-4 text-foreground">
-                  This will immediately halt all active strategies and cancel open orders. Open positions may require manual intervention to close depending on broker support.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter className="mt-6">
-                <Button variant="outline" onClick={() => setShowConfirm(false)}>Cancel</Button>
-                <Button variant="destructive" onClick={handleEmergencyStop} disabled={emergencyStop.isPending}>
-                  {emergencyStop.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "CONFIRM E-STOP"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+      {/* ── Main area ── */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+
+        {/* Mobile top bar */}
+        <header
+          className="md:hidden flex items-center justify-between px-4 h-14 shrink-0 border-b"
+          style={sidebarStyle}
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+            <span className="font-semibold tracking-wide text-white">TradeBuzz</span>
+          </div>
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="p-2 rounded text-white/60 hover:text-white transition-colors"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </header>
+
+        <main className="flex-1 overflow-auto bg-background">
+          <div className="max-w-5xl mx-auto px-4 py-6 md:px-8 md:py-8 lg:px-12 lg:py-12">
+            {children}
+          </div>
+        </main>
       </div>
-    </header>
+    </div>
   );
-}
-
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-muted rounded-md ${className}`} />;
 }
