@@ -1,0 +1,1 @@
+- [TradeBuzz architecture](tradebuzz-architecture.md) — Python bot is not its own deployable artifact; Node api-server proxies to it and supervises it in prod.

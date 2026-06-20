@@ -45,6 +45,10 @@ async def lifespan(app: FastAPI):
     logger.info("=== TradeBuzz Bot Engine stopped ===")
 
 
+# Everything is served behind the shared reverse proxy under BASE_PATH (e.g. "/engine").
+# The proxy does NOT strip the prefix, so routes must physically live under it.
+BASE_PATH = settings.BASE_PATH.rstrip("/")
+
 app = FastAPI(
     title="TradeBuzz Bot Engine",
     description=(
@@ -54,8 +58,9 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=f"{BASE_PATH}/docs",
+    redoc_url=f"{BASE_PATH}/redoc",
+    openapi_url=f"{BASE_PATH}/openapi.json",
 )
 
 app.add_middleware(
@@ -66,16 +71,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router)
+app.include_router(api_router, prefix=BASE_PATH)
 
 
-@app.get("/")
+@app.get(BASE_PATH or "/")
 def root():
     return {
         "service": "TradeBuzz Bot Engine",
         "version": "1.0.0",
         "mode": settings.BOT_MODE,
         "live_trading_enabled": settings.LIVE_TRADING_ENABLED,
-        "docs": "/docs",
+        "docs": f"{BASE_PATH}/docs",
         "safety_notice": "This engine defaults to PAPER trading mode. Set LIVE_TRADING_ENABLED=true only when fully configured.",
     }
