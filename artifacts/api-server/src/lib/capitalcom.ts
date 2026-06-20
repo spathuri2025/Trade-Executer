@@ -22,6 +22,14 @@ async function createSession(): Promise<Session> {
     throw new Error("CAPITALCOM_API_KEY, CAPITALCOM_PASSWORD and CAPITALCOM_IDENTIFIER must be set");
   }
 
+  logger.info({
+    apiKeyLen: apiKey.length,
+    apiKeyHasWhitespace: /\s/.test(apiKey),
+    passwordLen: password.length,
+    identifierLen: identifier.length,
+    identifierIsEmail: identifier.includes("@"),
+  }, "Capital.com credential shape (diagnostic)");
+
   const res = await fetch(`${BASE_URL}/session`, {
     method: "POST",
     headers: {
