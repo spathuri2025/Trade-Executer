@@ -1,7 +1,15 @@
 import { logger } from "./logger";
 
 const LIVE_BASE = "https://api-capital.backend-capital.com/api/v1";
-const BASE_URL = LIVE_BASE;
+const DEMO_BASE = "https://demo-api-capital.backend-capital.com/api/v1";
+
+// Capital.com demo (practice) accounts must use a different host than live
+// accounts. Using the wrong host returns 401 error.invalid.details even when
+// the credentials are correct. Set CAPITAL_COM_DEMO=true for a demo account.
+const useDemo = ["true", "1", "yes"].includes(
+  (process.env.CAPITAL_COM_DEMO ?? "").trim().toLowerCase(),
+);
+const BASE_URL = useDemo ? DEMO_BASE : LIVE_BASE;
 
 interface Session {
   cst: string;
