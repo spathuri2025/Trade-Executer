@@ -59,6 +59,7 @@ BOT_MODE = "PAPER"
 LIVE_TRADING_ENABLED = "false"
 BOT_CYCLE_INTERVAL = "60"
 LOG_LEVEL = "INFO"
+CAPITAL_COM_DEMO = "true"
 
 [nix]
 channel = "stable-25_05"
