@@ -117,6 +117,18 @@ export interface ExecuteTradeInput {
   amount: number;
 }
 
+export interface Quote {
+  ticker: string;
+  bid: number;
+  offer: number;
+  /** Mid price ((bid + offer) / 2) */
+  price: number;
+  /** @nullable */
+  marketStatus?: string | null;
+  /** @nullable */
+  currency?: string | null;
+}
+
 export interface Position {
   ticker: string;
   quantity: number;
@@ -313,6 +325,10 @@ export interface LatestDailyBriefResult {
 
 export type ListTradesParams = {
 limit?: number;
+};
+
+export type GetQuoteParams = {
+ticker: string;
 };
 
 export type ListSignalsParams = {

@@ -27,3 +27,8 @@ order-placement + DB-recording logic mirrored (manual reuses the bot's pattern).
 - There is no auth in the app by design, so the execute endpoint is publicly
   reachable. The in-flight lock limits accidental dupes but is NOT an authz
   boundary — put login in front before exposing live trading publicly.
+
+## Live quotes (getBrokerQuote / GET /quote)
+- Capital.com is the only broker with a real live quote (`getCapitalQuote` → GET /markets/{epic}: snapshot bid/offer, instrument.currency, `marketStatus`). Trading 212 has NO live-quote endpoint — `getBrokerQuote` falls back to its (faked) price history last value and throws if none.
+- Market-open check uses the magic string `marketStatus === "TRADEABLE"`; anything else (e.g. "CLOSED") is treated as closed in the UI. Don't assume a boolean.
+- Frontend sizes "est. units" off the mid `(bid+offer)/2`; server-side order sizing still uses broker price history, so the two can differ slightly — est. units is indicative only.

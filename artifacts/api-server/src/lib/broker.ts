@@ -9,6 +9,7 @@ import {
   getCapitalPositions,
   getCapitalAccounts,
   getCapitalPriceHistory,
+  getCapitalQuote,
   placeCapitalOrder,
 } from "./capitalcom";
 
@@ -115,6 +116,37 @@ export async function getBrokerPriceHistory(
     logger.warn({ ticker }, "Could not fetch price history from Trading 212");
     return [];
   }
+}
+
+export interface NormalizedQuote {
+  ticker: string;
+  bid: number;
+  offer: number;
+  price: number;
+  marketStatus: string | null;
+  currency: string | null;
+}
+
+export async function getBrokerQuote(broker: BrokerName, ticker: string): Promise<NormalizedQuote> {
+  if (broker === "capitalcom") {
+    const q = await getCapitalQuote(ticker);
+    return {
+      ticker,
+      bid: q.bid,
+      offer: q.offer,
+      price: (q.bid + q.offer) / 2,
+      marketStatus: q.marketStatus,
+      currency: q.currency,
+    };
+  }
+
+  // Trading 212 has no live-quote endpoint — best-effort from the latest known price.
+  const prices = await getBrokerPriceHistory("trading212", ticker, 2);
+  const last = prices[prices.length - 1];
+  if (!last || !(last > 0)) {
+    throw new Error(`No live quote available for ${ticker} on Trading 212`);
+  }
+  return { ticker, bid: last, offer: last, price: last, marketStatus: null, currency: null };
 }
 
 export interface StopLossParams {

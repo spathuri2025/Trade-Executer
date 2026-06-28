@@ -8,6 +8,8 @@ import {
   useGetBotStatus,
   getGetBotStatusQueryKey,
   useExecuteTrade,
+  useGetQuote,
+  getGetQuoteQueryKey,
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +65,28 @@ function ManualTradePanel() {
   const broker = botStatus?.config.broker ?? "capitalcom";
   const brokerLabel = BROKER_LABELS[broker] ?? broker;
   const amountNum = Number(amount);
-  const canSubmit = ticker.trim().length > 0 && amountNum > 0;
+
+  const trimmedTicker = ticker.trim();
+  const {
+    data: quote,
+    isFetching: quoteFetching,
+    isError: quoteError,
+  } = useGetQuote(
+    { ticker: trimmedTicker },
+    {
+      query: {
+        queryKey: getGetQuoteQueryKey({ ticker: trimmedTicker }),
+        enabled: trimmedTicker.length > 0,
+        refetchInterval: 5000,
+        retry: false,
+      },
+    }
+  );
+
+  const marketClosed = quote?.marketStatus != null && quote.marketStatus !== "TRADEABLE";
+  const estimatedUnits =
+    quote && quote.price > 0 && amountNum > 0 ? amountNum / quote.price : null;
+  const canSubmit = trimmedTicker.length > 0 && amountNum > 0;
 
   const executeMutation = useExecuteTrade({
     mutation: {
@@ -192,6 +215,56 @@ function ManualTradePanel() {
         </Button>
       </div>
 
+      {trimmedTicker.length > 0 && (
+        <div
+          className="mt-4 p-3 rounded-md flex flex-wrap items-center gap-x-6 gap-y-2"
+          style={{ backgroundColor: "rgba(255,255,255,0.02)", border: cardBorder }}
+        >
+          {quoteError ? (
+            <span className="text-xs text-destructive">
+              Live price unavailable for {trimmedTicker}.
+            </span>
+          ) : !quote ? (
+            <span className="text-xs" style={{ color: muted }}>
+              {quoteFetching ? "Fetching live price…" : "—"}
+            </span>
+          ) : (
+            <>
+              <PriceStat label="Bid" value={fmtPrice(quote.bid)} />
+              <PriceStat label="Offer" value={fmtPrice(quote.offer)} />
+              <PriceStat
+                label="Mid"
+                value={`${fmtPrice(quote.price)}${quote.currency ? " " + quote.currency : ""}`}
+                emphasis
+              />
+              {estimatedUnits != null && (
+                <PriceStat label="Est. units" value={fmtUnits(estimatedUnits)} />
+              )}
+              <div className="flex items-center gap-2 ml-auto">
+                {quote.marketStatus && (
+                  <Badge
+                    variant="outline"
+                    className={
+                      marketClosed
+                        ? "text-amber-500 border-amber-500 bg-amber-500/10"
+                        : "text-primary border-primary bg-primary/10"
+                    }
+                  >
+                    {quote.marketStatus}
+                  </Badge>
+                )}
+                <span
+                  className="text-[10px] uppercase tracking-wider"
+                  style={{ color: muted }}
+                >
+                  {quoteFetching ? "Updating…" : "Live · 5s"}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -206,6 +279,21 @@ function ManualTradePanel() {
                   <span className="font-mono font-semibold">{amountNum}</span> via{" "}
                   <span className="font-semibold">{brokerLabel}</span>.
                 </div>
+                {quote && (
+                  <div className="text-xs" style={{ color: muted }}>
+                    Live mid {fmtPrice(quote.price)}
+                    {quote.currency ? " " + quote.currency : ""}
+                    {estimatedUnits != null && <> · ≈ {fmtUnits(estimatedUnits)} units</>}
+                    {marketClosed && (
+                      <span className="text-amber-500"> · market {quote.marketStatus}</span>
+                    )}
+                  </div>
+                )}
+                {quoteError && (
+                  <div className="text-xs text-amber-500">
+                    Live price unavailable — order will be sized at the broker's latest price.
+                  </div>
+                )}
                 {dryRun ? (
                   <div className="text-amber-500">
                     Dry Run is ON — this order will be logged but NOT sent to the broker.
@@ -226,6 +314,27 @@ function ManualTradePanel() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function fmtPrice(n: number): string {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 });
+}
+
+function fmtUnits(n: number): string {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+}
+
+function PriceStat({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[10px] uppercase tracking-wider" style={{ color: muted }}>
+        {label}
+      </span>
+      <span className={`font-mono ${emphasis ? "text-base font-semibold" : "text-sm"}`}>
+        {value}
+      </span>
     </div>
   );
 }

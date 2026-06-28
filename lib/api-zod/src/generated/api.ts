@@ -144,6 +144,23 @@ export const ExecuteTradeBody = zod.object({
 
 
 /**
+ * @summary Get a live price quote for an instrument from the configured broker
+ */
+export const GetQuoteQueryParams = zod.object({
+  "ticker": zod.coerce.string()
+})
+
+export const GetQuoteResponse = zod.object({
+  "ticker": zod.string(),
+  "bid": zod.number(),
+  "offer": zod.number(),
+  "price": zod.number().describe('Mid price ((bid + offer) \/ 2)'),
+  "marketStatus": zod.string().nullish(),
+  "currency": zod.string().nullish()
+})
+
+
+/**
  * @summary Get open positions from Trading 212
  */
 export const ListPositionsResponseItem = zod.object({

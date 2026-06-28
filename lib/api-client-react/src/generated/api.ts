@@ -31,6 +31,7 @@ import type {
   DailyMarketBrief,
   ExecuteTradeInput,
   GetMarketNewsParams,
+  GetQuoteParams,
   GetScannerResultsParams,
   HealthStatus,
   Instrument,
@@ -41,6 +42,7 @@ import type {
   MessageInput,
   NewsItem,
   Position,
+  Quote,
   RunScan200,
   ScannerConfigInput,
   ScannerResult,
@@ -582,6 +584,90 @@ export const useExecuteTrade = <TError = ErrorType<AssistantError>,
       > => {
       return useMutation(getExecuteTradeMutationOptions(options));
     }
+
+export const getGetQuoteUrl = (params: GetQuoteParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/quote?${stringifiedParams}` : `/api/quote`
+}
+
+/**
+ * @summary Get a live price quote for an instrument from the configured broker
+ */
+export const getQuote = async (params: GetQuoteParams, options?: RequestInit): Promise<Quote> => {
+
+  return customFetch<Quote>(getGetQuoteUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetQuoteQueryKey = (params?: GetQuoteParams,) => {
+    return [
+    `/api/quote`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetQuoteQueryOptions = <TData = Awaited<ReturnType<typeof getQuote>>, TError = ErrorType<AssistantError>>(params: GetQuoteParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetQuoteQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getQuote>>> = ({ signal }) => getQuote(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getQuote>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetQuoteQueryResult = NonNullable<Awaited<ReturnType<typeof getQuote>>>
+export type GetQuoteQueryError = ErrorType<AssistantError>
+
+
+/**
+ * @summary Get a live price quote for an instrument from the configured broker
+ */
+
+export function useGetQuote<TData = Awaited<ReturnType<typeof getQuote>>, TError = ErrorType<AssistantError>>(
+ params: GetQuoteParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetQuoteQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListPositionsUrl = () => {
 

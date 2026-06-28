@@ -7,7 +7,9 @@ import {
   TradeExecutionError,
   TradeValidationError,
   DuplicateTradeError,
+  getBotStatus,
 } from "../lib/botEngine";
+import { getBrokerQuote } from "../lib/broker";
 
 const router: IRouter = Router();
 
@@ -35,6 +37,23 @@ router.get("/trades", async (req, res): Promise<void> => {
       orderId: t.orderId ?? null,
     }))
   );
+});
+
+router.get("/quote", async (req, res): Promise<void> => {
+  const ticker = typeof req.query.ticker === "string" ? req.query.ticker.trim() : "";
+  if (!ticker) {
+    res.status(400).json({ error: "ticker query parameter is required" });
+    return;
+  }
+
+  try {
+    const broker = getBotStatus().config.broker;
+    const quote = await getBrokerQuote(broker, ticker);
+    res.json(quote);
+  } catch (err) {
+    req.log.error({ err, ticker }, "Failed to fetch quote");
+    res.status(502).json({ error: err instanceof Error ? err.message : "Failed to fetch quote" });
+  }
 });
 
 router.post("/trades/execute", async (req, res): Promise<void> => {

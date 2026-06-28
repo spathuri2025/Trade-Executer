@@ -247,3 +247,31 @@ export async function placeCapitalOrder(
   }) as { dealReference: string };
   return data;
 }
+
+export interface CapitalQuote {
+  epic: string;
+  bid: number;
+  offer: number;
+  marketStatus: string;
+  currency: string | null;
+  updateTime: string | null;
+}
+
+export async function getCapitalQuote(epic: string): Promise<CapitalQuote> {
+  const data = await capitalFetch(`/markets/${encodeURIComponent(epic)}`) as {
+    instrument?: { currency?: string };
+    snapshot?: { bid?: number; offer?: number; marketStatus?: string; updateTime?: string };
+  };
+  const snap = data?.snapshot;
+  if (!snap || typeof snap.bid !== "number" || typeof snap.offer !== "number") {
+    throw new Error(`No live quote available for ${epic}`);
+  }
+  return {
+    epic,
+    bid: snap.bid,
+    offer: snap.offer,
+    marketStatus: snap.marketStatus ?? "UNKNOWN",
+    currency: data.instrument?.currency ?? null,
+    updateTime: snap.updateTime ?? null,
+  };
+}
