@@ -132,6 +132,18 @@ export const ListTradesResponse = zod.array(ListTradesResponseItem)
 
 
 /**
+ * Places a market order on the broker selected in the bot configuration, respecting the same Dry Run safety flag and stop-loss settings. When Dry Run is enabled the order is logged but not sent to the broker.
+
+ * @summary Manually execute a trade through the configured broker
+ */
+export const ExecuteTradeBody = zod.object({
+  "ticker": zod.string().describe('Instrument symbol \/ epic to trade'),
+  "side": zod.enum(['BUY', 'SELL']),
+  "amount": zod.number().describe('Trade value in account currency; quantity is derived from the latest price')
+})
+
+
+/**
  * @summary Get open positions from Trading 212
  */
 export const ListPositionsResponseItem = zod.object({

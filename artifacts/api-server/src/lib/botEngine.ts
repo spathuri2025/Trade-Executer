@@ -205,3 +205,127 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
 
   return results;
 }
+
+/** Upstream/infrastructure failure (price fetch, broker unreachable) → 502. */
+export class TradeExecutionError extends Error {}
+/** Invalid business input (empty ticker, non-positive amount) → 400. */
+export class TradeValidationError extends Error {}
+/** A matching trade is already being placed → 429, prevents accidental double orders. */
+export class DuplicateTradeError extends Error {}
+
+export interface ManualTradeParams {
+  ticker: string;
+  side: "BUY" | "SELL";
+  amount: number;
+}
+
+// In-flight guard: blocks concurrent duplicate submissions of the same
+// ticker+side while an order is being placed (e.g. double-clicks / retries).
+const inFlightTrades = new Set<string>();
+
+/**
+ * Execute a one-off manual trade through the broker selected in the bot config.
+ * Mirrors runCycle's order + recording logic and respects the same Dry Run and
+ * stop-loss settings, so manual and bot execution behave identically.
+ * Returns the persisted trade row.
+ */
+export async function executeManualTrade(params: ManualTradeParams) {
+  const ticker = params.ticker.trim();
+  const { side, amount } = params;
+  const { broker, dryRun, stopLossPercent } = state.config;
+
+  if (!ticker) {
+    throw new TradeValidationError("Ticker is required");
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new TradeValidationError("Trade amount must be a positive number");
+  }
+
+  const lockKey = `${broker}:${ticker}:${side}`;
+  if (inFlightTrades.has(lockKey)) {
+    throw new DuplicateTradeError(`A ${side} order for ${ticker} is already being placed`);
+  }
+  inFlightTrades.add(lockKey);
+
+  try {
+    return await placeManualTrade({ ticker, side, amount, broker, dryRun, stopLossPercent });
+  } finally {
+    inFlightTrades.delete(lockKey);
+  }
+}
+
+async function placeManualTrade(args: {
+  ticker: string;
+  side: "BUY" | "SELL";
+  amount: number;
+  broker: BrokerName;
+  dryRun: boolean;
+  stopLossPercent: number;
+}) {
+  const { ticker, side, amount, broker, dryRun, stopLossPercent } = args;
+
+  const prices = await getBrokerPriceHistory(broker, ticker, 5);
+  const currentPrice = prices[prices.length - 1];
+  if (!currentPrice || !(currentPrice > 0)) {
+    throw new TradeExecutionError(`Could not fetch a current price for ${ticker} from ${broker}`);
+  }
+
+  const positionValue = amount;
+  const quantity = positionValue / currentPrice;
+
+  if (dryRun) {
+    logger.info({ ticker, side, broker, dryRun: true }, "Manual dry-run trade");
+    const [row] = await db
+      .insert(tradesTable)
+      .values({
+        ticker,
+        side,
+        quantity: String(quantity),
+        price: String(currentPrice),
+        total: String(positionValue),
+        status: "DRY_RUN",
+      })
+      .returning();
+    return row;
+  }
+
+  try {
+    const order = await placeBrokerOrder(
+      broker,
+      ticker,
+      quantity,
+      side,
+      stopLossPercent > 0 ? { stopLossPercent, entryPrice: currentPrice } : undefined
+    );
+    const [row] = await db
+      .insert(tradesTable)
+      .values({
+        ticker,
+        side,
+        quantity: String(quantity),
+        price: String(currentPrice),
+        total: String(positionValue),
+        status: "FILLED",
+        orderId: order.id,
+      })
+      .returning();
+    logger.info({ ticker, side, broker, orderId: order.id }, "Manual trade executed");
+    return row;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const [row] = await db
+      .insert(tradesTable)
+      .values({
+        ticker,
+        side,
+        quantity: String(quantity),
+        price: String(currentPrice),
+        total: String(positionValue),
+        status: "FAILED",
+        errorMessage: msg,
+      })
+      .returning();
+    logger.error({ ticker, side, broker, err: msg }, "Manual trade failed");
+    return row;
+  }
+}

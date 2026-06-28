@@ -118,6 +118,47 @@ paths:
                 items:
                   $ref: "#/components/schemas/Trade"
 
+  /trades/execute:
+    post:
+      operationId: executeTrade
+      tags: [trades]
+      summary: Manually execute a trade through the configured broker
+      description: >
+        Places a market order on the broker selected in the bot configuration,
+        respecting the same Dry Run safety flag and stop-loss settings. When Dry
+        Run is enabled the order is logged but not sent to the broker.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteTradeInput"
+      responses:
+        "201":
+          description: Trade recorded (inspect status for FILLED / FAILED / DRY_RUN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "429":
+          description: A matching order is already being placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "502":
+          description: Could not fetch price or reach broker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
   /positions:
     get:
       operationId: listPositions
@@ -571,6 +612,20 @@ components:
           type: ["string", "null"]
         orderId:
           type: ["string", "null"]
+
+    ExecuteTradeInput:
+      type: object
+      required: [ticker, side, amount]
+      properties:
+        ticker:
+          type: string
+          description: Instrument symbol / epic to trade
+        side:
+          type: string
+          enum: [BUY, SELL]
+        amount:
+          type: number
+          description: Trade value in account currency; quantity is derived from the latest price
 
     Position:
       type: object

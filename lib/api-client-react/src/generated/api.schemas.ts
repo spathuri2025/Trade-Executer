@@ -101,6 +101,22 @@ export interface Trade {
   orderId?: string | null;
 }
 
+export type ExecuteTradeInputSide = typeof ExecuteTradeInputSide[keyof typeof ExecuteTradeInputSide];
+
+
+export const ExecuteTradeInputSide = {
+  BUY: 'BUY',
+  SELL: 'SELL',
+} as const;
+
+export interface ExecuteTradeInput {
+  /** Instrument symbol / epic to trade */
+  ticker: string;
+  side: ExecuteTradeInputSide;
+  /** Trade value in account currency; quantity is derived from the latest price */
+  amount: number;
+}
+
 export interface Position {
   ticker: string;
   quantity: number;

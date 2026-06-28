@@ -1,0 +1,1 @@
+- [Trade execution safety](trade-execution-safety.md) — manual + bot trades share one config/recording path; Dry Run gates live orders; classify errors 400/429/502.

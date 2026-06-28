@@ -1,11 +1,234 @@
-import { useListTrades, getListTradesQueryKey } from "@workspace/api-client-react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useListTrades,
+  getListTradesQueryKey,
+  useListInstruments,
+  getListInstrumentsQueryKey,
+  useGetBotStatus,
+  getGetBotStatusQueryKey,
+  useExecuteTrade,
+} from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 const card = "hsl(var(--card))";
 const cardBorder = "1px solid hsl(var(--card-border))";
 const divider = "1px solid hsl(var(--border))";
 const muted = "hsl(var(--muted-foreground))";
+
+const BROKER_LABELS: Record<string, string> = {
+  trading212: "Trading 212",
+  capitalcom: "Capital.com",
+};
+
+function ManualTradePanel() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: instruments } = useListInstruments({
+    query: { queryKey: getListInstrumentsQueryKey() },
+  });
+  const { data: botStatus } = useGetBotStatus({
+    query: { queryKey: getGetBotStatusQueryKey() },
+  });
+
+  const [ticker, setTicker] = useState("");
+  const [side, setSide] = useState<"BUY" | "SELL">("BUY");
+  const [amount, setAmount] = useState("100");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const dryRun = botStatus?.config.dryRun ?? true;
+  const broker = botStatus?.config.broker ?? "capitalcom";
+  const brokerLabel = BROKER_LABELS[broker] ?? broker;
+  const amountNum = Number(amount);
+  const canSubmit = ticker.trim().length > 0 && amountNum > 0;
+
+  const executeMutation = useExecuteTrade({
+    mutation: {
+      onSuccess: (trade) => {
+        queryClient.invalidateQueries({ queryKey: getListTradesQueryKey() });
+        if (trade.status === "FAILED") {
+          toast({
+            title: "Trade rejected by broker",
+            description: trade.errorMessage ?? "The order could not be filled.",
+            variant: "destructive",
+          });
+        } else if (trade.status === "DRY_RUN") {
+          toast({
+            title: "Dry run — order simulated",
+            description: `${trade.side} ${trade.ticker} logged without sending to the broker.`,
+          });
+        } else {
+          toast({
+            title: "Trade executed",
+            description: `${trade.side} ${trade.ticker} filled via ${brokerLabel}.`,
+          });
+        }
+      },
+      onError: (err: any) => {
+        toast({
+          title: "Could not execute trade",
+          description: err?.message ?? "Unknown error",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const submit = () => {
+    setConfirmOpen(false);
+    executeMutation.mutate({
+      data: { ticker: ticker.trim(), side, amount: amountNum },
+    });
+  };
+
+  return (
+    <div className="p-5 md:p-6 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 className="text-lg font-medium tracking-tight">Manual Trade</h2>
+          <p className="text-xs mt-1" style={{ color: muted }}>
+            Places a market order through your configured broker.
+          </p>
+        </div>
+        <Badge
+          variant="outline"
+          className={
+            dryRun
+              ? "text-amber-500 border-amber-500 bg-amber-500/10"
+              : "text-destructive border-destructive bg-destructive/10"
+          }
+        >
+          {dryRun ? "DRY RUN" : "LIVE"} · {brokerLabel}
+        </Badge>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr_auto] md:items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs" style={{ color: muted }}>Instrument</Label>
+          {instruments && instruments.length > 0 ? (
+            <Select value={ticker} onValueChange={setTicker}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select instrument" />
+              </SelectTrigger>
+              <SelectContent>
+                {instruments.map((i) => (
+                  <SelectItem key={i.id} value={i.ticker}>
+                    {i.ticker} — {i.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              placeholder="e.g. GOLD"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value.toUpperCase())}
+            />
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs" style={{ color: muted }}>Side</Label>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={side === "BUY" ? "default" : "outline"}
+              onClick={() => setSide("BUY")}
+              className={side === "BUY" ? "bg-primary text-primary-foreground" : ""}
+            >
+              Buy
+            </Button>
+            <Button
+              type="button"
+              variant={side === "SELL" ? "default" : "outline"}
+              onClick={() => setSide("SELL")}
+              className={side === "SELL" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            >
+              Sell
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs" style={{ color: muted }}>Amount (trade value)</Label>
+          <Input
+            type="number"
+            min="0"
+            step="any"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </div>
+
+        <Button
+          type="button"
+          disabled={!canSubmit || executeMutation.isPending}
+          onClick={() => setConfirmOpen(true)}
+        >
+          {executeMutation.isPending ? "Executing…" : "Execute"}
+        </Button>
+      </div>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {dryRun ? "Confirm simulated trade" : "Confirm live trade"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="font-mono font-semibold">{side}</span>{" "}
+                  <span className="font-mono font-semibold">{ticker}</span> for{" "}
+                  <span className="font-mono font-semibold">{amountNum}</span> via{" "}
+                  <span className="font-semibold">{brokerLabel}</span>.
+                </div>
+                {dryRun ? (
+                  <div className="text-amber-500">
+                    Dry Run is ON — this order will be logged but NOT sent to the broker.
+                  </div>
+                ) : (
+                  <div className="text-destructive font-medium">
+                    Dry Run is OFF — this will place a real order with real money.
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={submit}>
+              {dryRun ? "Simulate" : "Place order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -30,7 +253,11 @@ export default function Trades() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <h1 className="text-2xl md:text-4xl font-light tracking-tight">Trade History</h1>
+      <h1 className="text-2xl md:text-4xl font-light tracking-tight">Trades</h1>
+
+      <ManualTradePanel />
+
+      <h2 className="text-lg md:text-xl font-light tracking-tight pt-2">History</h2>
 
       {isLoading ? (
         <div className="space-y-3">

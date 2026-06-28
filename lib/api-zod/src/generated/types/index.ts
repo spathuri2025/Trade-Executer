@@ -19,6 +19,8 @@ export * from './conversation';
 export * from './conversationInput';
 export * from './conversationWithMessages';
 export * from './dailyMarketBrief';
+export * from './executeTradeInput';
+export * from './executeTradeInputSide';
 export * from './getMarketNewsParams';
 export * from './getScannerResultsParams';
 export * from './healthStatus';

@@ -29,6 +29,7 @@ import type {
   ConversationInput,
   ConversationWithMessages,
   DailyMarketBrief,
+  ExecuteTradeInput,
   GetMarketNewsParams,
   GetScannerResultsParams,
   HealthStatus,
@@ -508,6 +509,79 @@ export function useListTrades<TData = Awaited<ReturnType<typeof listTrades>>, TE
 
 
 
+
+export const getExecuteTradeUrl = () => {
+
+
+
+
+  return `/api/trades/execute`
+}
+
+/**
+ * Places a market order on the broker selected in the bot configuration, respecting the same Dry Run safety flag and stop-loss settings. When Dry Run is enabled the order is logged but not sent to the broker.
+
+ * @summary Manually execute a trade through the configured broker
+ */
+export const executeTrade = async (executeTradeInput: ExecuteTradeInput, options?: RequestInit): Promise<Trade> => {
+
+  return customFetch<Trade>(getExecuteTradeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      executeTradeInput,)
+  }
+);}
+
+
+
+
+export const getExecuteTradeMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeTrade>>, TError,{data: BodyType<ExecuteTradeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof executeTrade>>, TError,{data: BodyType<ExecuteTradeInput>}, TContext> => {
+
+const mutationKey = ['executeTrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof executeTrade>>, {data: BodyType<ExecuteTradeInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  executeTrade(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExecuteTradeMutationResult = NonNullable<Awaited<ReturnType<typeof executeTrade>>>
+    export type ExecuteTradeMutationBody = BodyType<ExecuteTradeInput>
+    export type ExecuteTradeMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Manually execute a trade through the configured broker
+ */
+export const useExecuteTrade = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeTrade>>, TError,{data: BodyType<ExecuteTradeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof executeTrade>>,
+        TError,
+        {data: BodyType<ExecuteTradeInput>},
+        TContext
+      > => {
+      return useMutation(getExecuteTradeMutationOptions(options));
+    }
 
 export const getListPositionsUrl = () => {
 
