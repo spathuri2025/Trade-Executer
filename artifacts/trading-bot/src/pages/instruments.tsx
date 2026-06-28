@@ -21,7 +21,7 @@ export default function Instruments() {
   const [ticker, setTicker] = useState("");
   const [name, setName] = useState("");
 
-  const { data: instruments, isLoading } = useListInstruments(undefined, {
+  const { data: instruments, isLoading } = useListInstruments({
     query: { queryKey: getListInstrumentsQueryKey() }
   });
 

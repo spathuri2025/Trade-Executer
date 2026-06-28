@@ -7,11 +7,17 @@
  */
 
 export * from './accountSummary';
+export * from './assistantError';
+export * from './assistantMessage';
+export * from './assistantMessageRole';
 export * from './botConfig';
 export * from './botConfigBroker';
 export * from './botConfigInput';
 export * from './botConfigInputBroker';
 export * from './botStatus';
+export * from './conversation';
+export * from './conversationInput';
+export * from './conversationWithMessages';
 export * from './getMarketNewsParams';
 export * from './getScannerResultsParams';
 export * from './healthStatus';
@@ -19,6 +25,7 @@ export * from './instrument';
 export * from './instrumentInput';
 export * from './listSignalsParams';
 export * from './listTradesParams';
+export * from './messageInput';
 export * from './newsItem';
 export * from './newsItemImpactLabel';
 export * from './position';

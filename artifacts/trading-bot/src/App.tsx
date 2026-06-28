@@ -8,6 +8,7 @@ import Trades from "@/pages/trades";
 import Signals from "@/pages/signals";
 import Scanner from "@/pages/scanner";
 import Instruments from "@/pages/instruments";
+import Assistant from "@/pages/assistant";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -22,6 +23,7 @@ function Router() {
         <Route path="/signals" component={Signals} />
         <Route path="/scanner" component={Scanner} />
         <Route path="/instruments" component={Instruments} />
+        <Route path="/assistant" component={Assistant} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

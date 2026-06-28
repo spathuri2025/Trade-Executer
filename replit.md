@@ -30,7 +30,16 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+TradeBuzz — algorithmic trading bot dashboard (ClinAITech Limited, UK). Brokers: Trading 212 + Capital.com. MA-crossover strategy with a market scanner. "Obsidian Noir" dark theme.
+
+Pages: Dashboard, Trades, Signals, Scanner, Instruments, **Assistant** (AI day-trading chat), Settings.
+
+### AI Assistant
+In-app chat assistant (`/assistant`) that does technical analysis, risk review, and strategy feedback grounded in the user's live data (bot config, broker account/positions, watchlist, recent trades/signals/scanner hits).
+- Backend: `artifacts/api-server/src/routes/assistant.ts` (conversation CRUD + SSE streaming chat), context builder in `artifacts/api-server/src/lib/assistantContext.ts`.
+- LLM via Replit OpenAI AI Integrations proxy (`@workspace/integrations-openai-ai-server`), model `gpt-5.4`. No API key needed.
+- The risk / not-financial-advice disclaimer is a **hard requirement**: enforced server-side (`ensureDisclaimer` appends it if the model omits it) AND shown as a permanent footer in the chat UI.
+- SSE is consumed on the client via `fetch` + `ReadableStream` (Orval cannot generate SSE hooks); conversation list/messages use generated hooks.
 
 ## User preferences
 

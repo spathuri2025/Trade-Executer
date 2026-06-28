@@ -50,7 +50,7 @@ function useCountdown(dataUpdatedAt: number, intervalMs: number) {
 
 export default function Signals() {
   /* Bot status drives the refresh interval */
-  const { data: botStatus } = useGetBotStatus(undefined, {
+  const { data: botStatus } = useGetBotStatus({
     query: {
       queryKey: getGetBotStatusQueryKey(),
       refetchInterval: 30_000,

@@ -26,7 +26,7 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: botStatus, isLoading } = useGetBotStatus(undefined, {
+  const { data: botStatus, isLoading } = useGetBotStatus({
     query: { queryKey: getGetBotStatusQueryKey() }
   });
 

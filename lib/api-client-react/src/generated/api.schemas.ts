@@ -224,6 +224,47 @@ export interface ScannerResult {
   scannedAt: string;
 }
 
+export interface Conversation {
+  id: number;
+  title: string;
+  createdAt: string;
+}
+
+export type AssistantMessageRole = typeof AssistantMessageRole[keyof typeof AssistantMessageRole];
+
+
+export const AssistantMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface AssistantMessage {
+  id: number;
+  conversationId: number;
+  role: AssistantMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface ConversationInput {
+  title: string;
+}
+
+export interface MessageInput {
+  content: string;
+}
+
+export interface ConversationWithMessages {
+  id: number;
+  title: string;
+  createdAt: string;
+  messages: AssistantMessage[];
+}
+
+export interface AssistantError {
+  error: string;
+}
+
 export type ListTradesParams = {
 limit?: number;
 };

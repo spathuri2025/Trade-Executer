@@ -29,7 +29,7 @@ export default function Scanner() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: status, isLoading: statusLoading } = useGetScannerStatus(undefined, {
+  const { data: status, isLoading: statusLoading } = useGetScannerStatus({
     query: { queryKey: getGetScannerStatusQueryKey(), refetchInterval: 10_000 }
   });
 

@@ -81,7 +81,7 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
 
   /* ── Bot status: poll every 30 s — drives all other intervals ── */
-  const { data: botStatus, isLoading: botLoading } = useGetBotStatus(undefined, {
+  const { data: botStatus, isLoading: botLoading } = useGetBotStatus({
     query: {
       queryKey: getGetBotStatusQueryKey(),
       refetchInterval: 30_000,
@@ -92,14 +92,14 @@ export default function Dashboard() {
   const botIntervalMs = (botStatus?.config?.intervalMinutes ?? 15) * 60_000;
 
   /* ── Account + positions: refresh on the bot's own interval ── */
-  const { data: account, isLoading: accountLoading } = useGetAccount(undefined, {
+  const { data: account, isLoading: accountLoading } = useGetAccount({
     query: {
       queryKey: getGetAccountQueryKey(),
       refetchInterval: botIntervalMs,
     },
   });
 
-  const { data: positions, isLoading: positionsLoading } = useListPositions(undefined, {
+  const { data: positions, isLoading: positionsLoading } = useListPositions({
     query: {
       queryKey: getListPositionsQueryKey(),
       refetchInterval: botIntervalMs,

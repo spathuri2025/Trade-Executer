@@ -7,6 +7,7 @@ import instrumentsRouter from "./instruments";
 import signalsRouter from "./signals";
 import scannerRouter from "./scanner";
 import newsRouter from "./news";
+import assistantRouter from "./assistant";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(instrumentsRouter);
 router.use(signalsRouter);
 router.use(scannerRouter);
 router.use(newsRouter);
+router.use(assistantRouter);
 
 export default router;
