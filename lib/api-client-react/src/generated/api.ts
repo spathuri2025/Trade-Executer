@@ -28,11 +28,13 @@ import type {
   Conversation,
   ConversationInput,
   ConversationWithMessages,
+  DailyMarketBrief,
   GetMarketNewsParams,
   GetScannerResultsParams,
   HealthStatus,
   Instrument,
   InstrumentInput,
+  LatestDailyBriefResult,
   ListSignalsParams,
   ListTradesParams,
   MessageInput,
@@ -1861,5 +1863,152 @@ export const useSendMessage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSendMessageMutationOptions(options));
+    }
+
+export const getGetLatestDailyBriefUrl = () => {
+
+
+
+
+  return `/api/daily-market-brief/latest`
+}
+
+/**
+ * @summary Get the latest saved daily market brief
+ */
+export const getLatestDailyBrief = async ( options?: RequestInit): Promise<LatestDailyBriefResult> => {
+
+  return customFetch<LatestDailyBriefResult>(getGetLatestDailyBriefUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLatestDailyBriefQueryKey = () => {
+    return [
+    `/api/daily-market-brief/latest`
+    ] as const;
+    }
+
+
+export const getGetLatestDailyBriefQueryOptions = <TData = Awaited<ReturnType<typeof getLatestDailyBrief>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestDailyBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLatestDailyBriefQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLatestDailyBrief>>> = ({ signal }) => getLatestDailyBrief({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLatestDailyBrief>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLatestDailyBriefQueryResult = NonNullable<Awaited<ReturnType<typeof getLatestDailyBrief>>>
+export type GetLatestDailyBriefQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the latest saved daily market brief
+ */
+
+export function useGetLatestDailyBrief<TData = Awaited<ReturnType<typeof getLatestDailyBrief>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestDailyBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLatestDailyBriefQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateDailyBriefUrl = () => {
+
+
+
+
+  return `/api/daily-market-brief/create`
+}
+
+/**
+ * @summary Generate a new daily market brief with Claude, save it, and return it
+ */
+export const createDailyBrief = async ( options?: RequestInit): Promise<DailyMarketBrief> => {
+
+  return customFetch<DailyMarketBrief>(getCreateDailyBriefUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getCreateDailyBriefMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDailyBrief>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDailyBrief>>, TError,void, TContext> => {
+
+const mutationKey = ['createDailyBrief'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDailyBrief>>, void> = () => {
+
+
+          return  createDailyBrief(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDailyBriefMutationResult = NonNullable<Awaited<ReturnType<typeof createDailyBrief>>>
+
+    export type CreateDailyBriefMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Generate a new daily market brief with Claude, save it, and return it
+ */
+export const useCreateDailyBrief = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDailyBrief>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDailyBrief>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCreateDailyBriefMutationOptions(options));
     }
 

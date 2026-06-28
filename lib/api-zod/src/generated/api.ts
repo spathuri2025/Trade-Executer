@@ -404,3 +404,25 @@ export const SendMessageBody = zod.object({
 })
 
 
+/**
+ * @summary Get the latest saved daily market brief
+ */
+export const GetLatestDailyBriefResponse = zod.object({
+  "brief": zod.union([zod.object({
+  "id": zod.number(),
+  "markets": zod.array(zod.object({
+  "name": zod.string().describe('Market name, e.g. \"Crude Oil WTI\"'),
+  "bias": zod.string().describe('Overall market bias \/ directional lean'),
+  "support": zod.string().describe('Key support level(s)'),
+  "resistance": zod.string().describe('Key resistance level(s)'),
+  "news": zod.string().describe('Important news \/ events affecting the market'),
+  "highRiskPeriods": zod.string().describe('High-risk trading periods to watch'),
+  "technicalObservations": zod.string().describe('Technical observations'),
+  "educationalSummary": zod.string().describe('Educational summary for the market')
+})),
+  "disclaimer": zod.string(),
+  "createdAt": zod.coerce.date()
+}),zod.null()])
+})
+
+

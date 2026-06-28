@@ -22,6 +22,8 @@ tags:
     description: MA crossover signals
   - name: assistant
     description: AI day-trading assistant chat
+  - name: dailyMarketBrief
+    description: AI-generated daily market briefs
 
 paths:
   /healthz:
@@ -436,6 +438,38 @@ paths:
           content:
             text/event-stream: {}
 
+  /daily-market-brief/latest:
+    get:
+      operationId: getLatestDailyBrief
+      tags: [dailyMarketBrief]
+      summary: Get the latest saved daily market brief
+      responses:
+        "200":
+          description: The latest daily market brief, or null if none exists yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestDailyBriefResult"
+
+  /daily-market-brief/create:
+    post:
+      operationId: createDailyBrief
+      tags: [dailyMarketBrief]
+      summary: Generate a new daily market brief with Claude, save it, and return it
+      responses:
+        "201":
+          description: The newly generated daily market brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyMarketBrief"
+        "502":
+          description: Failed to generate the brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
 components:
   schemas:
     HealthStatus:
@@ -786,3 +820,65 @@ components:
       properties:
         error:
           type: string
+
+    MarketUpdate:
+      type: object
+      required:
+        - name
+        - bias
+        - support
+        - resistance
+        - news
+        - highRiskPeriods
+        - technicalObservations
+        - educationalSummary
+      properties:
+        name:
+          type: string
+          description: Market name, e.g. "Crude Oil WTI"
+        bias:
+          type: string
+          description: Overall market bias / directional lean
+        support:
+          type: string
+          description: Key support level(s)
+        resistance:
+          type: string
+          description: Key resistance level(s)
+        news:
+          type: string
+          description: Important news / events affecting the market
+        highRiskPeriods:
+          type: string
+          description: High-risk trading periods to watch
+        technicalObservations:
+          type: string
+          description: Technical observations
+        educationalSummary:
+          type: string
+          description: Educational summary for the market
+
+    DailyMarketBrief:
+      type: object
+      required: [id, markets, disclaimer, createdAt]
+      properties:
+        id:
+          type: integer
+        markets:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketUpdate"
+        disclaimer:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    LatestDailyBriefResult:
+      type: object
+      required: [brief]
+      properties:
+        brief:
+          oneOf:
+            - $ref: "#/components/schemas/DailyMarketBrief"
+            - type: "null"

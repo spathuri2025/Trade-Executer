@@ -265,6 +265,36 @@ export interface AssistantError {
   error: string;
 }
 
+export interface MarketUpdate {
+  /** Market name, e.g. "Crude Oil WTI" */
+  name: string;
+  /** Overall market bias / directional lean */
+  bias: string;
+  /** Key support level(s) */
+  support: string;
+  /** Key resistance level(s) */
+  resistance: string;
+  /** Important news / events affecting the market */
+  news: string;
+  /** High-risk trading periods to watch */
+  highRiskPeriods: string;
+  /** Technical observations */
+  technicalObservations: string;
+  /** Educational summary for the market */
+  educationalSummary: string;
+}
+
+export interface DailyMarketBrief {
+  id: number;
+  markets: MarketUpdate[];
+  disclaimer: string;
+  createdAt: string;
+}
+
+export interface LatestDailyBriefResult {
+  brief: DailyMarketBrief | null;
+}
+
 export type ListTradesParams = {
 limit?: number;
 };

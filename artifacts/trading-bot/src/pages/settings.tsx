@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Play, Square } from "lucide-react";
 
@@ -25,6 +26,7 @@ const BROKER_LABELS: Record<BrokerName, string> = {
 export default function Settings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { isAdmin, setAdmin } = useAdminMode();
 
   const { data: botStatus, isLoading } = useGetBotStatus({
     query: { queryKey: getGetBotStatusQueryKey() }
@@ -150,6 +152,32 @@ export default function Settings() {
                 <Play className="mr-2 h-4 w-4" /> Start Engine
               </Button>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Admin mode */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Admin Mode</CardTitle>
+          <CardDescription>
+            Unlocks admin-only controls such as generating the AI Daily Market Brief.
+            This is a local toggle only and is not a security boundary.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/20">
+            <div className="space-y-0.5 pr-4">
+              <label className="text-sm font-medium">Enable Admin Mode</label>
+              <div className="text-xs text-muted-foreground">
+                Shows the &ldquo;Generate Today&apos;s Brief&rdquo; button on the dashboard.
+              </div>
+            </div>
+            <Switch
+              checked={isAdmin}
+              onCheckedChange={setAdmin}
+              data-testid="switch-admin-mode"
+            />
           </div>
         </CardContent>
       </Card>

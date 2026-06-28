@@ -8,6 +8,7 @@ import signalsRouter from "./signals";
 import scannerRouter from "./scanner";
 import newsRouter from "./news";
 import assistantRouter from "./assistant";
+import dailyMarketBriefRouter from "./dailyMarketBrief";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(signalsRouter);
 router.use(scannerRouter);
 router.use(newsRouter);
 router.use(assistantRouter);
+router.use(dailyMarketBriefRouter);
 
 export default router;

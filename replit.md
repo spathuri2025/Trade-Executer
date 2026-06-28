@@ -34,6 +34,13 @@ TradeBuzz — algorithmic trading bot dashboard (ClinAITech Limited, UK). Broker
 
 Pages: Dashboard, Trades, Signals, Scanner, Instruments, **Assistant** (AI day-trading chat), Settings.
 
+### Daily Market Brief
+Dashboard panel "AI Daily Market Brief" (`artifacts/trading-bot/src/components/DailyMarketBrief.tsx`) showing the latest AI-generated daily outlook for Crude Oil WTI, Gold, S&P 500, Bitcoin. Each market card has bias, key support/resistance, news/events, high-risk periods, technical observations, educational summary, plus a shared disclaimer footer.
+- Backend: `artifacts/api-server/src/routes/dailyMarketBrief.ts` (GET `/api/daily-market-brief/latest` → `{ brief }` or `{ brief: null }`; POST `/api/daily-market-brief/create` generates via Claude, saves, returns). Generation logic in `artifacts/api-server/src/lib/dailyBriefService.ts`.
+- LLM: Claude `claude-sonnet-4-6` via Replit Anthropic AI Integrations (`@workspace/integrations-anthropic-ai`), backend-only, no API key in frontend. The exact analyst prompt is the source of truth in `dailyBriefService.ts`; a JSON-format instruction is appended so the response parses into structured per-market fields.
+- DB: `daily_market_briefs` table (`lib/db/src/schema/dailyMarketBriefs.ts`), markets stored as jsonb.
+- **Admin mode** is a client-only `localStorage` flag (`useAdminMode`, toggle in Settings) gating the "Generate Today's Brief" button. NOT a security boundary — the app has no auth yet, so the create endpoint is publicly reachable.
+
 ### AI Assistant
 In-app chat assistant (`/assistant`) that does technical analysis, risk review, and strategy feedback grounded in the user's live data (bot config, broker account/positions, watchlist, recent trades/signals/scanner hits).
 - Backend: `artifacts/api-server/src/routes/assistant.ts` (conversation CRUD + SSE streaming chat), context builder in `artifacts/api-server/src/lib/assistantContext.ts`.
