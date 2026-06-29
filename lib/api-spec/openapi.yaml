@@ -22,6 +22,8 @@ tags:
     description: MA crossover signals
   - name: assistant
     description: AI day-trading assistant chat
+  - name: signalAnalyst
+    description: Claude-powered Signal Analyst chat
   - name: dailyMarketBrief
     description: AI-generated daily market briefs
 
@@ -507,6 +509,124 @@ paths:
       responses:
         "200":
           description: SSE stream of assistant text chunks
+          content:
+            text/event-stream: {}
+
+  /signal-analyst/conversations:
+    get:
+      operationId: listSignalConversations
+      tags: [signalAnalyst]
+      summary: List all Signal Analyst conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+    post:
+      operationId: createSignalConversation
+      tags: [signalAnalyst]
+      summary: Create a new Signal Analyst conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationInput"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /signal-analyst/conversations/{id}:
+    get:
+      operationId: getSignalConversation
+      tags: [signalAnalyst]
+      summary: Get a Signal Analyst conversation with its messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+    delete:
+      operationId: deleteSignalConversation
+      tags: [signalAnalyst]
+      summary: Delete a Signal Analyst conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /signal-analyst/conversations/{id}/messages:
+    get:
+      operationId: listSignalMessages
+      tags: [signalAnalyst]
+      summary: List messages in a Signal Analyst conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssistantMessage"
+    post:
+      operationId: sendSignalMessage
+      tags: [signalAnalyst]
+      summary: Send a message and receive a streaming Signal Analyst response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "200":
+          description: SSE stream of analyst text chunks
           content:
             text/event-stream: {}
 

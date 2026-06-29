@@ -1,1 +1,2 @@
 - [Trade execution safety](trade-execution-safety.md) — manual + bot trades share one config/recording path; Dry Run gates live orders; classify errors 400/429/502.
+- [Conversation kind isolation](conversation-kind-isolation.md) — Assistant & Signal Analyst share conversations/messages tables; EVERY id route in both routers must filter by (id AND kind), not just list/create.

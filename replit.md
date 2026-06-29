@@ -41,6 +41,14 @@ Dashboard panel "AI Daily Market Brief" (`artifacts/trading-bot/src/components/D
 - DB: `daily_market_briefs` table (`lib/db/src/schema/dailyMarketBriefs.ts`), markets stored as jsonb.
 - **Admin mode** is a client-only `localStorage` flag (`useAdminMode`, toggle in Settings) gating the "Generate Today's Brief" button. NOT a security boundary — the app has no auth yet, so the create endpoint is publicly reachable.
 
+### Signal Analyst
+Separate in-app chat page (`/signal-analyst`) that natively recreates the user's Anthropic Console trading-analyst agent (no external API key). Returns a structured trade read by default.
+- Backend: `artifacts/api-server/src/routes/signalAnalyst.ts` (conversation CRUD + Claude SSE streaming), context/prompt in `artifacts/api-server/src/lib/signalAnalystContext.ts` (the user's exact analyst system prompt + a JSON-output contract, grounded with `buildTradingContext()` reused from `assistantContext.ts`).
+- LLM: Claude `claude-sonnet-4-6` via Replit Anthropic managed proxy (`@workspace/integrations-anthropic-ai`), system prompt passed as the top-level `system` field; backend-only, no API key in frontend.
+- Output: JSON with keys `summary, bias, confidence, reasons_for[], reasons_against[], key_risk, macro_factor, suggested_action, position_size_note, follow_up_triggers` (plain text only when the user explicitly asks). The frontend `AnalysisCard` parses this (incl. ```json fences) into badges/reason lists/fields, falling back to plain text. During streaming the UI shows an "Analysing…" spinner instead of raw partial JSON.
+- Disclaimer enforced server-side (`ensureDisclaimer`) + permanent UI footer, same as the Assistant.
+- **Conversation isolation**: Assistant and Signal Analyst share the `conversations`/`messages` tables, discriminated by the `conversations.kind` column (`'assistant'` vs `'signal_analyst'`). Every conversation-ID route in BOTH routers (get/delete/list-messages/send) filters by `(id AND kind)` so the two chats cannot read/write/delete each other's data.
+
 ### AI Assistant
 In-app chat assistant (`/assistant`) that does technical analysis, risk review, and strategy feedback grounded in the user's live data (bot config, broker account/positions, watchlist, recent trades/signals/scanner hits).
 - Backend: `artifacts/api-server/src/routes/assistant.ts` (conversation CRUD + SSE streaming chat), context builder in `artifacts/api-server/src/lib/assistantContext.ts`.

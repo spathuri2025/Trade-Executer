@@ -2025,6 +2025,450 @@ export const useSendMessage = <TError = ErrorType<unknown>,
       return useMutation(getSendMessageMutationOptions(options));
     }
 
+export const getListSignalConversationsUrl = () => {
+
+
+
+
+  return `/api/signal-analyst/conversations`
+}
+
+/**
+ * @summary List all Signal Analyst conversations
+ */
+export const listSignalConversations = async ( options?: RequestInit): Promise<Conversation[]> => {
+
+  return customFetch<Conversation[]>(getListSignalConversationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSignalConversationsQueryKey = () => {
+    return [
+    `/api/signal-analyst/conversations`
+    ] as const;
+    }
+
+
+export const getListSignalConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listSignalConversations>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSignalConversationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSignalConversations>>> = ({ signal }) => listSignalConversations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSignalConversations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSignalConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof listSignalConversations>>>
+export type ListSignalConversationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all Signal Analyst conversations
+ */
+
+export function useListSignalConversations<TData = Awaited<ReturnType<typeof listSignalConversations>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSignalConversationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSignalConversationUrl = () => {
+
+
+
+
+  return `/api/signal-analyst/conversations`
+}
+
+/**
+ * @summary Create a new Signal Analyst conversation
+ */
+export const createSignalConversation = async (conversationInput: ConversationInput, options?: RequestInit): Promise<Conversation> => {
+
+  return customFetch<Conversation>(getCreateSignalConversationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      conversationInput,)
+  }
+);}
+
+
+
+
+export const getCreateSignalConversationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSignalConversation>>, TError,{data: BodyType<ConversationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSignalConversation>>, TError,{data: BodyType<ConversationInput>}, TContext> => {
+
+const mutationKey = ['createSignalConversation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSignalConversation>>, {data: BodyType<ConversationInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSignalConversation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSignalConversationMutationResult = NonNullable<Awaited<ReturnType<typeof createSignalConversation>>>
+    export type CreateSignalConversationMutationBody = BodyType<ConversationInput>
+    export type CreateSignalConversationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a new Signal Analyst conversation
+ */
+export const useCreateSignalConversation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSignalConversation>>, TError,{data: BodyType<ConversationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSignalConversation>>,
+        TError,
+        {data: BodyType<ConversationInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSignalConversationMutationOptions(options));
+    }
+
+export const getGetSignalConversationUrl = (id: number,) => {
+
+
+
+
+  return `/api/signal-analyst/conversations/${id}`
+}
+
+/**
+ * @summary Get a Signal Analyst conversation with its messages
+ */
+export const getSignalConversation = async (id: number, options?: RequestInit): Promise<ConversationWithMessages> => {
+
+  return customFetch<ConversationWithMessages>(getGetSignalConversationUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSignalConversationQueryKey = (id: number,) => {
+    return [
+    `/api/signal-analyst/conversations/${id}`
+    ] as const;
+    }
+
+
+export const getGetSignalConversationQueryOptions = <TData = Awaited<ReturnType<typeof getSignalConversation>>, TError = ErrorType<AssistantError>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignalConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSignalConversationQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSignalConversation>>> = ({ signal }) => getSignalConversation(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSignalConversation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSignalConversationQueryResult = NonNullable<Awaited<ReturnType<typeof getSignalConversation>>>
+export type GetSignalConversationQueryError = ErrorType<AssistantError>
+
+
+/**
+ * @summary Get a Signal Analyst conversation with its messages
+ */
+
+export function useGetSignalConversation<TData = Awaited<ReturnType<typeof getSignalConversation>>, TError = ErrorType<AssistantError>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignalConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSignalConversationQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDeleteSignalConversationUrl = (id: number,) => {
+
+
+
+
+  return `/api/signal-analyst/conversations/${id}`
+}
+
+/**
+ * @summary Delete a Signal Analyst conversation
+ */
+export const deleteSignalConversation = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteSignalConversationUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSignalConversationMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSignalConversation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSignalConversation>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteSignalConversation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSignalConversation>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSignalConversation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSignalConversationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSignalConversation>>>
+
+    export type DeleteSignalConversationMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Delete a Signal Analyst conversation
+ */
+export const useDeleteSignalConversation = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSignalConversation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSignalConversation>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteSignalConversationMutationOptions(options));
+    }
+
+export const getListSignalMessagesUrl = (id: number,) => {
+
+
+
+
+  return `/api/signal-analyst/conversations/${id}/messages`
+}
+
+/**
+ * @summary List messages in a Signal Analyst conversation
+ */
+export const listSignalMessages = async (id: number, options?: RequestInit): Promise<AssistantMessage[]> => {
+
+  return customFetch<AssistantMessage[]>(getListSignalMessagesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSignalMessagesQueryKey = (id: number,) => {
+    return [
+    `/api/signal-analyst/conversations/${id}/messages`
+    ] as const;
+    }
+
+
+export const getListSignalMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listSignalMessages>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSignalMessagesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSignalMessages>>> = ({ signal }) => listSignalMessages(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSignalMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSignalMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listSignalMessages>>>
+export type ListSignalMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List messages in a Signal Analyst conversation
+ */
+
+export function useListSignalMessages<TData = Awaited<ReturnType<typeof listSignalMessages>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSignalMessagesQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSendSignalMessageUrl = (id: number,) => {
+
+
+
+
+  return `/api/signal-analyst/conversations/${id}/messages`
+}
+
+/**
+ * @summary Send a message and receive a streaming Signal Analyst response
+ */
+export const sendSignalMessage = async (id: number,
+    messageInput: MessageInput, options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getSendSignalMessageUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      messageInput,)
+  }
+);}
+
+
+
+
+export const getSendSignalMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSignalMessage>>, TError,{id: number;data: BodyType<MessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendSignalMessage>>, TError,{id: number;data: BodyType<MessageInput>}, TContext> => {
+
+const mutationKey = ['sendSignalMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendSignalMessage>>, {id: number;data: BodyType<MessageInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendSignalMessage(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendSignalMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendSignalMessage>>>
+    export type SendSignalMessageMutationBody = BodyType<MessageInput>
+    export type SendSignalMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a message and receive a streaming Signal Analyst response
+ */
+export const useSendSignalMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSignalMessage>>, TError,{id: number;data: BodyType<MessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendSignalMessage>>,
+        TError,
+        {id: number;data: BodyType<MessageInput>},
+        TContext
+      > => {
+      return useMutation(getSendSignalMessageMutationOptions(options));
+    }
+
 export const getGetLatestDailyBriefUrl = () => {
 
 

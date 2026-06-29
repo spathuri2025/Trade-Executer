@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Menu, X } from "lucide-react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, Menu, X } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -9,6 +9,7 @@ const links = [
   { href: "/scanner", label: "Scanner", icon: ScanSearch },
   { href: "/instruments", label: "Instruments", icon: LineChart },
   { href: "/assistant", label: "Assistant", icon: MessageSquare },
+  { href: "/signal-analyst", label: "Signal Analyst", icon: Radar },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

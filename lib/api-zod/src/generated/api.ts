@@ -434,6 +434,83 @@ export const SendMessageBody = zod.object({
 
 
 /**
+ * @summary List all Signal Analyst conversations
+ */
+export const ListSignalConversationsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListSignalConversationsResponse = zod.array(ListSignalConversationsResponseItem)
+
+
+/**
+ * @summary Create a new Signal Analyst conversation
+ */
+export const CreateSignalConversationBody = zod.object({
+  "title": zod.string()
+})
+
+
+/**
+ * @summary Get a Signal Analyst conversation with its messages
+ */
+export const GetSignalConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSignalConversationResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Delete a Signal Analyst conversation
+ */
+export const DeleteSignalConversationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary List messages in a Signal Analyst conversation
+ */
+export const ListSignalMessagesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListSignalMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "conversationId": zod.number(),
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListSignalMessagesResponse = zod.array(ListSignalMessagesResponseItem)
+
+
+/**
+ * @summary Send a message and receive a streaming Signal Analyst response
+ */
+export const SendSignalMessageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendSignalMessageBody = zod.object({
+  "content": zod.string()
+})
+
+
+/**
  * @summary Get the latest saved daily market brief
  */
 export const GetLatestDailyBriefResponse = zod.object({

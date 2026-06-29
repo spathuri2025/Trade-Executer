@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { db, conversations, messages } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   CreateConversationBody,
   GetConversationParams,
@@ -14,15 +14,17 @@ import {
   GetConversationResponse,
   ListMessagesResponse,
 } from "@workspace/api-zod";
-import { buildSystemPrompt } from "../lib/assistantContext";
+import { buildSignalAnalystSystemPrompt } from "../lib/signalAnalystContext";
 
 const router: IRouter = Router();
 
+const KIND = "signal_analyst";
+
 const DISCLAIMER_LINE =
-  "_Reminder: Trading involves substantial risk and nothing here constitutes financial advice._";
+  "_Reminder: This is analytical assistance only, not regulated financial advice. Trading involves substantial risk._";
 
 /**
- * Guarantees every assistant reply carries a risk / not-financial-advice
+ * Guarantees every analyst reply carries a risk / not-financial-advice
  * disclaimer. If the model already included one, the text is returned
  * unchanged; otherwise a standard reminder is appended.
  */
@@ -31,22 +33,23 @@ function ensureDisclaimer(text: string): string {
   const hasDisclaimer =
     lower.includes("not financial advice") ||
     lower.includes("financial advice") ||
+    lower.includes("not regulated") ||
     (lower.includes("risk") && lower.includes("advice"));
   if (hasDisclaimer) return text;
   const sep = text.trim().length > 0 ? "\n\n" : "";
   return `${text}${sep}${DISCLAIMER_LINE}`;
 }
 
-router.get("/assistant/conversations", async (_req, res): Promise<void> => {
+router.get("/signal-analyst/conversations", async (_req, res): Promise<void> => {
   const rows = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.kind, "assistant"))
+    .where(eq(conversations.kind, KIND))
     .orderBy(desc(conversations.createdAt));
   res.json(ListConversationsResponse.parse(rows));
 });
 
-router.post("/assistant/conversations", async (req, res): Promise<void> => {
+router.post("/signal-analyst/conversations", async (req, res): Promise<void> => {
   const parsed = CreateConversationBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -54,12 +57,12 @@ router.post("/assistant/conversations", async (req, res): Promise<void> => {
   }
   const [row] = await db
     .insert(conversations)
-    .values({ title: parsed.data.title, kind: "assistant" })
+    .values({ title: parsed.data.title, kind: KIND })
     .returning();
   res.status(201).json(ListConversationsResponseItem.parse(row));
 });
 
-router.get("/assistant/conversations/:id", async (req, res): Promise<void> => {
+router.get("/signal-analyst/conversations/:id", async (req, res): Promise<void> => {
   const params = GetConversationParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -68,7 +71,7 @@ router.get("/assistant/conversations/:id", async (req, res): Promise<void> => {
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, "assistant")));
+    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, KIND)));
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -81,7 +84,7 @@ router.get("/assistant/conversations/:id", async (req, res): Promise<void> => {
   res.json(GetConversationResponse.parse({ ...conversation, messages: msgs }));
 });
 
-router.delete("/assistant/conversations/:id", async (req, res): Promise<void> => {
+router.delete("/signal-analyst/conversations/:id", async (req, res): Promise<void> => {
   const params = DeleteConversationParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -89,7 +92,7 @@ router.delete("/assistant/conversations/:id", async (req, res): Promise<void> =>
   }
   const [deleted] = await db
     .delete(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, "assistant")))
+    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, KIND)))
     .returning();
   if (!deleted) {
     res.status(404).json({ error: "Conversation not found" });
@@ -98,7 +101,7 @@ router.delete("/assistant/conversations/:id", async (req, res): Promise<void> =>
   res.sendStatus(204);
 });
 
-router.get("/assistant/conversations/:id/messages", async (req, res): Promise<void> => {
+router.get("/signal-analyst/conversations/:id/messages", async (req, res): Promise<void> => {
   const params = ListMessagesParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -107,7 +110,7 @@ router.get("/assistant/conversations/:id/messages", async (req, res): Promise<vo
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, "assistant")));
+    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, KIND)));
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -120,7 +123,7 @@ router.get("/assistant/conversations/:id/messages", async (req, res): Promise<vo
   res.json(ListMessagesResponse.parse(msgs));
 });
 
-router.post("/assistant/conversations/:id/messages", async (req, res): Promise<void> => {
+router.post("/signal-analyst/conversations/:id/messages", async (req, res): Promise<void> => {
   const params = SendMessageParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -142,7 +145,7 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, conversationId), eq(conversations.kind, "assistant")));
+    .where(and(eq(conversations.id, conversationId), eq(conversations.kind, KIND)));
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -162,15 +165,14 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
     .where(eq(messages.conversationId, conversationId))
     .orderBy(asc(messages.createdAt));
 
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSignalAnalystSystemPrompt();
 
-  const chatMessages = [
-    { role: "system" as const, content: systemPrompt },
-    ...history.map((m) => ({
-      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: m.content,
-    })),
-  ];
+  // Anthropic takes the system prompt as a top-level field; messages must be
+  // user/assistant turns only.
+  const chatMessages = history.map((m) => ({
+    role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+    content: m.content,
+  }));
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -178,41 +180,43 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
 
   let fullResponse = "";
   let clientGone = false;
-  let stream: Awaited<ReturnType<typeof openai.chat.completions.create>> | undefined;
 
-  // Abort the upstream OpenAI stream if the client disconnects, to avoid
+  // Abort the upstream Claude stream if the client disconnects, to avoid
   // spending tokens on a response nobody is reading.
+  const ac = new AbortController();
   const onClose = () => {
     clientGone = true;
-    try {
-      (stream as { controller?: AbortController } | undefined)?.controller?.abort();
-    } catch {
-      // ignore
-    }
+    ac.abort();
   };
   req.on("close", onClose);
 
   try {
-    stream = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 8192,
-      messages: chatMessages,
-      stream: true,
-    });
+    const stream = await anthropic.messages.create(
+      {
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages: chatMessages,
+        stream: true,
+      },
+      { signal: ac.signal },
+    );
 
-    for await (const chunk of stream) {
+    for await (const event of stream) {
       if (clientGone) break;
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        fullResponse += content;
-        res.write(`data: ${JSON.stringify({ content })}\n\n`);
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        const content = event.delta.text;
+        if (content) {
+          fullResponse += content;
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+        }
       }
     }
   } catch (err) {
     if (!clientGone) {
-      req.log.error({ err, conversationId }, "Assistant streaming error");
+      req.log.error({ err, conversationId }, "Signal Analyst streaming error");
       res.write(
-        `data: ${JSON.stringify({ error: "The assistant encountered an error. Please try again." })}\n\n`,
+        `data: ${JSON.stringify({ error: "The Signal Analyst encountered an error. Please try again." })}\n\n`,
       );
       res.end();
     }
@@ -222,8 +226,8 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
 
   req.off("close", onClose);
 
-  // Enforce the risk / not-financial-advice disclaimer on every reply, even
-  // if the model omits it. This is a hard product requirement.
+  // Enforce the risk / not-financial-advice disclaimer on every reply, even if
+  // the model omits it. This is a hard product requirement.
   const finalResponse = ensureDisclaimer(fullResponse);
   const appended = finalResponse !== fullResponse;
 
