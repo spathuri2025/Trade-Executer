@@ -57,16 +57,19 @@ export default function Signals() {
     },
   });
 
-  const botIntervalMs = (botStatus?.config?.intervalMinutes ?? 15) * 60_000;
+  // Poll the DB every 20s so new bot signals appear quickly (kept for parity
+  // with the dashboard; broker-backed views stay on the same safe cadence).
+  void botStatus;
+  const LIVE_INTERVAL_MS = 20_000;
 
   const { data: signals, isLoading, dataUpdatedAt } = useListSignals(undefined, {
     query: {
       queryKey: getListSignalsQueryKey(),
-      refetchInterval: botIntervalMs,
+      refetchInterval: LIVE_INTERVAL_MS,
     },
   });
 
-  const countdown = useCountdown(dataUpdatedAt, botIntervalMs);
+  const countdown = useCountdown(dataUpdatedAt, LIVE_INTERVAL_MS);
 
   return (
     <div className="space-y-6 md:space-y-8">

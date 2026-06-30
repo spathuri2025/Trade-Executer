@@ -13,7 +13,18 @@ import SignalAnalyst from "@/pages/signal-analyst";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Keep the dashboard feeling live: refetch when the user returns to the
+      // tab/window, and don't serve stale cache without revalidating.
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      staleTime: 0,
+      retry: 1,
+    },
+  },
+});
 
 function Router() {
   return (

@@ -29,6 +29,9 @@ const red = "#f87171";
 const amber = "#d97706";
 
 const NEWS_INTERVAL_MS = 15 * 60_000; // always 15 min
+// Live broker/account/signal data: refresh every 20s (broker APIs are rate-limited,
+// so sub-second polling isn't safe — 20s keeps it live without tripping limits).
+const LIVE_INTERVAL_MS = 20_000;
 
 /** Returns "Xm Ys" until the next refetch based on dataUpdatedAt + interval */
 function useCountdown(dataUpdatedAt: number, intervalMs: number) {
@@ -96,26 +99,26 @@ export default function Dashboard() {
   const { data: account, isLoading: accountLoading } = useGetAccount({
     query: {
       queryKey: getGetAccountQueryKey(),
-      refetchInterval: botIntervalMs,
+      refetchInterval: LIVE_INTERVAL_MS,
     },
   });
 
   const { data: positions, isLoading: positionsLoading } = useListPositions({
     query: {
       queryKey: getListPositionsQueryKey(),
-      refetchInterval: botIntervalMs,
+      refetchInterval: LIVE_INTERVAL_MS,
     },
   });
 
-  /* ── Signals: refresh exactly at the bot's scan interval ── */
+  /* ── Signals: poll the DB frequently so new bot signals show up fast ── */
   const signalsQuery = useListSignals({ limit: 5 }, {
     query: {
       queryKey: getListSignalsQueryKey({ limit: 5 }),
-      refetchInterval: botIntervalMs,
+      refetchInterval: LIVE_INTERVAL_MS,
     },
   });
   const { data: signals, isLoading: signalsLoading, dataUpdatedAt: signalsUpdatedAt } = signalsQuery;
-  const signalsCountdown = useCountdown(signalsUpdatedAt, botIntervalMs);
+  const signalsCountdown = useCountdown(signalsUpdatedAt, LIVE_INTERVAL_MS);
 
   /* ── News: strictly every 15 minutes ── */
   const newsQuery = useGetMarketNews({ limit: 8 }, {
@@ -209,7 +212,7 @@ export default function Dashboard() {
                 const profit = pos.pnl >= 0;
                 return (
                   <div
-                    key={pos.ticker}
+                    key={`${pos.ticker}-${idx}`}
                     className="flex items-center justify-between p-5"
                     style={idx < positions.length - 1 ? { borderBottom: divider } : {}}
                   >
