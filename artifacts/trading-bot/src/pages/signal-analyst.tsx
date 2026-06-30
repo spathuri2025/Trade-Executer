@@ -18,14 +18,6 @@ import {
   User,
   MessageSquare,
   Loader2,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  ShieldAlert,
-  Globe,
-  Target,
-  Scale,
-  Bell,
 } from "lucide-react";
 
 const cardBg = "hsl(var(--card))";
@@ -36,67 +28,6 @@ interface ChatMessage {
   id: number | string;
   role: "user" | "assistant";
   content: string;
-}
-
-interface Analysis {
-  summary?: string;
-  bias?: string;
-  confidence?: string;
-  reasons_for?: unknown;
-  reasons_against?: unknown;
-  key_risk?: string;
-  macro_factor?: string;
-  suggested_action?: string;
-  position_size_note?: string;
-  follow_up_triggers?: unknown;
-}
-
-const ANALYSIS_KEYS = [
-  "summary",
-  "bias",
-  "confidence",
-  "reasons_for",
-  "reasons_against",
-  "key_risk",
-  "macro_factor",
-  "suggested_action",
-  "position_size_note",
-  "follow_up_triggers",
-];
-
-/** Attempts to parse a structured analysis object out of a model reply. */
-function parseAnalysis(content: string): Analysis | null {
-  const trimmed = content.trim();
-  let raw = trimmed;
-  if (!raw.startsWith("{")) {
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start === -1 || end === -1 || end <= start) return null;
-    raw = raw.slice(start, end + 1);
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const hasKey = ANALYSIS_KEYS.some((k) => k in parsed);
-      if (hasKey) return parsed as Analysis;
-    }
-  } catch {
-    // not structured JSON — render as plain text
-  }
-  return null;
-}
-
-/** Detects whether a streaming reply is (becoming) a structured JSON payload,
- *  so we can show an "Analysing…" indicator instead of raw partial JSON. */
-function looksStructured(content: string): boolean {
-  const t = content.trimStart();
-  return t.startsWith("{") || t.startsWith("```");
-}
-
-function toList(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map((v) => String(v)).filter(Boolean);
-  if (typeof value === "string" && value.trim()) return [value.trim()];
-  return [];
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -257,7 +188,7 @@ export default function SignalAnalyst() {
           <SectionLabel>Signal Analyst</SectionLabel>
           <h1 className="text-2xl font-semibold tracking-tight text-white mt-1">Signal Analyst</h1>
           <p className="text-sm mt-1" style={{ color: muted }}>
-            Structured, disciplined trade analysis — signal evaluation, risk review, and macro context, grounded in your live data.
+            Plain, simple trade feedback — clear answers in everyday words, based on your live data.
           </p>
         </div>
       </div>
@@ -327,9 +258,9 @@ export default function SignalAnalyst() {
                 </div>
                 <h3 className="text-white font-medium">Ask the Signal Analyst</h3>
                 <p className="text-sm mt-2 max-w-md" style={{ color: muted }}>
-                  Paste a setup, name a ticker, or ask "should I take this trade?". You'll get a structured read:
-                  bias, confidence, reasons for and against, key risk, macro factor, and a suggested action — grounded in
-                  your account, positions, and signals.
+                  Name a ticker or ask "should I take this trade?". You'll get a short, plain answer:
+                  what it looks like, why, and the main risk — in everyday words, based on your account,
+                  positions, and signals.
                 </p>
               </div>
             ) : (
@@ -347,7 +278,7 @@ export default function SignalAnalyst() {
                   <MessageBubble
                     role="assistant"
                     content={streaming}
-                    pending={!streaming || looksStructured(streaming)}
+                    pending={!streaming}
                   />
                 )}
               </>
@@ -397,7 +328,6 @@ function MessageBubble({
   pending?: boolean;
 }) {
   const isUser = role === "user";
-  const analysis = !isUser && !pending ? parseAnalysis(content) : null;
 
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -409,149 +339,20 @@ function MessageBubble({
         {isUser ? <User className="h-3.5 w-3.5 text-white/70" /> : <Radar className="h-3.5 w-3.5 text-primary" />}
       </div>
       <div
-        className={`rounded-lg px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-          isUser ? "bg-white/10 text-white max-w-[85%]" : "text-white/90"
-        } ${analysis ? "w-full max-w-[95%]" : "max-w-[85%]"}`}
+        className={`rounded-lg px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap max-w-[85%] ${
+          isUser ? "bg-white/10 text-white" : "text-white/90"
+        }`}
         style={isUser ? undefined : { background: "hsl(var(--muted) / 0.4)" }}
       >
         {pending ? (
           <span className="inline-flex items-center gap-1 text-white/50">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Analysing…
+            Thinking…
           </span>
-        ) : analysis ? (
-          <AnalysisCard analysis={analysis} />
         ) : (
           content
         )}
       </div>
-    </div>
-  );
-}
-
-function BiasBadge({ bias }: { bias: string }) {
-  const lower = bias.toLowerCase();
-  const bullish = lower.includes("bull") || lower.includes("long") || lower.includes("up");
-  const bearish = lower.includes("bear") || lower.includes("short") || lower.includes("down");
-  const Icon = bullish ? TrendingUp : bearish ? TrendingDown : Minus;
-  const color = bullish ? "text-emerald-400" : bearish ? "text-rose-400" : "text-white/60";
-  const bg = bullish ? "bg-emerald-400/10" : bearish ? "bg-rose-400/10" : "bg-white/5";
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${bg} ${color}`}>
-      <Icon className="h-3.5 w-3.5" />
-      {bias}
-    </span>
-  );
-}
-
-function ConfidenceBadge({ confidence }: { confidence: string }) {
-  const lower = confidence.toLowerCase();
-  const color = lower.includes("high")
-    ? "text-emerald-400 bg-emerald-400/10"
-    : lower.includes("low")
-      ? "text-rose-400 bg-rose-400/10"
-      : "text-amber-300 bg-amber-300/10";
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${color}`}>
-      Confidence: {confidence}
-    </span>
-  );
-}
-
-function Field({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value?: string;
-}) {
-  if (!value || !value.trim()) return null;
-  return (
-    <div>
-      <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold" style={{ color: muted }}>
-        <Icon className="h-3 w-3" />
-        {label}
-      </p>
-      <p className="text-sm text-white/85 mt-1">{value}</p>
-    </div>
-  );
-}
-
-function ReasonList({
-  title,
-  items,
-  positive,
-}: {
-  title: string;
-  items: string[];
-  positive: boolean;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <div>
-      <p className={`text-[10px] uppercase tracking-wider font-semibold ${positive ? "text-emerald-400" : "text-rose-400"}`}>
-        {title}
-      </p>
-      <ul className="mt-1.5 space-y-1">
-        {items.map((it, i) => (
-          <li key={i} className="flex gap-2 text-sm text-white/85">
-            <span className={positive ? "text-emerald-400" : "text-rose-400"}>{positive ? "+" : "−"}</span>
-            <span>{it}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function AnalysisCard({ analysis }: { analysis: Analysis }) {
-  const reasonsFor = toList(analysis.reasons_for);
-  const reasonsAgainst = toList(analysis.reasons_against);
-  const triggers = toList(analysis.follow_up_triggers);
-
-  return (
-    <div className="space-y-4 not-prose">
-      {analysis.summary && <p className="text-sm text-white leading-relaxed">{analysis.summary}</p>}
-
-      {(analysis.bias || analysis.confidence) && (
-        <div className="flex flex-wrap gap-2">
-          {analysis.bias && <BiasBadge bias={analysis.bias} />}
-          {analysis.confidence && <ConfidenceBadge confidence={analysis.confidence} />}
-        </div>
-      )}
-
-      {(reasonsFor.length > 0 || reasonsAgainst.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-md p-3" style={{ background: "hsl(var(--muted) / 0.3)" }}>
-          <ReasonList title="Reasons for" items={reasonsFor} positive />
-          <ReasonList title="Reasons against" items={reasonsAgainst} positive={false} />
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-        <Field icon={ShieldAlert} label="Key risk" value={analysis.key_risk} />
-        <Field icon={Globe} label="Macro factor" value={analysis.macro_factor} />
-        <Field icon={Target} label="Suggested action" value={analysis.suggested_action} />
-        <Field icon={Scale} label="Position size note" value={analysis.position_size_note} />
-      </div>
-
-      {triggers.length > 0 && (
-        <div>
-          <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold" style={{ color: muted }}>
-            <Bell className="h-3 w-3" />
-            Follow-up triggers
-          </p>
-          <ul className="mt-1.5 space-y-1">
-            {triggers.map((t, i) => (
-              <li key={i} className="flex gap-2 text-sm text-white/85">
-                <span className="text-primary">•</span>
-                <span>{t}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
