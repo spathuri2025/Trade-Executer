@@ -21,6 +21,17 @@ const emerald = "#10b981";
 const red = "#f87171";
 const amber = "#d97706";
 
+/** True when an ISO timestamp falls on the current UTC calendar day (mirrors the server). */
+function isFromToday(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return (
+    d.getUTCFullYear() === now.getUTCFullYear() &&
+    d.getUTCMonth() === now.getUTCMonth() &&
+    d.getUTCDate() === now.getUTCDate()
+  );
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, color: muted }}>
@@ -84,7 +95,16 @@ export default function DailyMarketBrief() {
   const { isAdmin } = useAdminMode();
 
   const { data, isLoading } = useGetLatestDailyBrief({
-    query: { queryKey: getGetLatestDailyBriefQueryKey() },
+    query: {
+      queryKey: getGetLatestDailyBriefQueryKey(),
+      // The server generates today's brief in the background on first request, so
+      // early responses may return null (or yesterday's brief on a new day). Keep
+      // polling until we actually have TODAY's brief, then stop.
+      refetchInterval: (query) => {
+        const b = query.state.data?.brief;
+        return b && isFromToday(b.createdAt) ? false : 5000;
+      },
+    },
   });
 
   const createBrief = useCreateDailyBrief({
@@ -154,7 +174,7 @@ export default function DailyMarketBrief() {
             ? "Generating today's market brief…"
             : isAdmin
               ? "No brief yet. Use \u201CGenerate Today's Brief\u201D to create the first one."
-              : "Today's market brief hasn't been published yet. Please check back soon."}
+              : "Preparing today's market brief… this can take a few seconds. It will appear here automatically."}
         </div>
       ) : (
         <>

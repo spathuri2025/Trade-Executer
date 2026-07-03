@@ -1,3 +1,4 @@
 - [Trade execution safety](trade-execution-safety.md) — manual + bot trades share one config/recording path; Dry Run gates live orders; classify errors 400/429/502.
 - [Conversation kind isolation](conversation-kind-isolation.md) — Assistant & Signal Analyst share conversations/messages tables; EVERY id route in both routers must filter by (id AND kind), not just list/create.
 - [Live data refresh cadence](live-data-refresh-cadence.md) — broker-backed dashboard data polls a fixed ~20s LIVE_INTERVAL_MS; never poll account/positions sub-second (Capital.com/Trading212 rate limits).
+- [Daily brief auto-generation](daily-brief-autogen.md) — read-triggered LLM gen must be background + client polls until TODAY's brief (not just any brief).

@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, dailyMarketBriefsTable, type DailyMarketBrief } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import { generateDailyBrief } from "../lib/dailyBriefService";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -42,34 +43,48 @@ async function fetchLatest(): Promise<DailyMarketBrief | undefined> {
   return latest;
 }
 
+/**
+ * Fire-and-forget generation of today's brief. Runs in the background so the GET
+ * request can return immediately instead of hanging ~13s on the LLM call. The
+ * client polls /latest and picks up the brief once it's saved. Guarded by the
+ * shared `creating` flag + cooldown so only one generation runs at a time.
+ */
+function triggerBackgroundGeneration(): void {
+  creating = true;
+  lastCreateAt = Date.now();
+  void (async () => {
+    try {
+      const generated = await generateDailyBrief(logger);
+      const [saved] = await db
+        .insert(dailyMarketBriefsTable)
+        .values({ markets: generated.markets, disclaimer: generated.disclaimer })
+        .returning();
+      if (!saved) throw new Error("Failed to persist generated brief");
+      logger.info({ id: saved.id }, "Auto-generated daily market brief");
+    } catch (genErr) {
+      logger.error({ err: genErr }, "Background auto-generation of daily brief failed");
+    } finally {
+      creating = false;
+    }
+  })();
+}
+
 router.get("/daily-market-brief/latest", async (req, res): Promise<void> => {
   try {
-    let latest = await fetchLatest();
+    const latest = await fetchLatest();
 
-    // Self-populate: if no brief exists yet today, generate one on demand so every
-    // environment (dev + production) always shows a fresh brief without needing a
-    // manual admin action. Skip if another request is already generating, and never
-    // let a generation failure break the page — fall back to whatever we have.
+    // Self-populate: if there's no brief for today, kick off generation in the
+    // background so every environment (dev + production) fills itself without a
+    // manual admin action. The request returns immediately with whatever we have
+    // (null or yesterday's brief); the client polls and shows the new one when ready.
     const needsFresh = !latest || !isFromToday(latest.createdAt);
     if (needsFresh && !creating && Date.now() - lastCreateAt >= CREATE_COOLDOWN_MS) {
-      creating = true;
-      try {
-        const generated = await generateDailyBrief(req.log);
-        const [saved] = await db
-          .insert(dailyMarketBriefsTable)
-          .values({ markets: generated.markets, disclaimer: generated.disclaimer })
-          .returning();
-        if (saved) {
-          latest = saved;
-          lastCreateAt = Date.now();
-        }
-      } catch (genErr) {
-        req.log.error({ err: genErr }, "Auto-generation of daily brief failed — serving existing brief if any");
-      } finally {
-        creating = false;
-      }
+      triggerBackgroundGeneration();
     }
 
+    // Never cache: while a brief is generating we return null, and the client must
+    // see the real brief on its next poll rather than a cached empty response.
+    res.set("Cache-Control", "no-store");
     res.json({ brief: latest ? serialize(latest) : null });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch latest daily market brief");
