@@ -530,10 +530,7 @@ export const GetLatestDailyBriefResponse = zod.object({
   "bias": zod.string().describe('Overall market bias \/ directional lean'),
   "support": zod.string().describe('Key support level(s)'),
   "resistance": zod.string().describe('Key resistance level(s)'),
-  "news": zod.string().describe('Important news \/ events affecting the market'),
-  "highRiskPeriods": zod.string().describe('High-risk trading periods to watch'),
-  "technicalObservations": zod.string().describe('Technical observations'),
-  "educationalSummary": zod.string().describe('Educational summary for the market')
+  "summary": zod.string().describe('Short, plain-language paragraph covering the outlook, key news\/risks and what to watch')
 })),
   "disclaimer": zod.string(),
   "createdAt": zod.coerce.date()

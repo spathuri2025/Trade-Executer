@@ -7,9 +7,9 @@ const DISCLAIMER =
 
 const MARKETS = ["Crude Oil WTI", "Gold", "S&P 500", "Bitcoin"];
 
-/** The exact analyst prompt provided by the product owner. */
+/** The analyst prompt — kept short and decision-focused per product owner. */
 const BASE_PROMPT =
-  "You are the TradeBuzz Daily Market Analyst. Create a professional daily market brief for day traders covering Crude Oil WTI, Gold, S&P 500 and Bitcoin. For each market include market bias, key support, key resistance, important news/events, high-risk trading periods, technical observations and an educational summary. Do not give guaranteed buy/sell signals. Always include: Trading involves risk. This report is for educational purposes and is not financial advice.";
+  "You are the TradeBuzz Daily Market Analyst. Create a SHORT, easy-to-read daily market brief for day traders covering Crude Oil WTI, Gold, S&P 500 and Bitcoin. For each market give the directional bias, the key support and resistance levels, and ONE short plain-language paragraph (2-3 sentences, max ~60 words) that a busy trader can skim to make a decision. That paragraph should fold together what matters most today: the outlook, any important news/events, high-risk periods to watch, and the main technical observation — in everyday language, no jargon, no walls of text. Do not give guaranteed buy/sell signals. Always include: Trading involves risk. This report is for educational purposes and is not financial advice.";
 
 /** Appended so the model returns parseable, structured JSON we can render per market. */
 const FORMAT_INSTRUCTION = `
@@ -18,19 +18,16 @@ Respond with ONLY a valid JSON object (no markdown, no code fences, no commentar
 {
   "markets": [
     {
-      "name": string,            // one of: "Crude Oil WTI", "Gold", "S&P 500", "Bitcoin"
-      "bias": string,            // market bias / directional lean
-      "support": string,         // key support level(s)
-      "resistance": string,      // key resistance level(s)
-      "news": string,            // important news / events
-      "highRiskPeriods": string, // high-risk trading periods
-      "technicalObservations": string,
-      "educationalSummary": string
+      "name": string,        // one of: "Crude Oil WTI", "Gold", "S&P 500", "Bitcoin"
+      "bias": string,        // short directional lean, e.g. "Bullish", "Bearish", "Neutral"
+      "support": string,     // key support level(s), just the number(s)
+      "resistance": string,  // key resistance level(s), just the number(s)
+      "summary": string      // ONE short paragraph, 2-3 sentences (max ~60 words), plain language, decision-focused
     }
   ],
-  "disclaimer": string           // must equal: "${DISCLAIMER}"
+  "disclaimer": string       // must equal: "${DISCLAIMER}"
 }
-Include exactly one entry for each of: Crude Oil WTI, Gold, S&P 500, Bitcoin, in that order. Do not give guaranteed buy/sell signals.`;
+Include exactly one entry for each of: Crude Oil WTI, Gold, S&P 500, Bitcoin, in that order. Keep every field concise. Do not give guaranteed buy/sell signals.`;
 
 export interface GeneratedBrief {
   markets: MarketUpdate[];
@@ -65,10 +62,7 @@ function normalizeMarket(raw: unknown): MarketUpdate {
     bias: asString(obj["bias"]),
     support: asString(obj["support"]),
     resistance: asString(obj["resistance"]),
-    news: asString(obj["news"]),
-    highRiskPeriods: asString(obj["highRiskPeriods"]),
-    technicalObservations: asString(obj["technicalObservations"]),
-    educationalSummary: asString(obj["educationalSummary"]),
+    summary: asString(obj["summary"]),
   };
 }
 
@@ -106,10 +100,7 @@ export async function generateDailyBrief(log: Logger): Promise<GeneratedBrief> {
       bias: "Unavailable",
       support: "Unavailable",
       resistance: "Unavailable",
-      news: "Unavailable",
-      highRiskPeriods: "Unavailable",
-      technicalObservations: "Unavailable",
-      educationalSummary: "Data for this market was not returned. Please regenerate the brief.",
+      summary: "Data for this market was not returned. Please regenerate the brief.",
     };
   });
 

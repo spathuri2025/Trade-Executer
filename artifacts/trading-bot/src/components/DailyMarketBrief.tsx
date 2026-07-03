@@ -39,13 +39,13 @@ function biasTone(bias: string): { color: string; Icon: typeof TrendingUp; label
   return { color: amber, Icon: Minus, label: "Neutral" };
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Level({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="space-y-1">
-      <SectionLabel>{label}</SectionLabel>
-      <p className="text-sm leading-relaxed" style={{ color: "hsl(var(--foreground) / 0.85)" }}>
+    <div className="flex items-baseline gap-1.5">
+      <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>{label}</span>
+      <span className="text-sm font-mono font-medium tabular-nums" style={{ color }}>
         {value || "—"}
-      </p>
+      </span>
     </div>
   );
 }
@@ -54,7 +54,7 @@ function MarketCard({ market }: { market: MarketUpdate }) {
   const { color, Icon, label } = biasTone(market.bias);
   return (
     <div className="rounded-lg overflow-hidden flex flex-col" style={{ backgroundColor: card, border: cardBorder }}>
-      <div className="flex items-center justify-between gap-3 p-5" style={{ borderBottom: divider }}>
+      <div className="flex items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: divider }}>
         <h3 className="text-base font-medium">{market.name}</h3>
         <div
           className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-semibold tracking-wide shrink-0"
@@ -65,16 +65,14 @@ function MarketCard({ market }: { market: MarketUpdate }) {
         </div>
       </div>
 
-      <div className="p-5 space-y-4">
-        <Field label="Market Bias" value={market.bias} />
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Key Support" value={market.support} />
-          <Field label="Key Resistance" value={market.resistance} />
+      <div className="p-5 space-y-3">
+        <p className="text-sm leading-relaxed" style={{ color: "hsl(var(--foreground) / 0.9)" }}>
+          {market.summary || "—"}
+        </p>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pt-1" style={{ borderTop: divider }}>
+          <Level label="Support" value={market.support} color={emerald} />
+          <Level label="Resistance" value={market.resistance} color={red} />
         </div>
-        <Field label="News / Events" value={market.news} />
-        <Field label="High-Risk Periods" value={market.highRiskPeriods} />
-        <Field label="Technical Observations" value={market.technicalObservations} />
-        <Field label="Educational Summary" value={market.educationalSummary} />
       </div>
     </div>
   );

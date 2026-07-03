@@ -7,10 +7,7 @@ export interface MarketUpdate {
   bias: string;
   support: string;
   resistance: string;
-  news: string;
-  highRiskPeriods: string;
-  technicalObservations: string;
-  educationalSummary: string;
+  summary: string;
 }
 
 export const dailyMarketBriefsTable = pgTable("daily_market_briefs", {

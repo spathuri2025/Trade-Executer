@@ -15,12 +15,6 @@ export interface MarketUpdate {
   support: string;
   /** Key resistance level(s) */
   resistance: string;
-  /** Important news / events affecting the market */
-  news: string;
-  /** High-risk trading periods to watch */
-  highRiskPeriods: string;
-  /** Technical observations */
-  technicalObservations: string;
-  /** Educational summary for the market */
-  educationalSummary: string;
+  /** Short, plain-language paragraph covering the outlook, key news/risks and what to watch */
+  summary: string;
 }

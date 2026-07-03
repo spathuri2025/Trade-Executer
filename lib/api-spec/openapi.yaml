@@ -1069,10 +1069,7 @@ components:
         - bias
         - support
         - resistance
-        - news
-        - highRiskPeriods
-        - technicalObservations
-        - educationalSummary
+        - summary
       properties:
         name:
           type: string
@@ -1086,18 +1083,9 @@ components:
         resistance:
           type: string
           description: Key resistance level(s)
-        news:
+        summary:
           type: string
-          description: Important news / events affecting the market
-        highRiskPeriods:
-          type: string
-          description: High-risk trading periods to watch
-        technicalObservations:
-          type: string
-          description: Technical observations
-        educationalSummary:
-          type: string
-          description: Educational summary for the market
+          description: Short, plain-language paragraph covering the outlook, key news/risks and what to watch
 
     DailyMarketBrief:
       type: object
