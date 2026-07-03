@@ -34,6 +34,14 @@ TradeBuzz — algorithmic trading bot dashboard (ClinAITech Limited, UK). Broker
 
 Pages: Dashboard, Trades, Signals, Scanner, Instruments, **Assistant** (AI day-trading chat), Settings.
 
+### AI Trade Execution (guard / autonomous)
+Claude can participate in the bot's trade loop via a user-selectable **AI Trade Mode** (`bot.config.aiTradeMode`: `"off" | "guard" | "autonomous"`, default `"off"`). Selected in Settings (`settings.tsx`, mode selector card with a dry-run warning banner). Reasoning is surfaced on the Signals page (AI Reason) and Trades page (AI Reason + confidence).
+- **guard** (safety-check): MA strategy generates the signal; on a non-HOLD signal Claude's `reviewSignal()` approves/vetoes before the real order is placed. On Claude error the trade is **vetoed** (fail-safe).
+- **autonomous** (decision-maker): Claude's `decideTrades()` decides BUY/SELL/HOLD per instrument each cycle, then the bot acts.
+- Logic: `artifacts/api-server/src/lib/aiTrader.ts` (`reviewSignal`, `decideTrades`) using Claude `claude-sonnet-4-6` via `@workspace/integrations-anthropic-ai` (backend-only, JSON parse w/ recovery, mirrors `dailyBriefService`). Wired into `botEngine.ts` `runCycle` (gathers account+positions+per-instrument MA contexts; helpers `sizePosition()`, `placeAndRecord()` persist `aiReason`/`aiConfidence`).
+- DB: `trades.aiReason`+`trades.aiConfidence`, `signals.aiReason` (all text, nullable). Exposed via OpenAPI (Trade/Signal/BotConfig schemas) and returned by the `/trades`, `/signals`, `/signals/run` route mappings.
+- **Safety**: bot defaults Stopped + `dryRun` TRUE; DRY_RUN trades are paper only. Capital.com places REAL orders against the LIVE API when dryRun is off — keep dry run on until validated.
+
 ### Daily Market Brief
 Dashboard panel "AI Daily Market Brief" (`artifacts/trading-bot/src/components/DailyMarketBrief.tsx`) showing the latest AI-generated daily outlook for Crude Oil WTI, Gold, S&P 500, Bitcoin. Each market card has bias, key support/resistance, news/events, high-risk periods, technical observations, educational summary, plus a shared disclaimer footer.
 - Backend: `artifacts/api-server/src/routes/dailyMarketBrief.ts` (GET `/api/daily-market-brief/latest` → `{ brief }` or `{ brief: null }`; POST `/api/daily-market-brief/create` generates via Claude, saves, returns). Generation logic in `artifacts/api-server/src/lib/dailyBriefService.ts`.

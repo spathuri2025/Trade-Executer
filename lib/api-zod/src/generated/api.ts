@@ -31,7 +31,8 @@ export const GetBotStatusResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
-  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 })
 })
 
@@ -51,7 +52,8 @@ export const StartBotResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
-  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 })
 })
 
@@ -71,7 +73,8 @@ export const StopBotResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
-  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 })
 })
 
@@ -87,7 +90,8 @@ export const UpdateBotConfigBody = zod.object({
   "dryRun": zod.boolean().optional(),
   "broker": zod.enum(['trading212', 'capitalcom']).optional(),
   "stopLossPercent": zod.number().optional().describe('Stop-loss distance as % of entry price. 0 disables.'),
-  "riskPerTradePercent": zod.number().optional().describe('Account balance % to risk per trade. 0 uses fixed tradeAmount.')
+  "riskPerTradePercent": zod.number().optional().describe('Account balance % to risk per trade. 0 uses fixed tradeAmount.'),
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.')
 })
 
 export const UpdateBotConfigResponse = zod.object({
@@ -102,7 +106,8 @@ export const UpdateBotConfigResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
-  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.')
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 })
 })
 
@@ -126,7 +131,9 @@ export const ListTradesResponseItem = zod.object({
   "executedAt": zod.string(),
   "status": zod.enum(['FILLED', 'FAILED', 'DRY_RUN']),
   "errorMessage": zod.string().nullish(),
-  "orderId": zod.string().nullish()
+  "orderId": zod.string().nullish(),
+  "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for approving\/making this trade (AI modes only).'),
+  "aiConfidence": zod.string().nullish().describe('Claude\'s confidence in this trade (low\/medium\/high; AI modes only).')
 })
 export const ListTradesResponse = zod.array(ListTradesResponseItem)
 
@@ -234,7 +241,8 @@ export const ListSignalsResponseItem = zod.object({
   "longMa": zod.number(),
   "price": zod.number(),
   "createdAt": zod.string(),
-  "tradeExecuted": zod.boolean().optional()
+  "tradeExecuted": zod.boolean().optional(),
+  "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).')
 })
 export const ListSignalsResponse = zod.array(ListSignalsResponseItem)
 
@@ -250,7 +258,8 @@ export const RunSignalCheckResponseItem = zod.object({
   "longMa": zod.number(),
   "price": zod.number(),
   "createdAt": zod.string(),
-  "tradeExecuted": zod.boolean().optional()
+  "tradeExecuted": zod.boolean().optional(),
+  "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).')
 })
 export const RunSignalCheckResponse = zod.array(RunSignalCheckResponseItem)
 

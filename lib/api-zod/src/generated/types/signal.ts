@@ -16,4 +16,9 @@ export interface Signal {
   price: number;
   createdAt: string;
   tradeExecuted?: boolean;
+  /**
+     * Claude's plain-language reason for this decision (AI modes only).
+     * @nullable
+     */
+  aiReason?: string | null;
 }

@@ -20,6 +20,18 @@ export const BotConfigBroker = {
   capitalcom: 'capitalcom',
 } as const;
 
+/**
+ * How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades.
+ */
+export type BotConfigAiTradeMode = typeof BotConfigAiTradeMode[keyof typeof BotConfigAiTradeMode];
+
+
+export const BotConfigAiTradeMode = {
+  off: 'off',
+  guard: 'guard',
+  autonomous: 'autonomous',
+} as const;
+
 export interface BotConfig {
   /** Short MA period (e.g. 9) */
   shortPeriod: number;
@@ -37,6 +49,8 @@ export interface BotConfig {
   stopLossPercent: number;
   /** Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount. */
   riskPerTradePercent: number;
+  /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
+  aiTradeMode: BotConfigAiTradeMode;
 }
 
 export interface BotStatus {
@@ -56,6 +70,18 @@ export const BotConfigInputBroker = {
   capitalcom: 'capitalcom',
 } as const;
 
+/**
+ * How Claude participates in execution.
+ */
+export type BotConfigInputAiTradeMode = typeof BotConfigInputAiTradeMode[keyof typeof BotConfigInputAiTradeMode];
+
+
+export const BotConfigInputAiTradeMode = {
+  off: 'off',
+  guard: 'guard',
+  autonomous: 'autonomous',
+} as const;
+
 export interface BotConfigInput {
   shortPeriod?: number;
   longPeriod?: number;
@@ -67,6 +93,8 @@ export interface BotConfigInput {
   stopLossPercent?: number;
   /** Account balance % to risk per trade. 0 uses fixed tradeAmount. */
   riskPerTradePercent?: number;
+  /** How Claude participates in execution. */
+  aiTradeMode?: BotConfigInputAiTradeMode;
 }
 
 export type TradeSide = typeof TradeSide[keyof typeof TradeSide];
@@ -99,6 +127,16 @@ export interface Trade {
   errorMessage?: string | null;
   /** @nullable */
   orderId?: string | null;
+  /**
+     * Claude's plain-language reason for approving/making this trade (AI modes only).
+     * @nullable
+     */
+  aiReason?: string | null;
+  /**
+     * Claude's confidence in this trade (low/medium/high; AI modes only).
+     * @nullable
+     */
+  aiConfidence?: string | null;
 }
 
 export type ExecuteTradeInputSide = typeof ExecuteTradeInputSide[keyof typeof ExecuteTradeInputSide];
@@ -179,6 +217,11 @@ export interface Signal {
   price: number;
   createdAt: string;
   tradeExecuted?: boolean;
+  /**
+     * Claude's plain-language reason for this decision (AI modes only).
+     * @nullable
+     */
+  aiReason?: string | null;
 }
 
 export type NewsItemImpactLabel = typeof NewsItemImpactLabel[keyof typeof NewsItemImpactLabel];

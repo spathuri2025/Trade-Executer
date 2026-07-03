@@ -13,6 +13,8 @@ export const tradesTable = pgTable("trades", {
   status: text("status", { enum: ["FILLED", "FAILED", "DRY_RUN"] }).notNull().default("DRY_RUN"),
   errorMessage: text("error_message"),
   orderId: text("order_id"),
+  aiReason: text("ai_reason"),
+  aiConfidence: text("ai_confidence"),
 });
 
 export const insertTradeSchema = createInsertSchema(tradesTable).omit({ id: true, executedAt: true });

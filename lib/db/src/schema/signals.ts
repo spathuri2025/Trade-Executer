@@ -10,6 +10,7 @@ export const signalsTable = pgTable("signals", {
   longMa: numeric("long_ma", { precision: 18, scale: 8 }).notNull(),
   price: numeric("price", { precision: 18, scale: 8 }).notNull(),
   tradeExecuted: boolean("trade_executed").notNull().default(false),
+  aiReason: text("ai_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

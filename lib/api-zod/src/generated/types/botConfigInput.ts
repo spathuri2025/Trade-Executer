@@ -5,6 +5,7 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { BotConfigInputAiTradeMode } from './botConfigInputAiTradeMode';
 import type { BotConfigInputBroker } from './botConfigInputBroker';
 
 export interface BotConfigInput {
@@ -18,4 +19,6 @@ export interface BotConfigInput {
   stopLossPercent?: number;
   /** Account balance % to risk per trade. 0 uses fixed tradeAmount. */
   riskPerTradePercent?: number;
+  /** How Claude participates in execution. */
+  aiTradeMode?: BotConfigInputAiTradeMode;
 }

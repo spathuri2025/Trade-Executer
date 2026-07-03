@@ -21,4 +21,14 @@ export interface Trade {
   errorMessage?: string | null;
   /** @nullable */
   orderId?: string | null;
+  /**
+     * Claude's plain-language reason for approving/making this trade (AI modes only).
+     * @nullable
+     */
+  aiReason?: string | null;
+  /**
+     * Claude's confidence in this trade (low/medium/high; AI modes only).
+     * @nullable
+     */
+  aiConfidence?: string | null;
 }

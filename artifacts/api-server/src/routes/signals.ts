@@ -26,6 +26,7 @@ router.get("/signals", async (req, res): Promise<void> => {
       price: Number(s.price),
       createdAt: s.createdAt.toISOString(),
       tradeExecuted: s.tradeExecuted,
+      aiReason: s.aiReason,
     }))
   );
 });
@@ -49,6 +50,7 @@ router.post("/signals/run", async (req, res): Promise<void> => {
       price: Number(s.price),
       createdAt: s.createdAt.toISOString(),
       tradeExecuted: s.tradeExecuted,
+      aiReason: s.aiReason,
     }))
   );
 });

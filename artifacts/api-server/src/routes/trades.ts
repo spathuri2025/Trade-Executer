@@ -35,6 +35,8 @@ router.get("/trades", async (req, res): Promise<void> => {
       status: t.status,
       errorMessage: t.errorMessage ?? null,
       orderId: t.orderId ?? null,
+      aiReason: t.aiReason ?? null,
+      aiConfidence: t.aiConfidence ?? null,
     }))
   );
 });
@@ -85,6 +87,8 @@ router.post("/trades/execute", async (req, res): Promise<void> => {
       status: trade.status,
       errorMessage: trade.errorMessage ?? null,
       orderId: trade.orderId ?? null,
+      aiReason: trade.aiReason ?? null,
+      aiConfidence: trade.aiConfidence ?? null,
     });
   } catch (err) {
     if (err instanceof TradeValidationError) {

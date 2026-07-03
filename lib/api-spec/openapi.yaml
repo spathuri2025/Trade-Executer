@@ -686,7 +686,7 @@ components:
 
     BotConfig:
       type: object
-      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, riskPerTradePercent]
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, riskPerTradePercent, aiTradeMode]
       properties:
         shortPeriod:
           type: integer
@@ -713,6 +713,10 @@ components:
         riskPerTradePercent:
           type: number
           description: Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.
+        aiTradeMode:
+          type: string
+          enum: [off, guard, autonomous]
+          description: How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades.
 
     BotConfigInput:
       type: object
@@ -736,6 +740,10 @@ components:
         riskPerTradePercent:
           type: number
           description: Account balance % to risk per trade. 0 uses fixed tradeAmount.
+        aiTradeMode:
+          type: string
+          enum: [off, guard, autonomous]
+          description: How Claude participates in execution.
 
     Trade:
       type: object
@@ -763,6 +771,12 @@ components:
           type: ["string", "null"]
         orderId:
           type: ["string", "null"]
+        aiReason:
+          type: ["string", "null"]
+          description: Claude's plain-language reason for approving/making this trade (AI modes only).
+        aiConfidence:
+          type: ["string", "null"]
+          description: Claude's confidence in this trade (low/medium/high; AI modes only).
 
     ExecuteTradeInput:
       type: object
@@ -875,6 +889,9 @@ components:
           type: string
         tradeExecuted:
           type: boolean
+        aiReason:
+          type: ["string", "null"]
+          description: Claude's plain-language reason for this decision (AI modes only).
 
     NewsItem:
       type: object

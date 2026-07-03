@@ -415,6 +415,14 @@ export default function Trades() {
                       <span className="text-sm font-mono font-medium">{trade.total.toFixed(2)}</span>
                     </div>
                   )}
+                  {trade.aiReason && (
+                    <div className="mt-2 pt-2" style={{ borderTop: divider }}>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>
+                        AI Reason{trade.aiConfidence ? ` · ${trade.aiConfidence}` : ""}
+                      </div>
+                      <div className="text-xs mt-1">{trade.aiReason}</div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -426,7 +434,7 @@ export default function Trades() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr style={{ borderBottom: divider }}>
-                    {["Time", "Ticker", "Side", "Qty", "Price", "Total", "Status"].map((h) => (
+                    {["Time", "Ticker", "Side", "Qty", "Price", "Total", "Status", "AI Reason"].map((h) => (
                       <th key={h} className="px-5 py-4">
                         <SectionLabel>{h}</SectionLabel>
                       </th>
@@ -452,6 +460,11 @@ export default function Trades() {
                       <td className="px-5 py-4">{trade.price.toFixed(2)}</td>
                       <td className="px-5 py-4">{trade.total ? trade.total.toFixed(2) : "—"}</td>
                       <td className="px-5 py-4"><StatusBadge status={trade.status} /></td>
+                      <td className="px-5 py-4 font-sans text-xs max-w-xs whitespace-normal" style={{ color: muted }}>
+                        {trade.aiReason
+                          ? <>{trade.aiConfidence && <span className="uppercase tracking-wider mr-1 opacity-70">[{trade.aiConfidence}]</span>}{trade.aiReason}</>
+                          : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

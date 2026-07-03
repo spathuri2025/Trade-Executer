@@ -17,11 +17,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Play, Square } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
+type AiTradeMode = "off" | "guard" | "autonomous";
 
 const BROKER_LABELS: Record<BrokerName, string> = {
   trading212: "Trading 212",
   capitalcom: "Capital.com",
 };
+
+const AI_MODES: { value: AiTradeMode; title: string; desc: string }[] = [
+  {
+    value: "off",
+    title: "Strategy only",
+    desc: "The moving-average strategy decides trades on its own. Claude is not involved.",
+  },
+  {
+    value: "guard",
+    title: "Claude safety check",
+    desc: "The strategy finds a signal, then Claude reviews it and approves or blocks it before any order is placed.",
+  },
+  {
+    value: "autonomous",
+    title: "Claude decides",
+    desc: "Claude itself decides what to buy or sell from your live data, then places the order.",
+  },
+];
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -41,6 +60,7 @@ export default function Settings() {
     broker: "capitalcom" as BrokerName,
     stopLossPercent: 2,
     riskPerTradePercent: 1,
+    aiTradeMode: "off" as AiTradeMode,
   });
 
   useEffect(() => {
@@ -54,6 +74,7 @@ export default function Settings() {
         broker: botStatus.config.broker as BrokerName,
         stopLossPercent: botStatus.config.stopLossPercent,
         riskPerTradePercent: botStatus.config.riskPerTradePercent,
+        aiTradeMode: (botStatus.config.aiTradeMode as AiTradeMode) ?? "off",
       });
     }
   }, [botStatus]);
@@ -179,6 +200,52 @@ export default function Settings() {
               data-testid="switch-admin-mode"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* AI trade mode */}
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Trade Mode</CardTitle>
+          <CardDescription>
+            Choose how Claude (AI) takes part in placing trades. Changes save with the button below.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {AI_MODES.map((mode) => (
+            <button
+              key={mode.value}
+              type="button"
+              data-testid={`button-ai-mode-${mode.value}`}
+              onClick={() => setConfig({ ...config, aiTradeMode: mode.value })}
+              className={[
+                "w-full rounded-lg border px-4 py-3 text-left transition-all",
+                config.aiTradeMode === mode.value
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-muted/20 hover:border-primary/40",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={[
+                    "h-3.5 w-3.5 rounded-full border shrink-0",
+                    config.aiTradeMode === mode.value ? "border-primary bg-primary" : "border-muted-foreground",
+                  ].join(" ")}
+                />
+                <span className={`text-sm font-semibold ${config.aiTradeMode === mode.value ? "text-primary" : ""}`}>
+                  {mode.title}
+                </span>
+              </div>
+              <div className="text-xs mt-1 pl-5.5 text-muted-foreground">{mode.desc}</div>
+            </button>
+          ))}
+          {config.aiTradeMode !== "off" && (
+            <div className="text-xs rounded-md p-3 border border-amber-500/40 bg-amber-500/10 text-amber-500">
+              {config.dryRun
+                ? "Dry Run is ON, so Claude's decisions are simulated only — no real orders are sent. Watch them here before going live."
+                : "Dry Run is OFF — Claude's decisions will place REAL orders with real money. Turn Dry Run back on to test safely first."}
+            </div>
+          )}
         </CardContent>
       </Card>
 

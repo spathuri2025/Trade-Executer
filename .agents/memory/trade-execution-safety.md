@@ -28,6 +28,12 @@ order-placement + DB-recording logic mirrored (manual reuses the bot's pattern).
   reachable. The in-flight lock limits accidental dupes but is NOT an authz
   boundary — put login in front before exposing live trading publicly.
 
+## AI trade modes + extra gates (guard / autonomous)
+- `bot.config.aiTradeMode` (`off`/`guard`/`autonomous`) lets Claude join the loop. guard reviews non-HOLD MA signals (veto = don't order); autonomous decides per instrument. On any Claude error the trade is **vetoed / held** (fail-safe), never placed.
+- **Stopped ⇒ forced dry-run.** `runCycle` computes `dryRun = cfg.dryRun || !state.running`. A manual `POST /signals/run` while the bot is Stopped can therefore NEVER place real orders — it always simulates. Real orders only happen when the bot is actually running with Dry Run off. Preserve this; the manual run endpoint is unauthenticated.
+- **Per-cycle cash budget.** Both the MA and autonomous loops cap total BUY notional deployed in a single cycle to the account's available cash (`account.cash`), so a cycle returning many BUYs can't multiply exposure beyond what the account holds. `riskPerTradePercent` is per-trade sizing, not a portfolio cap — this budget is the portfolio cap.
+- Any new DB column on `trades`/`signals` must be added to the route JSON mappings (`/trades`, `/signals`, `/signals/run`, execute response) or it silently never reaches the UI even though it's persisted.
+
 ## Live quotes (getBrokerQuote / GET /quote)
 - Capital.com is the only broker with a real live quote (`getCapitalQuote` → GET /markets/{epic}: snapshot bid/offer, instrument.currency, `marketStatus`). Trading 212 has NO live-quote endpoint — `getBrokerQuote` falls back to its (faked) price history last value and throws if none.
 - Market-open check uses the magic string `marketStatus === "TRADEABLE"`; anything else (e.g. "CLOSED") is treated as closed in the UI. Don't assume a boolean.

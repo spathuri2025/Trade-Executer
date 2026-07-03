@@ -133,6 +133,12 @@ export default function Signals() {
                     : <X className="h-4 w-4" style={{ color: muted }} />
                   }
                 </div>
+                {sig.aiReason && (
+                  <div className="mt-2 pt-2" style={{ borderTop: divider }}>
+                    <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>AI Reason</div>
+                    <div className="text-xs mt-1">{sig.aiReason}</div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -143,7 +149,7 @@ export default function Signals() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr style={{ borderBottom: divider }}>
-                    {["Time", "Ticker", "Signal", "Price", "Short MA", "Long MA", "Executed"].map((h) => (
+                    {["Time", "Ticker", "Signal", "Price", "Short MA", "Long MA", "Executed", "AI Reason"].map((h) => (
                       <th key={h} className="px-5 py-4">
                         <SectionLabel>{h}</SectionLabel>
                       </th>
@@ -171,6 +177,9 @@ export default function Signals() {
                           ? <Check className="h-4 w-4 text-primary" />
                           : <X className="h-4 w-4" style={{ color: muted }} />
                         }
+                      </td>
+                      <td className="px-5 py-4 font-sans text-xs max-w-xs whitespace-normal" style={{ color: muted }}>
+                        {sig.aiReason ?? "—"}
                       </td>
                     </tr>
                   ))}
