@@ -23,13 +23,52 @@ function serialize(brief: DailyMarketBrief) {
   };
 }
 
+/** True when the given date falls on the current UTC calendar day. */
+function isFromToday(date: Date): boolean {
+  const now = new Date();
+  return (
+    date.getUTCFullYear() === now.getUTCFullYear() &&
+    date.getUTCMonth() === now.getUTCMonth() &&
+    date.getUTCDate() === now.getUTCDate()
+  );
+}
+
+async function fetchLatest(): Promise<DailyMarketBrief | undefined> {
+  const [latest] = await db
+    .select()
+    .from(dailyMarketBriefsTable)
+    .orderBy(desc(dailyMarketBriefsTable.createdAt))
+    .limit(1);
+  return latest;
+}
+
 router.get("/daily-market-brief/latest", async (req, res): Promise<void> => {
   try {
-    const [latest] = await db
-      .select()
-      .from(dailyMarketBriefsTable)
-      .orderBy(desc(dailyMarketBriefsTable.createdAt))
-      .limit(1);
+    let latest = await fetchLatest();
+
+    // Self-populate: if no brief exists yet today, generate one on demand so every
+    // environment (dev + production) always shows a fresh brief without needing a
+    // manual admin action. Skip if another request is already generating, and never
+    // let a generation failure break the page — fall back to whatever we have.
+    const needsFresh = !latest || !isFromToday(latest.createdAt);
+    if (needsFresh && !creating && Date.now() - lastCreateAt >= CREATE_COOLDOWN_MS) {
+      creating = true;
+      try {
+        const generated = await generateDailyBrief(req.log);
+        const [saved] = await db
+          .insert(dailyMarketBriefsTable)
+          .values({ markets: generated.markets, disclaimer: generated.disclaimer })
+          .returning();
+        if (saved) {
+          latest = saved;
+          lastCreateAt = Date.now();
+        }
+      } catch (genErr) {
+        req.log.error({ err: genErr }, "Auto-generation of daily brief failed — serving existing brief if any");
+      } finally {
+        creating = false;
+      }
+    }
 
     res.json({ brief: latest ? serialize(latest) : null });
   } catch (err) {
