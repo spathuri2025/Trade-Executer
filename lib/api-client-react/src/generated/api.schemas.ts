@@ -592,6 +592,15 @@ export interface LatestDailyBriefResult {
   brief: DailyMarketBrief | null;
 }
 
+export interface Candle {
+  /** Candle open time as a UNIX timestamp in seconds */
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
 export type ListTradesParams = {
 limit?: number;
 };
@@ -602,6 +611,15 @@ ticker: string;
 
 export type ListSignalsParams = {
 limit?: number;
+};
+
+export type GetCandlesParams = {
+epic: string;
+/**
+ * Candle timeframe (MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK)
+ */
+resolution?: string;
+count?: number;
 };
 
 export type RunScan200 = {

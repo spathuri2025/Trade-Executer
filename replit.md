@@ -32,7 +32,14 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 TradeBuzz — algorithmic trading bot dashboard (ClinAITech Limited, UK). Brokers: Trading 212 + Capital.com. MA-crossover strategy with a market scanner. "Obsidian Noir" dark theme.
 
-Pages: Dashboard, Trades, Signals, Scanner, Performance, Instruments, **Assistant** (AI day-trading chat), Signal Analyst, **Setup Wizard**, Settings.
+Pages: Dashboard, Trades, Signals, Scanner, Performance, Instruments, **Charts** (live candlesticks), **Assistant** (AI day-trading chat), Signal Analyst, **Setup Wizard**, Settings.
+
+### Live Charts
+Dedicated Charts page (`/charts`, `artifacts/trading-bot/src/pages/charts.tsx`, nav "Charts", `CandlestickChart` lucide icon) with instrument + resolution selectors. Candlestick chart via TradingView **lightweight-charts v5** (`artifacts/trading-bot/src/components/CandlestickChart.tsx`), seeded with historical OHLC from Capital.com and overlaid with live streaming ticks.
+- Backend: `getCapitalCandles(epic, resolution, count)` in `capitalcom.ts` returns OHLC `{time(unix secs), open, high, low, close}` (mid of bid/ask per field; `snapshotTime` is UTC-without-suffix so a `Z` is appended before parsing). Route `GET /api/candles?epic=&resolution=&count=` (`routes/candles.ts`, registered as `candlesRouter`), 400 if epic missing, 502 on upstream error, resolution whitelisted.
+- OpenAPI: `Candle` schema + `/candles` path (epic is a **query** param, not path — a path param + query params made Orval emit two colliding `GetCandlesParams`). Consumed via generated `useGetCandles` hook (pass explicit `queryKey` when using `enabled`).
+- Live overlay: `useLivePrices()` (epic == `instrument.ticker`); the chart merges each tick into the current forming candle and **rolls over to a new candle at interval boundaries**, anchoring new candle times to the historical bar grid (`last.time + k*duration`) rather than epoch-aligned buckets. Quote timestamps normalised ms→sec.
+- lightweight-charts v5 API: `chart.addSeries(CandlestickSeries, opts)` (not v4's `addCandlestickSeries`); `chart.remove()` on unmount. Chart wrapper uses a **fixed pixel height** (not `height:100%`/flex) because the page's height chain doesn't resolve, which collapsed the canvas to a thin strip.
 
 ### Onboarding Setup Wizard
 Guided first-run flow at `/setup` (`artifacts/trading-bot/src/pages/setup.tsx`, nav "Setup Wizard", Rocket icon). Additive — does not remove any existing page; all pages stay directly reachable.

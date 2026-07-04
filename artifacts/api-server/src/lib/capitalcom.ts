@@ -239,6 +239,52 @@ export async function getCapitalPriceHistory(epic: string, resolution: string = 
   }
 }
 
+/** One OHLC candle with a UNIX-seconds open time (mid of bid/ask for each field). */
+export interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+/**
+ * Fetch OHLC candles for an epic from Capital.com. Each price field is the mid
+ * of its bid/ask, matching how `getCapitalPriceHistory` derives its mid closes.
+ * Times are converted to UNIX seconds (what lightweight-charts expects).
+ */
+export async function getCapitalCandles(
+  epic: string,
+  resolution: string = "HOUR",
+  count: number = 200,
+): Promise<Candle[]> {
+  const data = (await capitalFetch(
+    `/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=${count}`,
+  )) as CapitalPrice;
+  const mid = (p: { bid: number; ask: number }) => (p.bid + p.ask) / 2;
+  return (data?.prices ?? [])
+    .map((p) => {
+      // snapshotTime has no timezone suffix but is UTC; append Z so Date parses it as UTC.
+      const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(p.snapshotTime) ? p.snapshotTime : `${p.snapshotTime}Z`;
+      return {
+        time: Math.floor(new Date(iso).getTime() / 1000),
+        open: mid(p.openPrice),
+        high: mid(p.highPrice),
+        low: mid(p.lowPrice),
+        close: mid(p.closePrice),
+      };
+    })
+    .filter(
+      (c) =>
+        Number.isFinite(c.time) &&
+        Number.isFinite(c.open) &&
+        Number.isFinite(c.high) &&
+        Number.isFinite(c.low) &&
+        Number.isFinite(c.close),
+    )
+    .sort((a, b) => a.time - b.time);
+}
+
 export async function placeCapitalOrder(
   epic: string,
   size: number,

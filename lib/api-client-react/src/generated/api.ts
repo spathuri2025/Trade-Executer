@@ -27,12 +27,14 @@ import type {
   BacktestReport,
   BotConfigInput,
   BotStatus,
+  Candle,
   Conversation,
   ConversationInput,
   ConversationWithMessages,
   DailyMarketBrief,
   ExecuteTradeInput,
   GetActivityFeedParams,
+  GetCandlesParams,
   GetMarketNewsParams,
   GetQuoteParams,
   GetScannerResultsParams,
@@ -1267,6 +1269,90 @@ export const useRunSignalCheck = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRunSignalCheckMutationOptions(options));
     }
+
+export const getGetCandlesUrl = (params: GetCandlesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/candles?${stringifiedParams}` : `/api/candles`
+}
+
+/**
+ * @summary OHLC candles for an instrument (from Capital.com)
+ */
+export const getCandles = async (params: GetCandlesParams, options?: RequestInit): Promise<Candle[]> => {
+
+  return customFetch<Candle[]>(getGetCandlesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCandlesQueryKey = (params?: GetCandlesParams,) => {
+    return [
+    `/api/candles`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCandlesQueryOptions = <TData = Awaited<ReturnType<typeof getCandles>>, TError = ErrorType<unknown>>(params: GetCandlesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCandles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCandlesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCandles>>> = ({ signal }) => getCandles(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCandles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCandlesQueryResult = NonNullable<Awaited<ReturnType<typeof getCandles>>>
+export type GetCandlesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary OHLC candles for an instrument (from Capital.com)
+ */
+
+export function useGetCandles<TData = Awaited<ReturnType<typeof getCandles>>, TError = ErrorType<unknown>>(
+ params: GetCandlesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCandles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCandlesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetScannerStatusUrl = () => {
 

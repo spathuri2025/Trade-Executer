@@ -13,6 +13,7 @@ import dailyMarketBriefRouter from "./dailyMarketBrief";
 import backtestRouter from "./backtest";
 import activityRouter from "./activity";
 import streamRouter from "./stream";
+import candlesRouter from "./candles";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(dailyMarketBriefRouter);
 router.use(backtestRouter);
 router.use(activityRouter);
 router.use(streamRouter);
+router.use(candlesRouter);
 
 export default router;

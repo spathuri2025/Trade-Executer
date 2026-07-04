@@ -350,6 +350,28 @@ export const RunSignalCheckResponse = zod.array(RunSignalCheckResponseItem)
 
 
 /**
+ * @summary OHLC candles for an instrument (from Capital.com)
+ */
+export const getCandlesQueryResolutionDefault = `HOUR`;
+export const getCandlesQueryCountDefault = 200;
+
+export const GetCandlesQueryParams = zod.object({
+  "epic": zod.coerce.string(),
+  "resolution": zod.coerce.string().default(getCandlesQueryResolutionDefault).describe('Candle timeframe (MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK)'),
+  "count": zod.coerce.number().default(getCandlesQueryCountDefault)
+})
+
+export const GetCandlesResponseItem = zod.object({
+  "time": zod.number().describe('Candle open time as a UNIX timestamp in seconds'),
+  "open": zod.number(),
+  "high": zod.number(),
+  "low": zod.number(),
+  "close": zod.number()
+})
+export const GetCandlesResponse = zod.array(GetCandlesResponseItem)
+
+
+/**
  * @summary Get scanner status and configuration
  */
 export const GetScannerStatusResponse = zod.object({

@@ -316,6 +316,38 @@ paths:
                 items:
                   $ref: "#/components/schemas/Signal"
 
+  /candles:
+    get:
+      operationId: getCandles
+      tags: [candles]
+      summary: OHLC candles for an instrument (from Capital.com)
+      parameters:
+        - name: epic
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: resolution
+          in: query
+          description: Candle timeframe (MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK)
+          schema:
+            type: string
+            default: HOUR
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 200
+      responses:
+        "200":
+          description: Candle list (oldest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Candle"
+
   /scanner/status:
     get:
       operationId: getScannerStatus
@@ -1359,3 +1391,19 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DailyMarketBrief"
             - type: "null"
+
+    Candle:
+      type: object
+      required: [time, open, high, low, close]
+      properties:
+        time:
+          type: integer
+          description: Candle open time as a UNIX timestamp in seconds
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number

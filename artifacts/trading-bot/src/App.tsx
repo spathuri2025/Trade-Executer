@@ -9,6 +9,7 @@ import Signals from "@/pages/signals";
 import Scanner from "@/pages/scanner";
 import Performance from "@/pages/performance";
 import Instruments from "@/pages/instruments";
+import Charts from "@/pages/charts";
 import Assistant from "@/pages/assistant";
 import SignalAnalyst from "@/pages/signal-analyst";
 import Settings from "@/pages/settings";
@@ -55,6 +56,7 @@ function Router() {
         <Route path="/scanner" component={Scanner} />
         <Route path="/performance" component={Performance} />
         <Route path="/instruments" component={Instruments} />
+        <Route path="/charts" component={Charts} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/signal-analyst" component={SignalAnalyst} />
         <Route path="/setup" component={Setup} />
