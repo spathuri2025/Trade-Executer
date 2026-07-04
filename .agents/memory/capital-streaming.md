@@ -5,7 +5,7 @@ description: Non-obvious facts about Capital.com's streaming WebSocket used for 
 
 # Capital.com streaming WebSocket
 
-- Endpoint is a **plain JSON WebSocket** at `wss://api-streaming-capital.backend-capital.com/connect` — NOT Lightstreamer. (An explorer/agent guessed Lightstreamer; that was wrong. Confirmed against Capital.com docs + a working connection.)
+- Endpoint is a **plain JSON WebSocket** at `wss://api-streaming-capital.backend-capital.com/connect` — NOT Lightstreamer (a common wrong assumption). Confirmed against Capital.com docs + a working connection.
 - Auth reuses the **same CST + X-SECURITY-TOKEN** minted by the existing REST `/session` login — no separate streaming credential. Session lives ~10 min, so ping (`destination: "ping"`) at <10 min and refresh tokens on reconnect.
 - Subscribe with `marketData.subscribe` `{ payload: { epics: [...] } }`, **max 40 epics per connection**. Server replies with a `marketData.subscribe` message whose `payload.subscriptions` maps epic→`"PROCESSED"`/error. Quotes arrive as `destination: "quote"` `{ epic, bid, ofr, timestamp }` (note `ofr`, not `ofer`/`offer`). `OHLCMarketData.subscribe` exists for candles.
 - Free with existing creds; push-on-change (NOT a fixed 1s cadence) — market must be open. On weekends US-stock epics send nothing, so the UI shows placeholders.
