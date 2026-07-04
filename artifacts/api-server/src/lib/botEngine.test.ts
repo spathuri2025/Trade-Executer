@@ -190,6 +190,37 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
     expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(true);
   });
 
+  it("blocks a BUY that ADDS to an already-held long when account data is unavailable (size cap can't be enforced)", async () => {
+    // Regression: previously only NEW positions were blocked, so a BUY on a
+    // held ticker slipped through and sizePosition fell back to a fixed amount,
+    // bypassing maxPositionSizePercent. It must now be blocked as well.
+    broker.getBrokerAccount.mockRejectedValue(new Error("broker down"));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    const results = await engine.runCycle();
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(false);
+  });
+
+  it("blocks the autonomous-mode BUY on a held ticker when account data is unavailable", async () => {
+    broker.getBrokerAccount.mockRejectedValue(new Error("broker down"));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    mocks.ai.decideTrades.mockResolvedValue([
+      { ticker: "HELD", action: "BUY", confidence: 0.9, reason: "add to winner" },
+    ]);
+
+    await startLiveBot({ aiTradeMode: "autonomous" });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    const results = await engine.runCycle();
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(false);
+  });
+
   it("also blocks a SELL that would open a NEW short when risk data is unavailable (a short is a new position)", async () => {
     broker.getBrokerAccount.mockRejectedValue(new Error("broker down"));
     broker.getBrokerPositions.mockResolvedValue([]); // nothing held → SELL opens a short

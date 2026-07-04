@@ -257,11 +257,15 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     logger.warn({ broker, err }, "Could not fetch open positions");
   }
 
-  // Fail-closed: if we can't read the data a limit depends on, block NEW entries
-  // this cycle rather than trade blind. The per-position size cap and the
-  // daily-loss breaker both need account equity; the concurrent-position cap
-  // needs the live positions list. Closing trades (SELL) are always allowed
-  // since they only reduce exposure.
+  // Fail-closed: if we can't read the data a limit depends on, block any
+  // exposure-INCREASING order this cycle rather than trade blind. This covers
+  // both new positions (either side — a SELL opens a short on Capital.com) AND
+  // any BUY that adds to an already-held long, because without account equity
+  // `sizePosition` falls back to a fixed amount and cannot enforce the
+  // maxPositionSizePercent cap. The per-position size cap and the daily-loss
+  // breaker both need account equity; the concurrent-position cap needs the
+  // live positions list. Reducing trades (a SELL on a held long) stay allowed
+  // since they only shrink exposure.
   const riskDataUnavailable =
     (account === null && (cfg.maxPositionSizePercent > 0 || cfg.maxDailyLossPercent > 0)) ||
     (!positionsFetchOk && cfg.maxConcurrentPositions > 0);
@@ -363,11 +367,11 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
           cfg.maxConcurrentPositions > 0 &&
           opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
-        if (opensNewPosition && riskDataUnavailable) {
-          aiReason = `Skipped: risk data was unavailable this cycle, so no new position was opened for safety. ${decision.reason}`;
+        if ((opensNewPosition || isBuy) && riskDataUnavailable) {
+          aiReason = `Skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety. ${decision.reason}`;
           logger.warn(
             { ticker: c.ticker, side: decision.action },
-            "Autonomous entry skipped — risk data unavailable (fail-safe)"
+            "Autonomous exposure-increasing trade skipped — risk data unavailable (fail-safe)"
           );
         } else if (atPositionLimit) {
           aiReason = `Skipped: already at the ${cfg.maxConcurrentPositions}-position limit. ${decision.reason}`;
@@ -475,9 +479,9 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
           cfg.maxConcurrentPositions > 0 &&
           opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
-        if (opensNewPosition && riskDataUnavailable) {
-          aiReason = "Trade skipped: risk data was unavailable this cycle, so no new position was opened for safety.";
-          logger.warn({ ticker, side: signal }, "Entry skipped — risk data unavailable (fail-safe)");
+        if ((opensNewPosition || isBuy) && riskDataUnavailable) {
+          aiReason = "Trade skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety.";
+          logger.warn({ ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
         } else if (atPositionLimit) {
           aiReason = `Trade skipped: already at the ${cfg.maxConcurrentPositions}-position limit.`;
           logger.warn(
