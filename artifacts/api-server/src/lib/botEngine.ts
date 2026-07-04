@@ -335,19 +335,26 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
       if (decision.action !== "HOLD") {
         const { positionValue, quantity } = sizePosition(c.currentPrice, cfg, accountBalance);
         const isBuy = decision.action === "BUY";
-        const isNewPosition = !liveTickers.has(c.ticker);
+        // A trade on a ticker we don't already hold opens a NEW distinct position
+        // regardless of side — on Capital.com a SELL opens a short. The
+        // concurrent-cap and fail-closed gates therefore apply to BUY and SELL
+        // alike. A trade on an already-open ticker (net/close) consumes no new slot.
+        const opensNewPosition = !liveTickers.has(c.ticker);
         const atPositionLimit =
           cfg.maxConcurrentPositions > 0 &&
-          isNewPosition &&
+          opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
-        if (isBuy && riskDataUnavailable) {
+        if (opensNewPosition && riskDataUnavailable) {
           aiReason = `Skipped: risk data was unavailable this cycle, so no new position was opened for safety. ${decision.reason}`;
-          logger.warn({ ticker: c.ticker }, "Autonomous BUY skipped — risk data unavailable (fail-safe)");
-        } else if (isBuy && atPositionLimit) {
+          logger.warn(
+            { ticker: c.ticker, side: decision.action },
+            "Autonomous entry skipped — risk data unavailable (fail-safe)"
+          );
+        } else if (atPositionLimit) {
           aiReason = `Skipped: already at the ${cfg.maxConcurrentPositions}-position limit. ${decision.reason}`;
           logger.warn(
-            { ticker: c.ticker, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
-            "Autonomous BUY skipped — max concurrent positions reached"
+            { ticker: c.ticker, side: decision.action, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
+            "Autonomous entry skipped — max concurrent positions reached"
           );
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = `Skipped: would exceed the account's available cash budget for this cycle. ${decision.reason}`;
@@ -367,9 +374,9 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
             aiReason: decision.reason,
             aiConfidence: decision.confidence,
           });
-          if (tradeExecuted && isBuy) {
-            deployedThisCycle += positionValue;
-            liveTickers.add(c.ticker);
+          if (tradeExecuted) {
+            if (isBuy) deployedThisCycle += positionValue;
+            if (opensNewPosition) liveTickers.add(c.ticker);
           }
         }
       }
@@ -438,19 +445,23 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
       if (proceed) {
         const { positionValue, quantity } = sizePosition(currentPrice, cfg, accountBalance);
         const isBuy = signal === "BUY";
-        const isNewPosition = !liveTickers.has(ticker);
+        // Any order on a ticker we don't already hold opens a new distinct
+        // position (a SELL opens a short on Capital.com), so the concurrent-cap
+        // and fail-closed gates apply to both sides. A trade on an already-open
+        // ticker (net/close) consumes no new slot.
+        const opensNewPosition = !liveTickers.has(ticker);
         const atPositionLimit =
           cfg.maxConcurrentPositions > 0 &&
-          isNewPosition &&
+          opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
-        if (isBuy && riskDataUnavailable) {
+        if (opensNewPosition && riskDataUnavailable) {
           aiReason = "Trade skipped: risk data was unavailable this cycle, so no new position was opened for safety.";
-          logger.warn({ ticker }, "BUY skipped — risk data unavailable (fail-safe)");
-        } else if (isBuy && atPositionLimit) {
+          logger.warn({ ticker, side: signal }, "Entry skipped — risk data unavailable (fail-safe)");
+        } else if (atPositionLimit) {
           aiReason = `Trade skipped: already at the ${cfg.maxConcurrentPositions}-position limit.`;
           logger.warn(
-            { ticker, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
-            "BUY skipped — max concurrent positions reached"
+            { ticker, side: signal, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
+            "Entry skipped — max concurrent positions reached"
           );
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = "Trade skipped: it would exceed the account's available cash budget for this cycle.";
@@ -471,9 +482,9 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
             aiReason: aiReason ?? undefined,
             aiConfidence,
           });
-          if (tradeExecuted && isBuy) {
-            deployedThisCycle += positionValue;
-            liveTickers.add(ticker);
+          if (tradeExecuted) {
+            if (isBuy) deployedThisCycle += positionValue;
+            if (opensNewPosition) liveTickers.add(ticker);
           }
         }
       }

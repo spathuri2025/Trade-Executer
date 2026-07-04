@@ -28,6 +28,13 @@ already-open ticker does not consume a new position slot; only a brand-new ticke
 does. Note `getBrokerPositions()` has no side/direction field, so all open
 positions count toward the cap (conservative, which is the safe direction).
 
+**SELL is NOT reduce-only in this bot.** The MA signal / Claude decision emits
+directional BUY/SELL and a SELL opens a SHORT on Capital.com. So the concurrent-cap
+AND fail-closed gates must apply to ANY order that opens a new distinct ticker
+(gate on "opens a new position", not on side). Only the per-cycle cash-budget
+check is BUY-specific (shorts don't deploy cash the same way). A BUY-only gate
+lets the bot exceed the position cap via shorts.
+
 **Daily-loss breaker:** baseline is the first equity observed each UTC day
 (`utcDayKey()`); on trip it calls `stopBot()` and requires explicit `resumeBot()`
 (POST /bot/resume) — never auto-resumes.

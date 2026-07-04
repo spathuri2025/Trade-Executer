@@ -35,7 +35,7 @@ export const GetBotStatusResponse = zod.object({
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
-  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 }),
   "circuitBreaker": zod.object({
@@ -66,7 +66,7 @@ export const StartBotResponse = zod.object({
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
-  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 }),
   "circuitBreaker": zod.object({
@@ -97,7 +97,7 @@ export const StopBotResponse = zod.object({
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
-  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 }),
   "circuitBreaker": zod.object({
@@ -128,7 +128,7 @@ export const ResumeBotResponse = zod.object({
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
-  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 }),
   "circuitBreaker": zod.object({
@@ -155,7 +155,7 @@ export const UpdateBotConfigBody = zod.object({
   "riskPerTradePercent": zod.number().optional().describe('Account balance % to risk per trade. 0 uses fixed tradeAmount.'),
   "maxPositionSizePercent": zod.number().optional().describe('Hard cap on a single position\'s value as % of account balance. 0 disables.'),
   "maxDailyLossPercent": zod.number().optional().describe('Daily-loss circuit breaker threshold as % of day-start equity. 0 disables.'),
-  "maxConcurrentPositions": zod.number().optional().describe('Maximum number of simultaneously open positions. 0 disables.'),
+  "maxConcurrentPositions": zod.number().optional().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.')
 })
 
@@ -175,7 +175,7 @@ export const UpdateBotConfigResponse = zod.object({
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
-  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
 }),
   "circuitBreaker": zod.object({

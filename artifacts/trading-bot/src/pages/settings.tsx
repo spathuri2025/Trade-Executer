@@ -425,7 +425,7 @@ export default function Settings() {
                   />
                   <p className="text-xs text-muted-foreground">
                     {config.maxConcurrentPositions > 0
-                      ? `New buys are blocked once ${config.maxConcurrentPositions} positions are open.`
+                      ? `New positions (long or short) are blocked once ${config.maxConcurrentPositions} are open.`
                       : "No limit on open positions (not recommended)."}
                   </p>
                 </div>

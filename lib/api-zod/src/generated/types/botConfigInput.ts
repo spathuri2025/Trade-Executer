@@ -25,7 +25,7 @@ export interface BotConfigInput {
   maxPositionSizePercent?: number;
   /** Daily-loss circuit breaker threshold as % of day-start equity. 0 disables. */
   maxDailyLossPercent?: number;
-  /** Maximum number of simultaneously open positions. 0 disables. */
+  /** Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap. */
   maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;

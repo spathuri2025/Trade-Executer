@@ -1,1 +1,1 @@
-- [Risk-control fail-safe rule](risk-control-fail-safe.md) — trading bot risk limits are enforced in code (not prompts) and must block new BUYs when account/positions data is missing.
+- [Risk-control fail-safe rule](risk-control-fail-safe.md) — trading bot risk limits are enforced in code (not prompts); cap/fail-closed gate any NEW position (BUY or SELL, since SELL opens a short), and block entries when account/positions data is missing.

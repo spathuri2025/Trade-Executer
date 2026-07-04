@@ -55,7 +55,7 @@ export interface BotConfig {
   maxPositionSizePercent: number;
   /** Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker. */
   maxDailyLossPercent: number;
-  /** Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap. */
+  /** Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap. */
   maxConcurrentPositions: number;
   /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
   aiTradeMode: BotConfigAiTradeMode;
@@ -131,7 +131,7 @@ export interface BotConfigInput {
   maxPositionSizePercent?: number;
   /** Daily-loss circuit breaker threshold as % of day-start equity. 0 disables. */
   maxDailyLossPercent?: number;
-  /** Maximum number of simultaneously open positions. 0 disables. */
+  /** Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap. */
   maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;
