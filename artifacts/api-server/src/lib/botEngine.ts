@@ -506,7 +506,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
 }
 
 /** Position sizing: % of account balance if configured, else fixed amount. */
-function sizePosition(
+export function sizePosition(
   currentPrice: number,
   cfg: BotConfig,
   accountBalance: number | null
