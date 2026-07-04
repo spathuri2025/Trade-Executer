@@ -1,2 +1,3 @@
 - [Capital.com live streaming](capital-streaming.md) — plain JSON WS (not Lightstreamer), reuses REST session tokens, epic==instrument.ticker, max 40 epics, weekend = no ticks.
 - [Orval codegen gotchas](orval-codegen-gotchas.md) — path param + query params on one op collide (use query param); generated hook + `enabled` needs explicit `queryKey`.
+- [Backtest cost/equity ordering](backtest-cost-ordering.md) — book round-trip cost BEFORE pushing the bar equity point + tracking drawdown, else curve/drawdown contradict net return.

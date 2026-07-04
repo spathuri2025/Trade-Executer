@@ -34,6 +34,12 @@ TradeBuzz — algorithmic trading bot dashboard (ClinAITech Limited, UK). Broker
 
 Pages: Dashboard, Trades, Signals, Scanner, Performance, Instruments, **Charts** (live candlesticks), **Assistant** (AI day-trading chat), Signal Analyst, **Setup Wizard**, Settings.
 
+### Strategy Expectancy & Costs
+The backtest computes the classic trading edge/expectancy for each strategy so a user can see whether it has a net positive edge, not just raw win rate.
+- Formula (in `artifacts/api-server/src/lib/backtest.ts`): `expectancyPct = (winRate·avgWin) − (lossRate·|avgLoss|) − costPct`. avgWin/avgLoss stay GROSS (pre-cost) so the formula's terms are legible; the cost is subtracted as its own term. Also returns `profitFactor` (gross wins ÷ gross losses; `null` = no losing trades = "∞").
+- Costs: `BotConfig.costPerTradePercent` (round-trip spread + commission as %, default 0). The backtest route passes `costPct = costPerTradePercent/100` into `backtestStrategy(...)`, which deducts it from equity at each round-trip close (so equity curve/`totalReturnPct`/drawdown are net) and subtracts it in the expectancy term. **Backtest-only — does not affect live order placement.**
+- UI: set in Settings → Strategy Configuration ("Cost Per Trade (%)"). Performance page shows a headline Expectancy card with a "Positive edge"/"No edge" badge, plus Profit Factor; the report header echoes the cost used. `BacktestResult` gained `expectancyPct` + `profitFactor` (nullable), `BacktestReport` gained `costPct` — all in `openapi.yaml`, so re-run codegen after edits.
+
 ### Live Charts
 Dedicated Charts page (`/charts`, `artifacts/trading-bot/src/pages/charts.tsx`, nav "Charts", `CandlestickChart` lucide icon) with instrument + resolution selectors. Candlestick chart via TradingView **lightweight-charts v5** (`artifacts/trading-bot/src/components/CandlestickChart.tsx`), seeded with historical OHLC from Capital.com and overlaid with live streaming ticks.
 - Backend: `getCapitalCandles(epic, resolution, count)` in `capitalcom.ts` returns OHLC `{time(unix secs), open, high, low, close}` (mid of bid/ask per field; `snapshotTime` is UTC-without-suffix so a `Z` is appended before parsing). Route `GET /api/candles?epic=&resolution=&count=` (`routes/candles.ts`, registered as `candlesRouter`), 400 if epic missing, 502 on upstream error, resolution whitelisted.

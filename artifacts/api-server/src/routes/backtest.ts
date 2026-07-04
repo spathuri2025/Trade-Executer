@@ -13,6 +13,10 @@ const HISTORY_BARS = 300;
 router.get("/backtest", async (req, res): Promise<void> => {
   const { config } = getBotStatus();
   const { broker, shortPeriod, longPeriod } = config;
+  // Clamp to non-negative so the reported cost matches what the backtester
+  // actually applies (it ignores negative costs).
+  const rawCostPct = (config.costPerTradePercent ?? 0) / 100;
+  const costPct = Number.isFinite(rawCostPct) && rawCostPct > 0 ? rawCostPct : 0;
 
   const instruments = await db
     .select()
@@ -33,6 +37,8 @@ router.get("/backtest", async (req, res): Promise<void> => {
     avgLossPct: number;
     maxDrawdownPct: number;
     totalReturnPct: number;
+    expectancyPct: number;
+    profitFactor: number | null;
     equityCurve: { i: number; equity: number }[];
     bars: number;
   }> = [];
@@ -49,7 +55,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
     if (prices.length <= requiredBars(longPeriod) + 1) continue;
 
     for (const strategy of STRATEGIES) {
-      const r = backtestStrategy(prices, shortPeriod, longPeriod, strategy);
+      const r = backtestStrategy(prices, shortPeriod, longPeriod, strategy, costPct);
       if (!r) continue;
       results.push({
         ticker: inst.ticker,
@@ -63,6 +69,8 @@ router.get("/backtest", async (req, res): Promise<void> => {
         avgLossPct: r.avgLossPct,
         maxDrawdownPct: r.maxDrawdownPct,
         totalReturnPct: r.totalReturnPct,
+        expectancyPct: r.expectancyPct,
+        profitFactor: r.profitFactor,
         equityCurve: r.equityCurve,
         bars: prices.length,
       });
@@ -74,6 +82,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
     shortPeriod,
     longPeriod,
     historyBars: HISTORY_BARS,
+    costPct,
     generatedAt: new Date().toISOString(),
     results,
   });

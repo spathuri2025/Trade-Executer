@@ -12,6 +12,15 @@
  * target side flips, the open round-trip is closed (and booked) and a new one is
  * opened at that bar's close. Equity is marked-to-market bar by bar so the equity
  * curve and max drawdown reflect open-position risk, not just closed trades.
+ *
+ * Costs: an optional round-trip cost (`costPct`, a fraction such as 0.001 = 0.1%)
+ * is deducted from equity each time a position is closed, so the equity curve,
+ * total return, and drawdown are all net of trading friction. The per-trade
+ * `expectancyPct` implements the classic edge formula explicitly:
+ *   (winRate × avgWin) − (lossRate × |avgLoss|) − costPct
+ * where avgWin/avgLoss stay GROSS (pre-cost) so the formula's terms are legible,
+ * and the cost is subtracted as its own term. A positive expectancy means the
+ * strategy has a net edge on this window; <= 0 means it does not.
  */
 import { computeMASignal } from "./maStrategy";
 import { computeMeanReversionSignal, requiredBars, type StrategyName } from "./strategyRouter";
@@ -35,8 +44,20 @@ export interface BacktestResult {
   avgLossPct: number;
   /** Largest peak-to-trough equity decline, as a fraction (0..1). */
   maxDrawdownPct: number;
-  /** Total compounded return over the window, as a fraction. */
+  /** Total compounded return over the window, as a fraction (net of costs). */
   totalReturnPct: number;
+  /**
+   * Per-trade expectancy (edge): (winRate·avgWin) − (lossRate·|avgLoss|) − costPct,
+   * as a fraction. > 0 means a net positive edge on this window.
+   */
+  expectancyPct: number;
+  /**
+   * Profit factor: gross wins ÷ gross losses (both pre-cost, absolute). null when
+   * there were no losing trades (an undefined / "infinite" ratio).
+   */
+  profitFactor: number | null;
+  /** Round-trip cost fraction applied to each trade (echo of the input). */
+  costPct: number;
   equityCurve: BacktestPoint[];
 }
 
@@ -55,9 +76,12 @@ export function backtestStrategy(
   shortPeriod: number,
   longPeriod: number,
   strategy: StrategyName,
+  costPct = 0,
 ): BacktestResult | null {
   const warmup = requiredBars(longPeriod);
   if (prices.length <= warmup + 1) return null;
+
+  const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
 
   let equity = STARTING_EQUITY;
   let peak = equity;
@@ -70,11 +94,22 @@ export function backtestStrategy(
   const losses: number[] = [];
   const equityCurve: BacktestPoint[] = [{ i: warmup, equity }];
 
+  // Fold this bar's final (post-cost) equity into the peak/drawdown tracker.
+  const trackDrawdown = () => {
+    if (equity > peak) peak = equity;
+    const dd = (peak - equity) / peak;
+    if (dd > maxDrawdownPct) maxDrawdownPct = dd;
+  };
+
   const book = (exitPrice: number) => {
     if (position === 0) return;
+    // Gross round-trip return (pre-cost) drives the win/loss stats so the
+    // expectancy formula's avgWin/avgLoss terms stay legible.
     const pnl = (position * (exitPrice - entryPrice)) / entryPrice;
     if (pnl >= 0) wins.push(pnl);
     else losses.push(pnl);
+    // Deduct the round-trip cost from equity so the curve/return are net.
+    if (cost > 0) equity *= 1 - cost;
     position = 0;
   };
 
@@ -83,11 +118,7 @@ export function backtestStrategy(
     if (position !== 0) {
       const barReturn = (prices[i] - prices[i - 1]) / prices[i - 1];
       equity *= 1 + position * barReturn;
-      if (equity > peak) peak = equity;
-      const dd = (peak - equity) / peak;
-      if (dd > maxDrawdownPct) maxDrawdownPct = dd;
     }
-    equityCurve.push({ i, equity });
 
     // 2) Decide this bar's signal from prices up to and including bar i.
     const window = prices.slice(0, i + 1);
@@ -98,30 +129,59 @@ export function backtestStrategy(
 
     const target = side(sig);
 
-    // 3) Flip the position when the target side changes.
+    // 3) Flip the position when the target side changes (books the round-trip
+    //    cost into equity before this bar's point is recorded).
     if (target !== 0 && target !== position) {
       book(prices[i]);
       position = target;
       entryPrice = prices[i];
     }
+
+    // 4) Record net equity and update drawdown once all of bar i's effects
+    //    (mark-to-market + any close cost) are applied, so the curve and
+    //    maxDrawdownPct are genuinely net of trading friction.
+    trackDrawdown();
+    equityCurve.push({ i, equity });
   }
 
-  // Close any open position at the final bar so stats include it.
+  // Close any open position at the final bar so stats include it, then reflect
+  // that closing cost in both the drawdown and the final equity curve point.
   book(prices[prices.length - 1]);
+  trackDrawdown();
+  if (equityCurve.length > 0) equityCurve[equityCurve.length - 1].equity = equity;
 
   const totalTrades = wins.length + losses.length;
-  const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
+  const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
+  const mean = (xs: number[]) => (xs.length ? sum(xs) / xs.length : 0);
+
+  const winRate = totalTrades ? wins.length / totalTrades : 0;
+  const lossRate = totalTrades ? losses.length / totalTrades : 0;
+  const avgWinPct = mean(wins);
+  const avgLossPct = mean(losses);
+
+  // Classic edge / expectancy: (winRate·avgWin) − (lossRate·|avgLoss|) − cost.
+  const expectancyPct = totalTrades
+    ? winRate * avgWinPct - lossRate * Math.abs(avgLossPct) - cost
+    : 0;
+
+  // Profit factor: gross wins ÷ gross losses. null when there were no losses.
+  const grossWins = sum(wins);
+  const grossLosses = Math.abs(sum(losses));
+  const profitFactor = grossLosses > 0 ? grossWins / grossLosses : null;
 
   return {
     strategy,
     totalTrades,
     wins: wins.length,
     losses: losses.length,
-    winRate: totalTrades ? wins.length / totalTrades : 0,
-    avgWinPct: mean(wins),
-    avgLossPct: mean(losses),
+    winRate,
+    avgWinPct,
+    avgLossPct,
     maxDrawdownPct,
     totalReturnPct: equity / STARTING_EQUITY - 1,
+    expectancyPct,
+    profitFactor,
+    costPct: cost,
     equityCurve,
   };
 }

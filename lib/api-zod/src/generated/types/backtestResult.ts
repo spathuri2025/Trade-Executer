@@ -23,8 +23,12 @@ export interface BacktestResult {
   avgLossPct: number;
   /** Largest peak-to-trough equity decline, as a fraction. */
   maxDrawdownPct: number;
-  /** Total compounded return over the window, as a fraction. */
+  /** Total compounded return over the window, as a fraction (net of costs). */
   totalReturnPct: number;
+  /** Per-trade expectancy / edge: (winRate·avgWin) − (lossRate·|avgLoss|) − cost, as a fraction. > 0 means a net positive edge on this window. */
+  expectancyPct: number;
+  /** Gross wins ÷ gross losses (pre-cost). null when there were no losing trades. */
+  profitFactor: number | null;
   equityCurve: BacktestPoint[];
   /** Number of price bars used. */
   bars: number;

@@ -90,6 +90,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxConcurrentPositions: 5,
     aiTradeMode: "off",
     regimeFilterEnabled: false,
+    costPerTradePercent: 0,
     ...patch,
   };
 }

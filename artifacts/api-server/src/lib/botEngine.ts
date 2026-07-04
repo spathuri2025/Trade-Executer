@@ -50,6 +50,13 @@ export interface BotConfig {
    * false, only the trend-following MA crossover runs (pre-Phase-2 behaviour).
    */
   regimeFilterEnabled: boolean;
+  /**
+   * Estimated round-trip trading cost (spread + commission) as a % of trade
+   * value, e.g. 0.1 = 0.1%. Used by the backtester to compute a realistic,
+   * cost-aware expectancy/edge. 0 assumes frictionless trades. Does not affect
+   * live order placement — brokers apply their own real costs.
+   */
+  costPerTradePercent: number;
 }
 
 /**
@@ -94,6 +101,7 @@ const state: BotState = {
     maxConcurrentPositions: 5,
     aiTradeMode: "off",
     regimeFilterEnabled: true,
+    costPerTradePercent: 0,
   },
   circuitBreaker: {
     tripped: false,

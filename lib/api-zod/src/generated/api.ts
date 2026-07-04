@@ -37,7 +37,8 @@ export const GetBotStatusResponse = zod.object({
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
-  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -69,7 +70,8 @@ export const StartBotResponse = zod.object({
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
-  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -101,7 +103,8 @@ export const StopBotResponse = zod.object({
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
-  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -133,7 +136,8 @@ export const ResumeBotResponse = zod.object({
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
-  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -161,7 +165,8 @@ export const UpdateBotConfigBody = zod.object({
   "maxDailyLossPercent": zod.number().optional().describe('Daily-loss circuit breaker threshold as % of day-start equity. 0 disables.'),
   "maxConcurrentPositions": zod.number().optional().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.'),
-  "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.')
+  "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
+  "costPerTradePercent": zod.number().optional().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders.')
 })
 
 export const UpdateBotConfigResponse = zod.object({
@@ -182,7 +187,8 @@ export const UpdateBotConfigResponse = zod.object({
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
-  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -481,6 +487,7 @@ export const GetBacktestResponse = zod.object({
   "shortPeriod": zod.number(),
   "longPeriod": zod.number(),
   "historyBars": zod.number(),
+  "costPct": zod.number().describe('Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent \/ 100).'),
   "generatedAt": zod.string(),
   "results": zod.array(zod.object({
   "ticker": zod.string(),
@@ -493,7 +500,9 @@ export const GetBacktestResponse = zod.object({
   "avgWinPct": zod.number().describe('Mean return of winning trades, as a fraction.'),
   "avgLossPct": zod.number().describe('Mean return of losing trades, as a fraction (negative).'),
   "maxDrawdownPct": zod.number().describe('Largest peak-to-trough equity decline, as a fraction.'),
-  "totalReturnPct": zod.number().describe('Total compounded return over the window, as a fraction.'),
+  "totalReturnPct": zod.number().describe('Total compounded return over the window, as a fraction (net of costs).'),
+  "expectancyPct": zod.number().describe('Per-trade expectancy \/ edge: (winRate·avgWin) − (lossRate·|avgLoss|) − cost, as a fraction. > 0 means a net positive edge on this window.'),
+  "profitFactor": zod.number().nullable().describe('Gross wins ÷ gross losses (pre-cost). null when there were no losing trades.'),
   "equityCurve": zod.array(zod.object({
   "i": zod.number().describe('Bar index into the price series.'),
   "equity": zod.number()

@@ -12,6 +12,8 @@ export interface BacktestReport {
   shortPeriod: number;
   longPeriod: number;
   historyBars: number;
+  /** Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent / 100). */
+  costPct: number;
   generatedAt: string;
   results: BacktestResult[];
 }

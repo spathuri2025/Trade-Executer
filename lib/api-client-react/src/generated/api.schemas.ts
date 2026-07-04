@@ -61,6 +61,8 @@ export interface BotConfig {
   aiTradeMode: BotConfigAiTradeMode;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
+  /** Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders. */
+  costPerTradePercent: number;
 }
 
 /**
@@ -139,6 +141,8 @@ export interface BotConfigInput {
   aiTradeMode?: BotConfigInputAiTradeMode;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
+  /** Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders. */
+  costPerTradePercent?: number;
 }
 
 export type TradeSide = typeof TradeSide[keyof typeof TradeSide];
@@ -402,8 +406,12 @@ export interface BacktestResult {
   avgLossPct: number;
   /** Largest peak-to-trough equity decline, as a fraction. */
   maxDrawdownPct: number;
-  /** Total compounded return over the window, as a fraction. */
+  /** Total compounded return over the window, as a fraction (net of costs). */
   totalReturnPct: number;
+  /** Per-trade expectancy / edge: (winRate·avgWin) − (lossRate·|avgLoss|) − cost, as a fraction. > 0 means a net positive edge on this window. */
+  expectancyPct: number;
+  /** Gross wins ÷ gross losses (pre-cost). null when there were no losing trades. */
+  profitFactor: number | null;
   equityCurve: BacktestPoint[];
   /** Number of price bars used. */
   bars: number;
@@ -414,6 +422,8 @@ export interface BacktestReport {
   shortPeriod: number;
   longPeriod: number;
   historyBars: number;
+  /** Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent / 100). */
+  costPct: number;
   generatedAt: string;
   results: BacktestResult[];
 }

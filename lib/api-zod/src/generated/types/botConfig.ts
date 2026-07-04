@@ -37,4 +37,6 @@ export interface BotConfig {
   aiTradeMode: BotConfigAiTradeMode;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
+  /** Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders. */
+  costPerTradePercent: number;
 }
