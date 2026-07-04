@@ -59,7 +59,11 @@ export default function Settings() {
     dryRun: true,
     broker: "capitalcom" as BrokerName,
     stopLossPercent: 2,
+    takeProfitPercent: 4,
     riskPerTradePercent: 1,
+    maxPositionSizePercent: 5,
+    maxDailyLossPercent: 3,
+    maxConcurrentPositions: 5,
     aiTradeMode: "off" as AiTradeMode,
   });
 
@@ -73,7 +77,11 @@ export default function Settings() {
         dryRun: botStatus.config.dryRun,
         broker: botStatus.config.broker as BrokerName,
         stopLossPercent: botStatus.config.stopLossPercent,
+        takeProfitPercent: botStatus.config.takeProfitPercent,
         riskPerTradePercent: botStatus.config.riskPerTradePercent,
+        maxPositionSizePercent: botStatus.config.maxPositionSizePercent,
+        maxDailyLossPercent: botStatus.config.maxDailyLossPercent,
+        maxConcurrentPositions: botStatus.config.maxConcurrentPositions,
         aiTradeMode: (botStatus.config.aiTradeMode as AiTradeMode) ?? "off",
       });
     }
@@ -341,6 +349,86 @@ export default function Settings() {
                     ? `Stop ${config.stopLossPercent}% from entry. Set 0 to disable.`
                     : "No stop-loss (not recommended for live trading)."}
                 </p>
+              </div>
+            </div>
+
+            {/* Risk management limits */}
+            <div className="space-y-4 rounded-lg border border-border bg-muted/10 p-4">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-semibold">Risk Management</h3>
+                <p className="text-xs text-muted-foreground">
+                  Hard limits enforced by the engine before any order is placed — they apply in every mode (strategy, guard, autonomous).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Take-Profit (%)</label>
+                  <Input
+                    type="number"
+                    value={config.takeProfitPercent}
+                    onChange={(e) => setConfig({ ...config, takeProfitPercent: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0} max={50} step={0.1}
+                    data-testid="input-take-profit"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {config.takeProfitPercent > 0
+                      ? `Target ${config.takeProfitPercent}% from entry. Capital.com only. Set 0 to disable.`
+                      : "No take-profit. Capital.com only."}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Max Position Size (%)</label>
+                  <Input
+                    type="number"
+                    value={config.maxPositionSizePercent}
+                    onChange={(e) => setConfig({ ...config, maxPositionSizePercent: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0} max={100} step={0.1}
+                    data-testid="input-max-position-size"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {config.maxPositionSizePercent > 0
+                      ? `A single trade can never exceed ${config.maxPositionSizePercent}% of account value.`
+                      : "No per-position cap (not recommended)."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Max Daily Loss (%)</label>
+                  <Input
+                    type="number"
+                    value={config.maxDailyLossPercent}
+                    onChange={(e) => setConfig({ ...config, maxDailyLossPercent: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0} max={100} step={0.1}
+                    data-testid="input-max-daily-loss"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {config.maxDailyLossPercent > 0
+                      ? `If the account drops ${config.maxDailyLossPercent}% in a day, the engine stops until you resume it.`
+                      : "Daily-loss circuit breaker disabled (not recommended)."}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Max Concurrent Positions</label>
+                  <Input
+                    type="number"
+                    value={config.maxConcurrentPositions}
+                    onChange={(e) => setConfig({ ...config, maxConcurrentPositions: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0} step={1}
+                    data-testid="input-max-concurrent-positions"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {config.maxConcurrentPositions > 0
+                      ? `New buys are blocked once ${config.maxConcurrentPositions} positions are open.`
+                      : "No limit on open positions (not recommended)."}
+                  </p>
+                </div>
               </div>
             </div>
 

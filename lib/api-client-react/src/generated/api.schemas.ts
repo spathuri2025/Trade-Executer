@@ -47,10 +47,41 @@ export interface BotConfig {
   broker: BotConfigBroker;
   /** Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss. */
   stopLossPercent: number;
+  /** Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212. */
+  takeProfitPercent: number;
   /** Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount. */
   riskPerTradePercent: number;
+  /** Hard cap on a single position's value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap. */
+  maxPositionSizePercent: number;
+  /** Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker. */
+  maxDailyLossPercent: number;
+  /** Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap. */
+  maxConcurrentPositions: number;
   /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
   aiTradeMode: BotConfigAiTradeMode;
+}
+
+/**
+ * Daily-loss circuit breaker state. When tripped, the bot is stopped and will not trade until manually resumed.
+ */
+export interface CircuitBreaker {
+  /** True when the daily loss limit has been hit and trading is halted. */
+  tripped: boolean;
+  /**
+     * Human-readable explanation of why the breaker tripped.
+     * @nullable
+     */
+  reason?: string | null;
+  /**
+     * ISO timestamp when the breaker tripped.
+     * @nullable
+     */
+  trippedAt?: string | null;
+  /**
+     * Account total equity recorded at the start of the current UTC day, used as the loss baseline.
+     * @nullable
+     */
+  dayStartEquity?: number | null;
 }
 
 export interface BotStatus {
@@ -60,6 +91,7 @@ export interface BotStatus {
   /** @nullable */
   nextRunAt?: string | null;
   config: BotConfig;
+  circuitBreaker: CircuitBreaker;
 }
 
 export type BotConfigInputBroker = typeof BotConfigInputBroker[keyof typeof BotConfigInputBroker];
@@ -91,8 +123,16 @@ export interface BotConfigInput {
   broker?: BotConfigInputBroker;
   /** Stop-loss distance as % of entry price. 0 disables. */
   stopLossPercent?: number;
+  /** Take-profit distance as % of entry price. 0 disables. Capital.com only. */
+  takeProfitPercent?: number;
   /** Account balance % to risk per trade. 0 uses fixed tradeAmount. */
   riskPerTradePercent?: number;
+  /** Hard cap on a single position's value as % of account balance. 0 disables. */
+  maxPositionSizePercent?: number;
+  /** Daily-loss circuit breaker threshold as % of day-start equity. 0 disables. */
+  maxDailyLossPercent?: number;
+  /** Maximum number of simultaneously open positions. 0 disables. */
+  maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;
 }

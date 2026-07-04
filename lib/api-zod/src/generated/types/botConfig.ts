@@ -23,8 +23,16 @@ export interface BotConfig {
   broker: BotConfigBroker;
   /** Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss. */
   stopLossPercent: number;
+  /** Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212. */
+  takeProfitPercent: number;
   /** Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount. */
   riskPerTradePercent: number;
+  /** Hard cap on a single position's value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap. */
+  maxPositionSizePercent: number;
+  /** Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker. */
+  maxDailyLossPercent: number;
+  /** Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap. */
+  maxConcurrentPositions: number;
   /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
   aiTradeMode: BotConfigAiTradeMode;
 }

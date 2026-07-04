@@ -80,6 +80,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/BotStatus"
 
+  /bot/resume:
+    post:
+      operationId: resumeBot
+      tags: [bot]
+      summary: Clear a tripped daily-loss circuit breaker and restart the bot
+      responses:
+        "200":
+          description: Bot resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
   /bot/config:
     patch:
       operationId: updateBotConfig
@@ -673,7 +686,7 @@ components:
 
     BotStatus:
       type: object
-      required: [running, config]
+      required: [running, config, circuitBreaker]
       properties:
         running:
           type: boolean
@@ -683,10 +696,30 @@ components:
           type: ["string", "null"]
         config:
           $ref: "#/components/schemas/BotConfig"
+        circuitBreaker:
+          $ref: "#/components/schemas/CircuitBreaker"
+
+    CircuitBreaker:
+      type: object
+      required: [tripped]
+      description: Daily-loss circuit breaker state. When tripped, the bot is stopped and will not trade until manually resumed.
+      properties:
+        tripped:
+          type: boolean
+          description: True when the daily loss limit has been hit and trading is halted.
+        reason:
+          type: ["string", "null"]
+          description: Human-readable explanation of why the breaker tripped.
+        trippedAt:
+          type: ["string", "null"]
+          description: ISO timestamp when the breaker tripped.
+        dayStartEquity:
+          type: ["number", "null"]
+          description: Account total equity recorded at the start of the current UTC day, used as the loss baseline.
 
     BotConfig:
       type: object
-      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, riskPerTradePercent, aiTradeMode]
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, takeProfitPercent, riskPerTradePercent, maxPositionSizePercent, maxDailyLossPercent, maxConcurrentPositions, aiTradeMode]
       properties:
         shortPeriod:
           type: integer
@@ -710,9 +743,21 @@ components:
         stopLossPercent:
           type: number
           description: Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.
+        takeProfitPercent:
+          type: number
+          description: Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212.
         riskPerTradePercent:
           type: number
           description: Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.
+        maxPositionSizePercent:
+          type: number
+          description: Hard cap on a single position's value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.
+        maxDailyLossPercent:
+          type: number
+          description: Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.
+        maxConcurrentPositions:
+          type: integer
+          description: Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.
         aiTradeMode:
           type: string
           enum: [off, guard, autonomous]
@@ -737,9 +782,21 @@ components:
         stopLossPercent:
           type: number
           description: Stop-loss distance as % of entry price. 0 disables.
+        takeProfitPercent:
+          type: number
+          description: Take-profit distance as % of entry price. 0 disables. Capital.com only.
         riskPerTradePercent:
           type: number
           description: Account balance % to risk per trade. 0 uses fixed tradeAmount.
+        maxPositionSizePercent:
+          type: number
+          description: Hard cap on a single position's value as % of account balance. 0 disables.
+        maxDailyLossPercent:
+          type: number
+          description: Daily-loss circuit breaker threshold as % of day-start equity. 0 disables.
+        maxConcurrentPositions:
+          type: integer
+          description: Maximum number of simultaneously open positions. 0 disables.
         aiTradeMode:
           type: string
           enum: [off, guard, autonomous]

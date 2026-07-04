@@ -357,6 +357,76 @@ export const useStopBot = <TError = ErrorType<unknown>,
       return useMutation(getStopBotMutationOptions(options));
     }
 
+export const getResumeBotUrl = () => {
+
+
+
+
+  return `/api/bot/resume`
+}
+
+/**
+ * @summary Clear a tripped daily-loss circuit breaker and restart the bot
+ */
+export const resumeBot = async ( options?: RequestInit): Promise<BotStatus> => {
+
+  return customFetch<BotStatus>(getResumeBotUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getResumeBotMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeBot>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resumeBot>>, TError,void, TContext> => {
+
+const mutationKey = ['resumeBot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resumeBot>>, void> = () => {
+
+
+          return  resumeBot(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResumeBotMutationResult = NonNullable<Awaited<ReturnType<typeof resumeBot>>>
+
+    export type ResumeBotMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear a tripped daily-loss circuit breaker and restart the bot
+ */
+export const useResumeBot = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeBot>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resumeBot>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResumeBotMutationOptions(options));
+    }
+
 export const getUpdateBotConfigUrl = () => {
 
 

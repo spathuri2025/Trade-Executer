@@ -31,9 +31,19 @@ export const GetBotStatusResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "takeProfitPercent": zod.number().describe('Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212.'),
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
+  "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
-})
+}),
+  "circuitBreaker": zod.object({
+  "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
+  "reason": zod.string().nullish().describe('Human-readable explanation of why the breaker tripped.'),
+  "trippedAt": zod.string().nullish().describe('ISO timestamp when the breaker tripped.'),
+  "dayStartEquity": zod.number().nullish().describe('Account total equity recorded at the start of the current UTC day, used as the loss baseline.')
+}).describe('Daily-loss circuit breaker state. When tripped, the bot is stopped and will not trade until manually resumed.')
 })
 
 
@@ -52,9 +62,19 @@ export const StartBotResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "takeProfitPercent": zod.number().describe('Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212.'),
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
+  "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
-})
+}),
+  "circuitBreaker": zod.object({
+  "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
+  "reason": zod.string().nullish().describe('Human-readable explanation of why the breaker tripped.'),
+  "trippedAt": zod.string().nullish().describe('ISO timestamp when the breaker tripped.'),
+  "dayStartEquity": zod.number().nullish().describe('Account total equity recorded at the start of the current UTC day, used as the loss baseline.')
+}).describe('Daily-loss circuit breaker state. When tripped, the bot is stopped and will not trade until manually resumed.')
 })
 
 
@@ -73,9 +93,50 @@ export const StopBotResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "takeProfitPercent": zod.number().describe('Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212.'),
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
+  "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
+}),
+  "circuitBreaker": zod.object({
+  "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
+  "reason": zod.string().nullish().describe('Human-readable explanation of why the breaker tripped.'),
+  "trippedAt": zod.string().nullish().describe('ISO timestamp when the breaker tripped.'),
+  "dayStartEquity": zod.number().nullish().describe('Account total equity recorded at the start of the current UTC day, used as the loss baseline.')
+}).describe('Daily-loss circuit breaker state. When tripped, the bot is stopped and will not trade until manually resumed.')
 })
+
+
+/**
+ * @summary Clear a tripped daily-loss circuit breaker and restart the bot
+ */
+export const ResumeBotResponse = zod.object({
+  "running": zod.boolean(),
+  "lastRunAt": zod.string().nullish(),
+  "nextRunAt": zod.string().nullish(),
+  "config": zod.object({
+  "shortPeriod": zod.number().describe('Short MA period (e.g. 9)'),
+  "longPeriod": zod.number().describe('Long MA period (e.g. 21)'),
+  "tradeAmount": zod.number().describe('Fixed amount in account currency per trade (ignored when riskPerTradePercent > 0)'),
+  "intervalMinutes": zod.number().describe('How often to run signal check (minutes)'),
+  "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
+  "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
+  "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "takeProfitPercent": zod.number().describe('Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212.'),
+  "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
+  "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
+}),
+  "circuitBreaker": zod.object({
+  "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
+  "reason": zod.string().nullish().describe('Human-readable explanation of why the breaker tripped.'),
+  "trippedAt": zod.string().nullish().describe('ISO timestamp when the breaker tripped.'),
+  "dayStartEquity": zod.number().nullish().describe('Account total equity recorded at the start of the current UTC day, used as the loss baseline.')
+}).describe('Daily-loss circuit breaker state. When tripped, the bot is stopped and will not trade until manually resumed.')
 })
 
 
@@ -90,7 +151,11 @@ export const UpdateBotConfigBody = zod.object({
   "dryRun": zod.boolean().optional(),
   "broker": zod.enum(['trading212', 'capitalcom']).optional(),
   "stopLossPercent": zod.number().optional().describe('Stop-loss distance as % of entry price. 0 disables.'),
+  "takeProfitPercent": zod.number().optional().describe('Take-profit distance as % of entry price. 0 disables. Capital.com only.'),
   "riskPerTradePercent": zod.number().optional().describe('Account balance % to risk per trade. 0 uses fixed tradeAmount.'),
+  "maxPositionSizePercent": zod.number().optional().describe('Hard cap on a single position\'s value as % of account balance. 0 disables.'),
+  "maxDailyLossPercent": zod.number().optional().describe('Daily-loss circuit breaker threshold as % of day-start equity. 0 disables.'),
+  "maxConcurrentPositions": zod.number().optional().describe('Maximum number of simultaneously open positions. 0 disables.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.')
 })
 
@@ -106,9 +171,19 @@ export const UpdateBotConfigResponse = zod.object({
   "dryRun": zod.boolean().describe('If true, log signals but do not place orders'),
   "broker": zod.enum(['trading212', 'capitalcom']).describe('Which broker to route trades through'),
   "stopLossPercent": zod.number().describe('Stop-loss distance as % of entry price (e.g. 2 = 2%). 0 disables stop loss.'),
+  "takeProfitPercent": zod.number().describe('Take-profit distance as % of entry price (e.g. 4 = 4%). 0 disables take profit. Capital.com only — ignored on Trading 212.'),
   "riskPerTradePercent": zod.number().describe('Account balance % to risk per trade for position sizing (e.g. 1 = 1%). 0 uses fixed tradeAmount.'),
+  "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
+  "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
+  "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New BUY entries are blocked at this limit. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
-})
+}),
+  "circuitBreaker": zod.object({
+  "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
+  "reason": zod.string().nullish().describe('Human-readable explanation of why the breaker tripped.'),
+  "trippedAt": zod.string().nullish().describe('ISO timestamp when the breaker tripped.'),
+  "dayStartEquity": zod.number().nullish().describe('Account total equity recorded at the start of the current UTC day, used as the loss baseline.')
+}).describe('Daily-loss circuit breaker state. When tripped, the bot is stopped and will not trade until manually resumed.')
 })
 
 

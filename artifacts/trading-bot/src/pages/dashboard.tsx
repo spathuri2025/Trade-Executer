@@ -10,6 +10,7 @@ import {
   getListSignalsQueryKey,
   useGetMarketNews,
   getGetMarketNewsQueryKey,
+  useResumeBot,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -92,6 +93,13 @@ export default function Dashboard() {
     },
   });
 
+  const resumeBot = useResumeBot({
+    mutation: {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetBotStatusQueryKey() }),
+    },
+  });
+  const breaker = botStatus?.circuitBreaker;
+
   /* Derive intervals from live config */
   const botIntervalMs = (botStatus?.config?.intervalMinutes ?? 15) * 60_000;
 
@@ -164,6 +172,33 @@ export default function Dashboard() {
           </span>
         )}
       </header>
+
+      {/* ── Circuit breaker banner ── */}
+      {breaker?.tripped && (
+        <div
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg p-5"
+          style={{ backgroundColor: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.4)" }}
+          data-testid="banner-circuit-breaker"
+        >
+          <div className="space-y-1">
+            <div className="text-sm font-semibold" style={{ color: red }}>
+              Engine paused: daily loss limit hit
+            </div>
+            <div className="text-xs" style={{ color: "rgba(248,113,113,0.85)" }}>
+              {breaker.reason ?? "The daily-loss circuit breaker tripped and trading is halted."}
+            </div>
+          </div>
+          <Button
+            variant="destructive"
+            className="w-full sm:w-auto shrink-0"
+            onClick={() => resumeBot.mutate()}
+            disabled={resumeBot.isPending}
+            data-testid="button-resume-bot"
+          >
+            {resumeBot.isPending ? "Resuming…" : "Resume Engine"}
+          </Button>
+        </div>
+      )}
 
       {/* ── Stats Row ── */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-5">

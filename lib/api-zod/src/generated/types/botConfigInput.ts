@@ -17,8 +17,16 @@ export interface BotConfigInput {
   broker?: BotConfigInputBroker;
   /** Stop-loss distance as % of entry price. 0 disables. */
   stopLossPercent?: number;
+  /** Take-profit distance as % of entry price. 0 disables. Capital.com only. */
+  takeProfitPercent?: number;
   /** Account balance % to risk per trade. 0 uses fixed tradeAmount. */
   riskPerTradePercent?: number;
+  /** Hard cap on a single position's value as % of account balance. 0 disables. */
+  maxPositionSizePercent?: number;
+  /** Daily-loss circuit breaker threshold as % of day-start equity. 0 disables. */
+  maxDailyLossPercent?: number;
+  /** Maximum number of simultaneously open positions. 0 disables. */
+  maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;
 }

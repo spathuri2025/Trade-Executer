@@ -154,23 +154,44 @@ export interface StopLossParams {
   entryPrice: number;
 }
 
+export interface TakeProfitParams {
+  takeProfitPercent: number;
+  entryPrice: number;
+}
+
 export async function placeBrokerOrder(
   broker: BrokerName,
   ticker: string,
   quantity: number,
   side: "BUY" | "SELL",
-  stopLoss?: StopLossParams
+  stopLoss?: StopLossParams,
+  takeProfit?: TakeProfitParams
 ): Promise<NormalizedOrder> {
   if (broker === "capitalcom") {
+    // A stop protects on the losing side, a profit target on the winning side —
+    // mirrored by trade direction (a long stops below / targets above entry).
     const stopLevel = stopLoss
       ? side === "BUY"
         ? stopLoss.entryPrice * (1 - stopLoss.stopLossPercent / 100)
         : stopLoss.entryPrice * (1 + stopLoss.stopLossPercent / 100)
       : undefined;
-    const result = await placeCapitalOrder(ticker, quantity, side, stopLevel);
+    const profitLevel = takeProfit
+      ? side === "BUY"
+        ? takeProfit.entryPrice * (1 + takeProfit.takeProfitPercent / 100)
+        : takeProfit.entryPrice * (1 - takeProfit.takeProfitPercent / 100)
+      : undefined;
+    const result = await placeCapitalOrder(ticker, quantity, side, stopLevel, profitLevel);
     return { id: result.dealReference };
   }
 
+  // Trading 212's order API does not support attaching stop-loss / take-profit
+  // levels here, so those protections are silently unavailable on this broker.
+  if (stopLoss || takeProfit) {
+    logger.warn(
+      { broker, ticker },
+      "Trading 212 does not support attached stop-loss / take-profit — order placed without them"
+    );
+  }
   const result = await t212PlaceOrder(ticker, quantity, side);
   return { id: result.id };
 }

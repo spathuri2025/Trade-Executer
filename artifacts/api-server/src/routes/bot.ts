@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { getBotStatus, startBot, stopBot, updateConfig } from "../lib/botEngine";
+import { getBotStatus, startBot, stopBot, updateConfig, resumeBot } from "../lib/botEngine";
 import { UpdateBotConfigBody } from "@workspace/api-zod";
 import { getBrokerAccount } from "../lib/broker";
 
@@ -16,6 +16,11 @@ router.post("/bot/start", async (_req, res): Promise<void> => {
 
 router.post("/bot/stop", async (_req, res): Promise<void> => {
   const status = stopBot();
+  res.json(status);
+});
+
+router.post("/bot/resume", async (_req, res): Promise<void> => {
+  const status = resumeBot();
   res.json(status);
 });
 

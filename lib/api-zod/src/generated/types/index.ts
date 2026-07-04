@@ -17,6 +17,7 @@ export * from './botConfigInput';
 export * from './botConfigInputAiTradeMode';
 export * from './botConfigInputBroker';
 export * from './botStatus';
+export * from './circuitBreaker';
 export * from './conversation';
 export * from './conversationInput';
 export * from './conversationWithMessages';

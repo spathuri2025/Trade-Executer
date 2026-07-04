@@ -227,7 +227,8 @@ export async function placeCapitalOrder(
   epic: string,
   size: number,
   direction: "BUY" | "SELL",
-  stopLevel?: number
+  stopLevel?: number,
+  profitLevel?: number
 ): Promise<{ dealReference: string }> {
   const body: Record<string, unknown> = {
     epic,
@@ -239,6 +240,10 @@ export async function placeCapitalOrder(
 
   if (stopLevel !== undefined) {
     body.stopLevel = Number(stopLevel.toFixed(5));
+  }
+
+  if (profitLevel !== undefined) {
+    body.profitLevel = Number(profitLevel.toFixed(5));
   }
 
   const data = await capitalFetch("/positions", {

@@ -33,8 +33,26 @@ export interface BotConfig {
   dryRun: boolean;
   broker: BrokerName;
   stopLossPercent: number;
+  takeProfitPercent: number;
   riskPerTradePercent: number;
+  maxPositionSizePercent: number;
+  maxDailyLossPercent: number;
+  maxConcurrentPositions: number;
   aiTradeMode: AiTradeMode;
+}
+
+/**
+ * Daily-loss circuit breaker state. When `tripped`, the engine is stopped and
+ * refuses to trade until a human explicitly resumes it (no auto-resume).
+ * `dayKey` is the UTC calendar day the baseline was captured for; `dayStartEquity`
+ * is the account total equity at the start of that day, used as the loss baseline.
+ */
+interface CircuitBreakerState {
+  tripped: boolean;
+  reason: string | null;
+  trippedAt: Date | null;
+  dayKey: string | null;
+  dayStartEquity: number | null;
 }
 
 interface BotState {
@@ -42,6 +60,7 @@ interface BotState {
   lastRunAt: Date | null;
   nextRunAt: Date | null;
   config: BotConfig;
+  circuitBreaker: CircuitBreakerState;
   intervalHandle: ReturnType<typeof setInterval> | null;
 }
 
@@ -57,11 +76,27 @@ const state: BotState = {
     dryRun: true,
     broker: "capitalcom",
     stopLossPercent: 2,
+    takeProfitPercent: 4,
     riskPerTradePercent: 1,
+    maxPositionSizePercent: 5,
+    maxDailyLossPercent: 3,
+    maxConcurrentPositions: 5,
     aiTradeMode: "off",
+  },
+  circuitBreaker: {
+    tripped: false,
+    reason: null,
+    trippedAt: null,
+    dayKey: null,
+    dayStartEquity: null,
   },
   intervalHandle: null,
 };
+
+/** UTC calendar-day key (YYYY-MM-DD) used to reset the daily-loss baseline. */
+function utcDayKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 export function getBotStatus() {
   return {
@@ -69,7 +104,28 @@ export function getBotStatus() {
     lastRunAt: state.lastRunAt?.toISOString() ?? null,
     nextRunAt: state.nextRunAt?.toISOString() ?? null,
     config: state.config,
+    circuitBreaker: {
+      tripped: state.circuitBreaker.tripped,
+      reason: state.circuitBreaker.reason,
+      trippedAt: state.circuitBreaker.trippedAt?.toISOString() ?? null,
+      dayStartEquity: state.circuitBreaker.dayStartEquity,
+    },
   };
+}
+
+/**
+ * Clears a tripped daily-loss circuit breaker and restarts the bot. This is the
+ * ONLY way to resume after the breaker trips — the engine never auto-resumes.
+ * Resets the loss baseline so the breaker measures from the resume point onward.
+ */
+export function resumeBot() {
+  state.circuitBreaker.tripped = false;
+  state.circuitBreaker.reason = null;
+  state.circuitBreaker.trippedAt = null;
+  state.circuitBreaker.dayKey = null;
+  state.circuitBreaker.dayStartEquity = null;
+  logger.info("Circuit breaker cleared — resuming bot");
+  return startBot();
 }
 
 export function updateConfig(patch: Partial<BotConfig>) {
@@ -142,20 +198,66 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
   }
   const accountBalance = account?.total ?? null;
 
-  // Open positions provide Claude with exposure context (AI modes only).
-  let positions: PositionSnapshot[] = [];
-  if (aiTradeMode !== "off") {
-    try {
-      positions = (await getBrokerPositions(broker)).map((p) => ({
-        ticker: p.ticker,
-        quantity: p.quantity,
-        averagePrice: p.averagePrice,
-        currentPrice: p.currentPrice,
-        pnlPercent: p.pnlPercent,
-      }));
-    } catch (err) {
-      logger.warn({ broker, err }, "Could not fetch open positions for AI context");
+  // Daily-loss circuit breaker. Runs before any trading logic so a tripped
+  // breaker halts the cycle entirely. Baseline is the first equity observed each
+  // UTC day; once the loss from that baseline hits maxDailyLossPercent the bot is
+  // stopped and will not trade again until manually resumed (no auto-resume).
+  if (state.circuitBreaker.tripped) {
+    logger.warn({ reason: state.circuitBreaker.reason }, "Circuit breaker tripped — skipping trading cycle");
+    return results;
+  }
+  if (state.running && account !== null && account.total !== null) {
+    const cb = state.circuitBreaker;
+    const todayKey = utcDayKey(new Date());
+    if (cb.dayKey !== todayKey || cb.dayStartEquity === null) {
+      cb.dayKey = todayKey;
+      cb.dayStartEquity = account.total;
+    } else if (cfg.maxDailyLossPercent > 0 && cb.dayStartEquity > 0) {
+      const lossPct = ((cb.dayStartEquity - account.total) / cb.dayStartEquity) * 100;
+      if (lossPct >= cfg.maxDailyLossPercent) {
+        cb.tripped = true;
+        cb.trippedAt = new Date();
+        cb.reason = `Daily loss of ${lossPct.toFixed(2)}% reached the ${cfg.maxDailyLossPercent}% limit. Trading is halted until you resume it.`;
+        logger.error(
+          { lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: account.total },
+          "Daily-loss circuit breaker TRIPPED — stopping bot"
+        );
+        stopBot();
+        return results;
+      }
     }
+  }
+
+  // Open positions: fetched every cycle. Used to enforce maxConcurrentPositions
+  // for all modes, and to give Claude exposure context in AI modes.
+  let positions: PositionSnapshot[] = [];
+  let positionsFetchOk = true;
+  try {
+    positions = (await getBrokerPositions(broker)).map((p) => ({
+      ticker: p.ticker,
+      quantity: p.quantity,
+      averagePrice: p.averagePrice,
+      currentPrice: p.currentPrice,
+      pnlPercent: p.pnlPercent,
+    }));
+  } catch (err) {
+    positionsFetchOk = false;
+    logger.warn({ broker, err }, "Could not fetch open positions");
+  }
+
+  // Fail-closed: if we can't read the data a limit depends on, block NEW entries
+  // this cycle rather than trade blind. The per-position size cap and the
+  // daily-loss breaker both need account equity; the concurrent-position cap
+  // needs the live positions list. Closing trades (SELL) are always allowed
+  // since they only reduce exposure.
+  const riskDataUnavailable =
+    (account === null && (cfg.maxPositionSizePercent > 0 || cfg.maxDailyLossPercent > 0)) ||
+    (!positionsFetchOk && cfg.maxConcurrentPositions > 0);
+  if (riskDataUnavailable) {
+    logger.warn(
+      { accountAvailable: account !== null, positionsFetchOk },
+      "Risk data unavailable — blocking new BUY entries this cycle (fail-safe)"
+    );
   }
 
   // Gather price + MA context for every enabled instrument up front.
@@ -217,6 +319,9 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     // aggregate exposure can't multiply beyond what the account actually holds.
     const cashBudget = account?.cash ?? null;
     let deployedThisCycle = 0;
+    // Distinct open positions (by ticker). Adding to an existing ticker does not
+    // consume a new concurrent-position slot; only a brand-new ticker does.
+    const liveTickers = new Set(positions.map((p) => p.ticker));
 
     for (const c of contexts) {
       const decision = byTicker.get(c.ticker) ?? {
@@ -230,7 +335,21 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
       if (decision.action !== "HOLD") {
         const { positionValue, quantity } = sizePosition(c.currentPrice, cfg, accountBalance);
         const isBuy = decision.action === "BUY";
-        if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
+        const isNewPosition = !liveTickers.has(c.ticker);
+        const atPositionLimit =
+          cfg.maxConcurrentPositions > 0 &&
+          isNewPosition &&
+          liveTickers.size >= cfg.maxConcurrentPositions;
+        if (isBuy && riskDataUnavailable) {
+          aiReason = `Skipped: risk data was unavailable this cycle, so no new position was opened for safety. ${decision.reason}`;
+          logger.warn({ ticker: c.ticker }, "Autonomous BUY skipped — risk data unavailable (fail-safe)");
+        } else if (isBuy && atPositionLimit) {
+          aiReason = `Skipped: already at the ${cfg.maxConcurrentPositions}-position limit. ${decision.reason}`;
+          logger.warn(
+            { ticker: c.ticker, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
+            "Autonomous BUY skipped — max concurrent positions reached"
+          );
+        } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = `Skipped: would exceed the account's available cash budget for this cycle. ${decision.reason}`;
           logger.warn(
             { ticker: c.ticker, positionValue, deployedThisCycle, cashBudget },
@@ -248,7 +367,10 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
             aiReason: decision.reason,
             aiConfidence: decision.confidence,
           });
-          if (tradeExecuted && isBuy) deployedThisCycle += positionValue;
+          if (tradeExecuted && isBuy) {
+            deployedThisCycle += positionValue;
+            liveTickers.add(c.ticker);
+          }
         }
       }
       await db.insert(signalsTable).values({
@@ -271,6 +393,9 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
   // account's available cash across a single cycle.
   const cashBudget = account?.cash ?? null;
   let deployedThisCycle = 0;
+  // Distinct open positions (by ticker); adding to an existing ticker does not
+  // consume a new concurrent-position slot.
+  const liveTickers = new Set(positions.map((p) => p.ticker));
 
   for (const c of contexts) {
     const { ticker, signal, shortMa, longMa, currentPrice } = c;
@@ -313,7 +438,21 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
       if (proceed) {
         const { positionValue, quantity } = sizePosition(currentPrice, cfg, accountBalance);
         const isBuy = signal === "BUY";
-        if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
+        const isNewPosition = !liveTickers.has(ticker);
+        const atPositionLimit =
+          cfg.maxConcurrentPositions > 0 &&
+          isNewPosition &&
+          liveTickers.size >= cfg.maxConcurrentPositions;
+        if (isBuy && riskDataUnavailable) {
+          aiReason = "Trade skipped: risk data was unavailable this cycle, so no new position was opened for safety.";
+          logger.warn({ ticker }, "BUY skipped — risk data unavailable (fail-safe)");
+        } else if (isBuy && atPositionLimit) {
+          aiReason = `Trade skipped: already at the ${cfg.maxConcurrentPositions}-position limit.`;
+          logger.warn(
+            { ticker, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
+            "BUY skipped — max concurrent positions reached"
+          );
+        } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = "Trade skipped: it would exceed the account's available cash budget for this cycle.";
           logger.warn(
             { ticker, positionValue, deployedThisCycle, cashBudget },
@@ -332,7 +471,10 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
             aiReason: aiReason ?? undefined,
             aiConfidence,
           });
-          if (tradeExecuted && isBuy) deployedThisCycle += positionValue;
+          if (tradeExecuted && isBuy) {
+            deployedThisCycle += positionValue;
+            liveTickers.add(ticker);
+          }
         }
       }
     }
@@ -358,10 +500,18 @@ function sizePosition(
   cfg: BotConfig,
   accountBalance: number | null
 ): { positionValue: number; quantity: number } {
-  const positionValue =
+  let positionValue =
     cfg.riskPerTradePercent > 0 && accountBalance !== null
       ? accountBalance * (cfg.riskPerTradePercent / 100)
       : cfg.tradeAmount;
+
+  // Hard cap: a single position may never exceed maxPositionSizePercent of the
+  // account balance. Clamp down regardless of how the base size was derived.
+  if (cfg.maxPositionSizePercent > 0 && accountBalance !== null) {
+    const cap = accountBalance * (cfg.maxPositionSizePercent / 100);
+    if (positionValue > cap) positionValue = cap;
+  }
+
   return { positionValue, quantity: positionValue / currentPrice };
 }
 
@@ -382,7 +532,7 @@ async function placeAndRecord(args: {
   aiConfidence?: string;
 }): Promise<boolean> {
   const { ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence } = args;
-  const { broker, stopLossPercent } = cfg;
+  const { broker, stopLossPercent, takeProfitPercent } = cfg;
 
   if (dryRun) {
     logger.info({ ticker, side, broker, dryRun: true }, "Dry-run signal");
@@ -405,7 +555,8 @@ async function placeAndRecord(args: {
       ticker,
       quantity,
       side,
-      stopLossPercent > 0 ? { stopLossPercent, entryPrice: currentPrice } : undefined
+      stopLossPercent > 0 ? { stopLossPercent, entryPrice: currentPrice } : undefined,
+      takeProfitPercent > 0 ? { takeProfitPercent, entryPrice: currentPrice } : undefined
     );
     await db.insert(tradesTable).values({
       ticker,

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BotConfig } from './botConfig';
+import type { CircuitBreaker } from './circuitBreaker';
 
 export interface BotStatus {
   running: boolean;
@@ -14,4 +15,5 @@ export interface BotStatus {
   /** @nullable */
   nextRunAt?: string | null;
   config: BotConfig;
+  circuitBreaker: CircuitBreaker;
 }
