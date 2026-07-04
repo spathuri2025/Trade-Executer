@@ -29,4 +29,6 @@ export interface BotConfigInput {
   maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;
+  /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
+  regimeFilterEnabled?: boolean;
 }

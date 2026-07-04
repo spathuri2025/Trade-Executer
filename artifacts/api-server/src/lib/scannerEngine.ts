@@ -3,7 +3,7 @@ import { desc } from "drizzle-orm";
 import { logger } from "./logger";
 import { placeBrokerOrder, getBrokerAccount, type BrokerName } from "./broker";
 import { getCapitalPriceHistory } from "./capitalcom";
-import { computeMASignal } from "./maStrategy";
+import { routeStrategy, requiredBars } from "./strategyRouter";
 import { getBotStatus } from "./botEngine";
 
 export interface ScannerConfig {
@@ -135,8 +135,9 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
   }
 
   const botStatus = getBotStatus();
-  const { shortPeriod, longPeriod, dryRun, broker, stopLossPercent, riskPerTradePercent, tradeAmount } = botStatus.config;
+  const { shortPeriod, longPeriod, dryRun, broker, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled } = botStatus.config;
   const { autoTrade, minTrendStrength, instrumentTypes, maxInstrumentsPerScan } = state.config;
+  const bars = requiredBars(longPeriod);
 
   let totalScanned = 0;
   let totalHits = 0;
@@ -172,21 +173,23 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
     await Promise.allSettled(
       batch.map(async (market) => {
         try {
-          const prices = await getCapitalPriceHistory(market.epic, "HOUR", longPeriod + 5);
+          const prices = await getCapitalPriceHistory(market.epic, "HOUR", bars);
           totalScanned++;
 
           if (prices.length < longPeriod + 1) return;
 
           const currentPrice = prices[prices.length - 1];
-          const maResult = computeMASignal(prices, shortPeriod, longPeriod);
-          if (!maResult || maResult.signal === "HOLD") return;
+          const routed = routeStrategy(prices, shortPeriod, longPeriod, regimeFilterEnabled);
+          if (!routed || routed.signal === "HOLD") return;
 
-          const { signal, shortMa, longMa } = maResult;
+          const { signal, shortMa, longMa, strategy, regime } = routed;
           const trendStrength = Math.abs((shortMa - longMa) / longMa) * 100;
 
-          if (trendStrength < minTrendStrength) return;
+          // The trend-strength floor only makes sense for trend-following hits;
+          // mean-reversion fires in low-trend ranges by design, so it is exempt.
+          if (strategy === "trend_following" && trendStrength < minTrendStrength) return;
 
-          logger.info({ ticker: market.epic, signal, trendStrength, price: currentPrice }, "Scanner hit");
+          logger.info({ ticker: market.epic, signal, strategy, regime, trendStrength, price: currentPrice }, "Scanner hit");
 
           let autoTraded = false;
           let orderId: string | undefined;
@@ -219,6 +222,8 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
             longMa: String(longMa),
             price: String(currentPrice),
             trendStrength: String(trendStrength.toFixed(4)),
+            strategy,
+            regime,
             autoTraded,
             orderId: orderId ?? null,
           });

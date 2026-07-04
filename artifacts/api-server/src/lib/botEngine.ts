@@ -8,7 +8,12 @@ import {
   getBrokerPositions,
   type BrokerName,
 } from "./broker";
-import { computeMASignal } from "./maStrategy";
+import {
+  routeStrategy,
+  requiredBars,
+  type StrategyName,
+  type Regime,
+} from "./strategyRouter";
 import {
   reviewSignal,
   decideTrades,
@@ -39,6 +44,12 @@ export interface BotConfig {
   maxDailyLossPercent: number;
   maxConcurrentPositions: number;
   aiTradeMode: AiTradeMode;
+  /**
+   * When true, each instrument is classified as trending or ranging (close-based
+   * ADX) and routed to trend-following or mean-reversion automatically. When
+   * false, only the trend-following MA crossover runs (pre-Phase-2 behaviour).
+   */
+  regimeFilterEnabled: boolean;
 }
 
 /**
@@ -82,6 +93,7 @@ const state: BotState = {
     maxDailyLossPercent: 3,
     maxConcurrentPositions: 5,
     aiTradeMode: "off",
+    regimeFilterEnabled: true,
   },
   circuitBreaker: {
     tripped: false,
@@ -267,24 +279,31 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     signal: "BUY" | "SELL" | "HOLD";
     shortMa: number;
     longMa: number;
+    strategy: StrategyName;
+    regime: Regime;
   }
+  const bars = requiredBars(longPeriod);
   const contexts: InstrumentContext[] = [];
   for (const instrument of instruments) {
     try {
-      const prices = await getBrokerPriceHistory(broker, instrument.ticker, longPeriod + 5);
+      const prices = await getBrokerPriceHistory(broker, instrument.ticker, bars);
       if (prices.length < longPeriod + 1) {
-        logger.warn({ ticker: instrument.ticker, broker }, "Not enough price data for MA computation");
+        logger.warn({ ticker: instrument.ticker, broker }, "Not enough price data for signal computation");
         continue;
       }
       const currentPrice = prices[prices.length - 1];
-      const maResult = computeMASignal(prices, shortPeriod, longPeriod);
-      if (!maResult) continue;
+      // Regime filter routes to trend-following (MA) or mean-reversion (RSI +
+      // Bollinger) automatically; deterministic, no LLM dependency.
+      const routed = routeStrategy(prices, shortPeriod, longPeriod, cfg.regimeFilterEnabled);
+      if (!routed) continue;
       contexts.push({
         ticker: instrument.ticker,
         currentPrice,
-        signal: maResult.signal,
-        shortMa: maResult.shortMa,
-        longMa: maResult.longMa,
+        signal: routed.signal,
+        shortMa: routed.shortMa,
+        longMa: routed.longMa,
+        strategy: routed.strategy,
+        regime: routed.regime,
       });
     } catch (err) {
       logger.error({ ticker: instrument.ticker, broker, err }, "Error processing instrument");
@@ -388,6 +407,8 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
         price: String(c.currentPrice),
         tradeExecuted,
         aiReason,
+        strategy: c.strategy,
+        regime: c.regime,
       });
       results.push({ ticker: c.ticker, signal: decision.action, tradeExecuted });
     }
@@ -498,6 +519,8 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
       price: String(currentPrice),
       tradeExecuted,
       aiReason,
+      strategy: c.strategy,
+      regime: c.regime,
     });
     results.push({ ticker, signal, tradeExecuted });
   }

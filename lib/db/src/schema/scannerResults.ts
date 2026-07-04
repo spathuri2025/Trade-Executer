@@ -9,6 +9,8 @@ export const scannerResultsTable = pgTable("scanner_results", {
   longMa: numeric("long_ma", { precision: 18, scale: 8 }).notNull(),
   price: numeric("price", { precision: 18, scale: 8 }).notNull(),
   trendStrength: numeric("trend_strength", { precision: 10, scale: 4 }).notNull(),
+  strategy: text("strategy", { enum: ["trend_following", "mean_reversion"] }),
+  regime: text("regime", { enum: ["trending", "ranging"] }),
   autoTraded: boolean("auto_traded").default(false).notNull(),
   orderId: text("order_id"),
   scannedAt: timestamp("scanned_at", { withTimezone: true }).defaultNow().notNull(),

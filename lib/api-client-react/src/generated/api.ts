@@ -21,8 +21,10 @@ import type {
 
 import type {
   AccountSummary,
+  ActivityFeed,
   AssistantError,
   AssistantMessage,
+  BacktestReport,
   BotConfigInput,
   BotStatus,
   Conversation,
@@ -30,6 +32,7 @@ import type {
   ConversationWithMessages,
   DailyMarketBrief,
   ExecuteTradeInput,
+  GetActivityFeedParams,
   GetMarketNewsParams,
   GetQuoteParams,
   GetScannerResultsParams,
@@ -1639,6 +1642,169 @@ export function useGetScannerResults<TData = Awaited<ReturnType<typeof getScanne
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetScannerResultsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetBacktestUrl = () => {
+
+
+
+
+  return `/api/backtest`
+}
+
+/**
+ * Runs trend-following and mean-reversion over recent close-price history for every enabled instrument and returns per-strategy, per-instrument performance stats plus an equity curve. All numbers are computed in code (no LLM). Intended as the "is this strategy working" evidence before turning on live automation.
+ * @summary Deterministic backtest of both strategies over recent price history
+ */
+export const getBacktest = async ( options?: RequestInit): Promise<BacktestReport> => {
+
+  return customFetch<BacktestReport>(getGetBacktestUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBacktestQueryKey = () => {
+    return [
+    `/api/backtest`
+    ] as const;
+    }
+
+
+export const getGetBacktestQueryOptions = <TData = Awaited<ReturnType<typeof getBacktest>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacktest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBacktestQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBacktest>>> = ({ signal }) => getBacktest({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBacktest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBacktestQueryResult = NonNullable<Awaited<ReturnType<typeof getBacktest>>>
+export type GetBacktestQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Deterministic backtest of both strategies over recent price history
+ */
+
+export function useGetBacktest<TData = Awaited<ReturnType<typeof getBacktest>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacktest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBacktestQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetActivityFeedUrl = (params?: GetActivityFeedParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/activity?${stringifiedParams}` : `/api/activity`
+}
+
+/**
+ * Merges scanner hits, strategy signals (with any Claude review reason), and executed/failed trades into one reverse-chronological stream for the dashboard. Additive — the standalone Scanner/Signals/Trades pages remain the detailed views.
+ * @summary Unified chronological feed of scans, signals, and trades
+ */
+export const getActivityFeed = async (params?: GetActivityFeedParams, options?: RequestInit): Promise<ActivityFeed> => {
+
+  return customFetch<ActivityFeed>(getGetActivityFeedUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetActivityFeedQueryKey = (params?: GetActivityFeedParams,) => {
+    return [
+    `/api/activity`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetActivityFeedQueryOptions = <TData = Awaited<ReturnType<typeof getActivityFeed>>, TError = ErrorType<unknown>>(params?: GetActivityFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActivityFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetActivityFeedQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivityFeed>>> = ({ signal }) => getActivityFeed(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getActivityFeed>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetActivityFeedQueryResult = NonNullable<Awaited<ReturnType<typeof getActivityFeed>>>
+export type GetActivityFeedQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Unified chronological feed of scans, signals, and trades
+ */
+
+export function useGetActivityFeed<TData = Awaited<ReturnType<typeof getActivityFeed>>, TError = ErrorType<unknown>>(
+ params?: GetActivityFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActivityFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetActivityFeedQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -407,6 +407,52 @@ paths:
                 items:
                   $ref: "#/components/schemas/ScannerResult"
 
+  /backtest:
+    get:
+      operationId: getBacktest
+      tags: [backtest]
+      summary: Deterministic backtest of both strategies over recent price history
+      description: >-
+        Runs trend-following and mean-reversion over recent close-price history
+        for every enabled instrument and returns per-strategy, per-instrument
+        performance stats plus an equity curve. All numbers are computed in code
+        (no LLM). Intended as the "is this strategy working" evidence before
+        turning on live automation.
+      responses:
+        "200":
+          description: Backtest results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacktestReport"
+
+  /activity:
+    get:
+      operationId: getActivityFeed
+      tags: [activity]
+      summary: Unified chronological feed of scans, signals, and trades
+      description: >-
+        Merges scanner hits, strategy signals (with any Claude review reason),
+        and executed/failed trades into one reverse-chronological stream for the
+        dashboard. Additive — the standalone Scanner/Signals/Trades pages remain
+        the detailed views.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: Max rows fetched per source before merging.
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityFeed"
+
   /assistant/conversations:
     get:
       operationId: listConversations
@@ -719,7 +765,7 @@ components:
 
     BotConfig:
       type: object
-      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, takeProfitPercent, riskPerTradePercent, maxPositionSizePercent, maxDailyLossPercent, maxConcurrentPositions, aiTradeMode]
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, takeProfitPercent, riskPerTradePercent, maxPositionSizePercent, maxDailyLossPercent, maxConcurrentPositions, aiTradeMode, regimeFilterEnabled]
       properties:
         shortPeriod:
           type: integer
@@ -762,6 +808,9 @@ components:
           type: string
           enum: [off, guard, autonomous]
           description: How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades.
+        regimeFilterEnabled:
+          type: boolean
+          description: When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.
 
     BotConfigInput:
       type: object
@@ -801,6 +850,9 @@ components:
           type: string
           enum: [off, guard, autonomous]
           description: How Claude participates in execution.
+        regimeFilterEnabled:
+          type: boolean
+          description: Enable automatic trending/ranging routing between trend-following and mean-reversion.
 
     Trade:
       type: object
@@ -949,6 +1001,14 @@ components:
         aiReason:
           type: ["string", "null"]
           description: Claude's plain-language reason for this decision (AI modes only).
+        strategy:
+          type: ["string", "null"]
+          enum: [trend_following, mean_reversion, null]
+          description: Which strategy produced this signal. Routed automatically by the regime filter.
+        regime:
+          type: ["string", "null"]
+          enum: [trending, ranging, null]
+          description: Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.
 
     NewsItem:
       type: object
@@ -1052,6 +1112,137 @@ components:
           type: ["string", "null"]
         scannedAt:
           type: string
+
+    BacktestPoint:
+      type: object
+      required: [i, equity]
+      properties:
+        i:
+          type: integer
+          description: Bar index into the price series.
+        equity:
+          type: number
+
+    BacktestResult:
+      type: object
+      required:
+        [ticker, name, strategy, totalTrades, wins, losses, winRate, avgWinPct, avgLossPct, maxDrawdownPct, totalReturnPct, equityCurve, bars]
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        strategy:
+          type: string
+          enum: [trend_following, mean_reversion]
+        totalTrades:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        winRate:
+          type: number
+          description: Fraction 0..1 of closed trades that were profitable.
+        avgWinPct:
+          type: number
+          description: Mean return of winning trades, as a fraction.
+        avgLossPct:
+          type: number
+          description: Mean return of losing trades, as a fraction (negative).
+        maxDrawdownPct:
+          type: number
+          description: Largest peak-to-trough equity decline, as a fraction.
+        totalReturnPct:
+          type: number
+          description: Total compounded return over the window, as a fraction.
+        equityCurve:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestPoint"
+        bars:
+          type: integer
+          description: Number of price bars used.
+
+    BacktestReport:
+      type: object
+      required: [broker, shortPeriod, longPeriod, historyBars, generatedAt, results]
+      properties:
+        broker:
+          type: string
+        shortPeriod:
+          type: integer
+        longPeriod:
+          type: integer
+        historyBars:
+          type: integer
+        generatedAt:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestResult"
+
+    ActivityItem:
+      type: object
+      required: [id, type, ticker, timestamp]
+      properties:
+        id:
+          type: string
+          description: Prefixed id, e.g. "signal-12", "trade-7", "scan-3".
+        type:
+          type: string
+          enum: [scan, signal, trade]
+        ticker:
+          type: string
+        name:
+          type: ["string", "null"]
+        signal:
+          type: ["string", "null"]
+          enum: [BUY, SELL, HOLD, null]
+        timestamp:
+          type: string
+        price:
+          type: number
+        shortMa:
+          type: ["number", "null"]
+        longMa:
+          type: ["number", "null"]
+        trendStrength:
+          type: ["number", "null"]
+        strategy:
+          type: ["string", "null"]
+          enum: [trend_following, mean_reversion, null]
+        regime:
+          type: ["string", "null"]
+          enum: [trending, ranging, null]
+        autoTraded:
+          type: ["boolean", "null"]
+        aiReason:
+          type: ["string", "null"]
+        aiConfidence:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+          enum: [FILLED, FAILED, DRY_RUN, null]
+        side:
+          type: ["string", "null"]
+          enum: [BUY, SELL, null]
+        quantity:
+          type: ["number", "null"]
+        total:
+          type: ["number", "null"]
+        errorMessage:
+          type: ["string", "null"]
+
+    ActivityFeed:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
 
     Conversation:
       type: object

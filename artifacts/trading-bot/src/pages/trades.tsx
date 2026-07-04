@@ -355,10 +355,29 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className={cls}>{status}</Badge>;
 }
 
+type TradeFilter = "all" | "live" | "dry";
+
+const isDryRun = (status: string) => status === "DRY_RUN";
+
 export default function Trades() {
   const { data: trades, isLoading } = useListTrades(undefined, {
     query: { queryKey: getListTradesQueryKey() }
   });
+
+  const [filter, setFilter] = useState<TradeFilter>("all");
+
+  const dryCount = trades?.filter((t) => isDryRun(t.status)).length ?? 0;
+  const liveCount = (trades?.length ?? 0) - dryCount;
+
+  const filteredTrades = (trades ?? []).filter((t) =>
+    filter === "all" ? true : filter === "dry" ? isDryRun(t.status) : !isDryRun(t.status)
+  );
+
+  const FILTERS: { value: TradeFilter; label: string; count: number }[] = [
+    { value: "all", label: "All", count: trades?.length ?? 0 },
+    { value: "live", label: "Live", count: liveCount },
+    { value: "dry", label: "Dry Run", count: dryCount },
+  ];
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -366,7 +385,36 @@ export default function Trades() {
 
       <ManualTradePanel />
 
-      <h2 className="text-lg md:text-xl font-light tracking-tight pt-2">History</h2>
+      <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+        <h2 className="text-lg md:text-xl font-light tracking-tight">History</h2>
+        {trades && trades.length > 0 && (
+          <div className="inline-flex rounded-lg p-0.5" style={{ backgroundColor: card, border: cardBorder }}>
+            {FILTERS.map((f) => {
+              const active = filter === f.value;
+              const isDry = f.value === "dry";
+              return (
+                <button
+                  key={f.value}
+                  type="button"
+                  data-testid={`filter-trades-${f.value}`}
+                  onClick={() => setFilter(f.value)}
+                  className={[
+                    "px-3 py-1.5 text-xs rounded-md transition-colors flex items-center gap-1.5",
+                    active
+                      ? isDry
+                        ? "bg-amber-500/15 text-amber-500"
+                        : "bg-primary/15 text-primary"
+                      : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  <span className="font-medium">{f.label}</span>
+                  <span className="tabular-nums opacity-70">{f.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="space-y-3">
@@ -376,11 +424,15 @@ export default function Trades() {
         <div className="p-8 rounded-lg text-center text-sm" style={{ backgroundColor: card, border: cardBorder, color: muted }}>
           No trades found.
         </div>
+      ) : filteredTrades.length === 0 ? (
+        <div className="p-8 rounded-lg text-center text-sm" style={{ backgroundColor: card, border: cardBorder, color: muted }}>
+          No {filter === "dry" ? "dry-run" : "live"} trades yet.
+        </div>
       ) : (
         <>
           {/* ── Mobile card list (hidden on md+) ── */}
           <div className="md:hidden space-y-3">
-            {trades.map((trade) => {
+            {filteredTrades.map((trade) => {
               const buy = trade.side === "BUY";
               return (
                 <div key={trade.id} className="p-4 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
@@ -442,10 +494,10 @@ export default function Trades() {
                   </tr>
                 </thead>
                 <tbody className="font-mono">
-                  {trades.map((trade, idx) => (
+                  {filteredTrades.map((trade, idx) => (
                     <tr
                       key={trade.id}
-                      style={idx < trades.length - 1 ? { borderBottom: divider } : {}}
+                      style={idx < filteredTrades.length - 1 ? { borderBottom: divider } : {}}
                       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "hsl(var(--accent))")}
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
                     >

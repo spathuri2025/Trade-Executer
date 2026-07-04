@@ -27,6 +27,8 @@ router.get("/signals", async (req, res): Promise<void> => {
       createdAt: s.createdAt.toISOString(),
       tradeExecuted: s.tradeExecuted,
       aiReason: s.aiReason,
+      strategy: s.strategy,
+      regime: s.regime,
     }))
   );
 });
@@ -51,6 +53,8 @@ router.post("/signals/run", async (req, res): Promise<void> => {
       createdAt: s.createdAt.toISOString(),
       tradeExecuted: s.tradeExecuted,
       aiReason: s.aiReason,
+      strategy: s.strategy,
+      regime: s.regime,
     }))
   );
 });

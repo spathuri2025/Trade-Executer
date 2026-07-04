@@ -89,6 +89,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxDailyLossPercent: 3,
     maxConcurrentPositions: 5,
     aiTradeMode: "off",
+    regimeFilterEnabled: false,
     ...patch,
   };
 }

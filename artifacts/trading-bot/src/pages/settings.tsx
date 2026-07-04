@@ -65,6 +65,7 @@ export default function Settings() {
     maxDailyLossPercent: 3,
     maxConcurrentPositions: 5,
     aiTradeMode: "off" as AiTradeMode,
+    regimeFilterEnabled: true,
   });
 
   useEffect(() => {
@@ -83,6 +84,7 @@ export default function Settings() {
         maxDailyLossPercent: botStatus.config.maxDailyLossPercent,
         maxConcurrentPositions: botStatus.config.maxConcurrentPositions,
         aiTradeMode: (botStatus.config.aiTradeMode as AiTradeMode) ?? "off",
+        regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
       });
     }
   }, [botStatus]);
@@ -254,6 +256,34 @@ export default function Settings() {
                 : "Dry Run is OFF — Claude's decisions will place REAL orders with real money. Turn Dry Run back on to test safely first."}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Market regime filter */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Market Regime Filter</CardTitle>
+          <CardDescription>
+            Automatically pick the right strategy per instrument based on market conditions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Adaptive strategy routing</p>
+              <p className="text-xs text-muted-foreground max-w-md">
+                When ON, each instrument is classified as <span className="text-sky-400">Trending</span> or{" "}
+                <span className="text-violet-400">Ranging</span> (via ADX) and routed to the matching
+                strategy — trend-following in trends, mean-reversion in ranges. When OFF, only
+                trend-following (MA crossover) runs.
+              </p>
+            </div>
+            <Switch
+              checked={config.regimeFilterEnabled}
+              onCheckedChange={(checked) => setConfig({ ...config, regimeFilterEnabled: checked })}
+              data-testid="switch-regime-filter"
+            />
+          </div>
         </CardContent>
       </Card>
 

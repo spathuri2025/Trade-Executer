@@ -32,7 +32,13 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 TradeBuzz — algorithmic trading bot dashboard (ClinAITech Limited, UK). Brokers: Trading 212 + Capital.com. MA-crossover strategy with a market scanner. "Obsidian Noir" dark theme.
 
-Pages: Dashboard, Trades, Signals, Scanner, Instruments, **Assistant** (AI day-trading chat), Settings.
+Pages: Dashboard, Trades, Signals, Scanner, Performance, Instruments, **Assistant** (AI day-trading chat), Signal Analyst, **Setup Wizard**, Settings.
+
+### Onboarding Setup Wizard
+Guided first-run flow at `/setup` (`artifacts/trading-bot/src/pages/setup.tsx`, nav "Setup Wizard", Rocket icon). Additive — does not remove any existing page; all pages stay directly reachable.
+- 4 steps: (1) add instruments (reuses instrument hooks), (2) risk preset Conservative/Balanced/Aggressive (sets maxPositionSizePercent/stopLossPercent/takeProfitPercent + minTrendStrength together, plus riskPerTrade/maxDailyLoss/maxConcurrent) with an Advanced raw-edit toggle, (3) AI trade mode off/guard/autonomous, (4) review + Start Engine.
+- On finish: `updateBotConfig` (spreads current config, overrides risk fields + aiTradeMode, **always pins `dryRun: true`** — never inherits a live setting), `updateScannerConfig` (minTrendStrength lives on ScannerConfig, not BotConfig), then `startBot`, then sets the onboarded flag.
+- First-run detection: `useOnboarding` (`artifacts/trading-bot/src/hooks/use-onboarding.ts`, localStorage `tradebuzz_onboarded`). App.tsx redirects to `/setup` **only** for a genuinely fresh install (flag unset AND zero instruments) so existing users are never force-redirected. Not a security boundary.
 
 ### AI Trade Execution (guard / autonomous)
 Claude can participate in the bot's trade loop via a user-selectable **AI Trade Mode** (`bot.config.aiTradeMode`: `"off" | "guard" | "autonomous"`, default `"off"`). Selected in Settings (`settings.tsx`, mode selector card with a dry-run warning banner). Reasoning is surfaced on the Signals page (AI Reason) and Trades page (AI Reason + confidence).

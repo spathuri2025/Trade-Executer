@@ -35,4 +35,6 @@ export interface BotConfig {
   maxConcurrentPositions: number;
   /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
   aiTradeMode: BotConfigAiTradeMode;
+  /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
+  regimeFilterEnabled: boolean;
 }

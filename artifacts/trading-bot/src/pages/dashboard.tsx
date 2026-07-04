@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DailyMarketBrief from "@/components/DailyMarketBrief";
+import ActivityFeed from "@/components/ActivityFeed";
 
 /* ── design tokens ── */
 const card = "hsl(var(--card))";
@@ -229,6 +230,9 @@ export default function Dashboard() {
           </div>
         ))}
       </section>
+
+      {/* ── Unified Activity Feed ── */}
+      <ActivityFeed />
 
       {/* ── AI Daily Market Brief ── */}
       <DailyMarketBrief />

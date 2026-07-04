@@ -11,6 +11,8 @@ export const signalsTable = pgTable("signals", {
   price: numeric("price", { precision: 18, scale: 8 }).notNull(),
   tradeExecuted: boolean("trade_executed").notNull().default(false),
   aiReason: text("ai_reason"),
+  strategy: text("strategy", { enum: ["trend_following", "mean_reversion"] }),
+  regime: text("regime", { enum: ["trending", "ranging"] }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

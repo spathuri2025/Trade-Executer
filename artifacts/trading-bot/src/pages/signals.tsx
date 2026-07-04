@@ -30,6 +30,28 @@ function SignalBadge({ signal }: { signal: string }) {
   return <Badge variant="outline" className={cls}>{signal}</Badge>;
 }
 
+const strategyLabel = (s?: string | null) =>
+  s === "mean_reversion" ? "Mean-reversion" : s === "trend_following" ? "Trend-following" : null;
+
+function RegimeCell({ regime, strategy }: { regime?: string | null; strategy?: string | null }) {
+  const strat = strategyLabel(strategy);
+  if (!regime && !strat) return <span style={{ color: muted }}>—</span>;
+  const cls =
+    regime === "trending"
+      ? "text-sky-400 border-sky-400/40 bg-sky-400/10"
+      : "text-violet-400 border-violet-400/40 bg-violet-400/10";
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {regime && (
+        <Badge variant="outline" className={cls}>
+          {regime === "trending" ? "Trending" : "Ranging"}
+        </Badge>
+      )}
+      {strat && <span className="text-[10px] font-sans" style={{ color: muted }}>{strat}</span>}
+    </div>
+  );
+}
+
 function useCountdown(dataUpdatedAt: number, intervalMs: number) {
   const [remaining, setRemaining] = useState("");
   useEffect(() => {
@@ -110,7 +132,10 @@ export default function Signals() {
                       {new Date(sig.createdAt).toLocaleString()}
                     </div>
                   </div>
-                  <SignalBadge signal={sig.signal} />
+                  <div className="flex flex-col items-end gap-1.5">
+                    <SignalBadge signal={sig.signal} />
+                    <RegimeCell regime={sig.regime} strategy={sig.strategy} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-3 pt-3" style={{ borderTop: divider }}>
                   <div>
@@ -149,7 +174,7 @@ export default function Signals() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr style={{ borderBottom: divider }}>
-                    {["Time", "Ticker", "Signal", "Price", "Short MA", "Long MA", "Executed", "AI Reason"].map((h) => (
+                    {["Time", "Ticker", "Signal", "Regime", "Price", "Short MA", "Long MA", "Executed", "AI Reason"].map((h) => (
                       <th key={h} className="px-5 py-4">
                         <SectionLabel>{h}</SectionLabel>
                       </th>
@@ -169,6 +194,7 @@ export default function Signals() {
                       </td>
                       <td className="px-5 py-4 font-bold">{sig.ticker}</td>
                       <td className="px-5 py-4"><SignalBadge signal={sig.signal} /></td>
+                      <td className="px-5 py-4"><RegimeCell regime={sig.regime} strategy={sig.strategy} /></td>
                       <td className="px-5 py-4">{sig.price.toFixed(2)}</td>
                       <td className="px-5 py-4">{sig.shortMa.toFixed(2)}</td>
                       <td className="px-5 py-4">{sig.longMa.toFixed(2)}</td>

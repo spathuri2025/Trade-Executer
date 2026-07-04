@@ -36,7 +36,8 @@ export const GetBotStatusResponse = zod.object({
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
-  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -67,7 +68,8 @@ export const StartBotResponse = zod.object({
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
-  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -98,7 +100,8 @@ export const StopBotResponse = zod.object({
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
-  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -129,7 +132,8 @@ export const ResumeBotResponse = zod.object({
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
-  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -156,7 +160,8 @@ export const UpdateBotConfigBody = zod.object({
   "maxPositionSizePercent": zod.number().optional().describe('Hard cap on a single position\'s value as % of account balance. 0 disables.'),
   "maxDailyLossPercent": zod.number().optional().describe('Daily-loss circuit breaker threshold as % of day-start equity. 0 disables.'),
   "maxConcurrentPositions": zod.number().optional().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
-  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.')
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.'),
+  "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.')
 })
 
 export const UpdateBotConfigResponse = zod.object({
@@ -176,7 +181,8 @@ export const UpdateBotConfigResponse = zod.object({
   "maxPositionSizePercent": zod.number().describe('Hard cap on a single position\'s value as % of account balance (e.g. 5 = 5%). Position size is clamped to this. 0 disables the cap.'),
   "maxDailyLossPercent": zod.number().describe('Daily-loss circuit breaker threshold as % of the day-start equity (e.g. 3 = 3%). When reached, the bot stops and must be manually resumed. 0 disables the breaker.'),
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
-  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.')
+  "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
+  "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -317,7 +323,9 @@ export const ListSignalsResponseItem = zod.object({
   "price": zod.number(),
   "createdAt": zod.string(),
   "tradeExecuted": zod.boolean().optional(),
-  "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).')
+  "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).'),
+  "strategy": zod.union([zod.literal('trend_following'),zod.literal('mean_reversion'),zod.literal(null)]).nullish().describe('Which strategy produced this signal. Routed automatically by the regime filter.'),
+  "regime": zod.union([zod.literal('trending'),zod.literal('ranging'),zod.literal(null)]).nullish().describe('Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.')
 })
 export const ListSignalsResponse = zod.array(ListSignalsResponseItem)
 
@@ -334,7 +342,9 @@ export const RunSignalCheckResponseItem = zod.object({
   "price": zod.number(),
   "createdAt": zod.string(),
   "tradeExecuted": zod.boolean().optional(),
-  "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).')
+  "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).'),
+  "strategy": zod.union([zod.literal('trend_following'),zod.literal('mean_reversion'),zod.literal(null)]).nullish().describe('Which strategy produced this signal. Routed automatically by the regime filter.'),
+  "regime": zod.union([zod.literal('trending'),zod.literal('ranging'),zod.literal(null)]).nullish().describe('Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.')
 })
 export const RunSignalCheckResponse = zod.array(RunSignalCheckResponseItem)
 
@@ -438,6 +448,75 @@ export const GetScannerResultsResponseItem = zod.object({
   "scannedAt": zod.string()
 })
 export const GetScannerResultsResponse = zod.array(GetScannerResultsResponseItem)
+
+
+/**
+ * Runs trend-following and mean-reversion over recent close-price history for every enabled instrument and returns per-strategy, per-instrument performance stats plus an equity curve. All numbers are computed in code (no LLM). Intended as the "is this strategy working" evidence before turning on live automation.
+ * @summary Deterministic backtest of both strategies over recent price history
+ */
+export const GetBacktestResponse = zod.object({
+  "broker": zod.string(),
+  "shortPeriod": zod.number(),
+  "longPeriod": zod.number(),
+  "historyBars": zod.number(),
+  "generatedAt": zod.string(),
+  "results": zod.array(zod.object({
+  "ticker": zod.string(),
+  "name": zod.string(),
+  "strategy": zod.enum(['trend_following', 'mean_reversion']),
+  "totalTrades": zod.number(),
+  "wins": zod.number(),
+  "losses": zod.number(),
+  "winRate": zod.number().describe('Fraction 0..1 of closed trades that were profitable.'),
+  "avgWinPct": zod.number().describe('Mean return of winning trades, as a fraction.'),
+  "avgLossPct": zod.number().describe('Mean return of losing trades, as a fraction (negative).'),
+  "maxDrawdownPct": zod.number().describe('Largest peak-to-trough equity decline, as a fraction.'),
+  "totalReturnPct": zod.number().describe('Total compounded return over the window, as a fraction.'),
+  "equityCurve": zod.array(zod.object({
+  "i": zod.number().describe('Bar index into the price series.'),
+  "equity": zod.number()
+})),
+  "bars": zod.number().describe('Number of price bars used.')
+}))
+})
+
+
+/**
+ * Merges scanner hits, strategy signals (with any Claude review reason), and executed/failed trades into one reverse-chronological stream for the dashboard. Additive — the standalone Scanner/Signals/Trades pages remain the detailed views.
+ * @summary Unified chronological feed of scans, signals, and trades
+ */
+export const getActivityFeedQueryLimitMax = 100;
+
+
+
+export const GetActivityFeedQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getActivityFeedQueryLimitMax).optional().describe('Max rows fetched per source before merging.')
+})
+
+export const GetActivityFeedResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().describe('Prefixed id, e.g. \"signal-12\", \"trade-7\", \"scan-3\".'),
+  "type": zod.enum(['scan', 'signal', 'trade']),
+  "ticker": zod.string(),
+  "name": zod.string().nullish(),
+  "signal": zod.union([zod.literal('BUY'),zod.literal('SELL'),zod.literal('HOLD'),zod.literal(null)]).nullish(),
+  "timestamp": zod.string(),
+  "price": zod.number().optional(),
+  "shortMa": zod.number().nullish(),
+  "longMa": zod.number().nullish(),
+  "trendStrength": zod.number().nullish(),
+  "strategy": zod.union([zod.literal('trend_following'),zod.literal('mean_reversion'),zod.literal(null)]).nullish(),
+  "regime": zod.union([zod.literal('trending'),zod.literal('ranging'),zod.literal(null)]).nullish(),
+  "autoTraded": zod.boolean().nullish(),
+  "aiReason": zod.string().nullish(),
+  "aiConfidence": zod.string().nullish(),
+  "status": zod.union([zod.literal('FILLED'),zod.literal('FAILED'),zod.literal('DRY_RUN'),zod.literal(null)]).nullish(),
+  "side": zod.union([zod.literal('BUY'),zod.literal('SELL'),zod.literal(null)]).nullish(),
+  "quantity": zod.number().nullish(),
+  "total": zod.number().nullish(),
+  "errorMessage": zod.string().nullish()
+}))
+})
 
 
 /**

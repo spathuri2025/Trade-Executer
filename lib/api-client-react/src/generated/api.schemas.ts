@@ -59,6 +59,8 @@ export interface BotConfig {
   maxConcurrentPositions: number;
   /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
   aiTradeMode: BotConfigAiTradeMode;
+  /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
+  regimeFilterEnabled: boolean;
 }
 
 /**
@@ -135,6 +137,8 @@ export interface BotConfigInput {
   maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;
+  /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
+  regimeFilterEnabled?: boolean;
 }
 
 export type TradeSide = typeof TradeSide[keyof typeof TradeSide];
@@ -248,6 +252,30 @@ export const SignalSignal = {
   HOLD: 'HOLD',
 } as const;
 
+/**
+ * Which strategy produced this signal. Routed automatically by the regime filter.
+ * @nullable
+ */
+export type SignalStrategy = typeof SignalStrategy[keyof typeof SignalStrategy] | null;
+
+
+export const SignalStrategy = {
+  trend_following: 'trend_following',
+  mean_reversion: 'mean_reversion',
+} as const;
+
+/**
+ * Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.
+ * @nullable
+ */
+export type SignalRegime = typeof SignalRegime[keyof typeof SignalRegime] | null;
+
+
+export const SignalRegime = {
+  trending: 'trending',
+  ranging: 'ranging',
+} as const;
+
 export interface Signal {
   id: number;
   ticker: string;
@@ -262,6 +290,16 @@ export interface Signal {
      * @nullable
      */
   aiReason?: string | null;
+  /**
+     * Which strategy produced this signal. Routed automatically by the regime filter.
+     * @nullable
+     */
+  strategy?: SignalStrategy;
+  /**
+     * Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.
+     * @nullable
+     */
+  regime?: SignalRegime;
 }
 
 export type NewsItemImpactLabel = typeof NewsItemImpactLabel[keyof typeof NewsItemImpactLabel];
@@ -333,6 +371,160 @@ export interface ScannerResult {
   /** @nullable */
   orderId?: string | null;
   scannedAt: string;
+}
+
+export interface BacktestPoint {
+  /** Bar index into the price series. */
+  i: number;
+  equity: number;
+}
+
+export type BacktestResultStrategy = typeof BacktestResultStrategy[keyof typeof BacktestResultStrategy];
+
+
+export const BacktestResultStrategy = {
+  trend_following: 'trend_following',
+  mean_reversion: 'mean_reversion',
+} as const;
+
+export interface BacktestResult {
+  ticker: string;
+  name: string;
+  strategy: BacktestResultStrategy;
+  totalTrades: number;
+  wins: number;
+  losses: number;
+  /** Fraction 0..1 of closed trades that were profitable. */
+  winRate: number;
+  /** Mean return of winning trades, as a fraction. */
+  avgWinPct: number;
+  /** Mean return of losing trades, as a fraction (negative). */
+  avgLossPct: number;
+  /** Largest peak-to-trough equity decline, as a fraction. */
+  maxDrawdownPct: number;
+  /** Total compounded return over the window, as a fraction. */
+  totalReturnPct: number;
+  equityCurve: BacktestPoint[];
+  /** Number of price bars used. */
+  bars: number;
+}
+
+export interface BacktestReport {
+  broker: string;
+  shortPeriod: number;
+  longPeriod: number;
+  historyBars: number;
+  generatedAt: string;
+  results: BacktestResult[];
+}
+
+export type ActivityItemType = typeof ActivityItemType[keyof typeof ActivityItemType];
+
+
+export const ActivityItemType = {
+  scan: 'scan',
+  signal: 'signal',
+  trade: 'trade',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ActivityItemSignal = typeof ActivityItemSignal[keyof typeof ActivityItemSignal] | null;
+
+
+export const ActivityItemSignal = {
+  BUY: 'BUY',
+  SELL: 'SELL',
+  HOLD: 'HOLD',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ActivityItemStrategy = typeof ActivityItemStrategy[keyof typeof ActivityItemStrategy] | null;
+
+
+export const ActivityItemStrategy = {
+  trend_following: 'trend_following',
+  mean_reversion: 'mean_reversion',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ActivityItemRegime = typeof ActivityItemRegime[keyof typeof ActivityItemRegime] | null;
+
+
+export const ActivityItemRegime = {
+  trending: 'trending',
+  ranging: 'ranging',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ActivityItemStatus = typeof ActivityItemStatus[keyof typeof ActivityItemStatus] | null;
+
+
+export const ActivityItemStatus = {
+  FILLED: 'FILLED',
+  FAILED: 'FAILED',
+  DRY_RUN: 'DRY_RUN',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ActivityItemSide = typeof ActivityItemSide[keyof typeof ActivityItemSide] | null;
+
+
+export const ActivityItemSide = {
+  BUY: 'BUY',
+  SELL: 'SELL',
+} as const;
+
+export interface ActivityItem {
+  /** Prefixed id, e.g. "signal-12", "trade-7", "scan-3". */
+  id: string;
+  type: ActivityItemType;
+  ticker: string;
+  /** @nullable */
+  name?: string | null;
+  /** @nullable */
+  signal?: ActivityItemSignal;
+  timestamp: string;
+  price?: number;
+  /** @nullable */
+  shortMa?: number | null;
+  /** @nullable */
+  longMa?: number | null;
+  /** @nullable */
+  trendStrength?: number | null;
+  /** @nullable */
+  strategy?: ActivityItemStrategy;
+  /** @nullable */
+  regime?: ActivityItemRegime;
+  /** @nullable */
+  autoTraded?: boolean | null;
+  /** @nullable */
+  aiReason?: string | null;
+  /** @nullable */
+  aiConfidence?: string | null;
+  /** @nullable */
+  status?: ActivityItemStatus;
+  /** @nullable */
+  side?: ActivityItemSide;
+  /** @nullable */
+  quantity?: number | null;
+  /** @nullable */
+  total?: number | null;
+  /** @nullable */
+  errorMessage?: string | null;
+}
+
+export interface ActivityFeed {
+  items: ActivityItem[];
 }
 
 export interface Conversation {
@@ -422,6 +614,15 @@ limit?: number;
 };
 
 export type GetScannerResultsParams = {
+limit?: number;
+};
+
+export type GetActivityFeedParams = {
+/**
+ * Max rows fetched per source before merging.
+ * @minimum 1
+ * @maximum 100
+ */
 limit?: number;
 };
 

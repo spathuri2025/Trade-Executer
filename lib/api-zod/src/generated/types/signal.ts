@@ -5,7 +5,9 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { SignalRegime } from './signalRegime';
 import type { SignalSignal } from './signalSignal';
+import type { SignalStrategy } from './signalStrategy';
 
 export interface Signal {
   id: number;
@@ -21,4 +23,14 @@ export interface Signal {
      * @nullable
      */
   aiReason?: string | null;
+  /**
+     * Which strategy produced this signal. Routed automatically by the regime filter.
+     * @nullable
+     */
+  strategy?: SignalStrategy;
+  /**
+     * Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.
+     * @nullable
+     */
+  regime?: SignalRegime;
 }

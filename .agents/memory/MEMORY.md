@@ -1,1 +1,2 @@
 - [Risk-control fail-safe rule](risk-control-fail-safe.md) — trading bot risk limits are enforced in code (not prompts); cap/fail-closed gate any NEW position (BUY or SELL, since SELL opens a short), and block entries when account/positions data is missing.
+- [Onboarding wizard rules](onboarding-wizard.md) — setup completion must pin dryRun:true; first-run auto-redirect must gate on real fresh install (flag unset AND zero instruments), not localStorage flag alone.
