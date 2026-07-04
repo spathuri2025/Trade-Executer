@@ -88,6 +88,22 @@ export async function capitalAuthFetch(path: string, options: RequestInit = {}):
   return capitalFetch(path, options);
 }
 
+/**
+ * Returns valid Capital.com session tokens (CST + X-SECURITY-TOKEN) for use
+ * with the streaming WebSocket. Reuses the same cached session as the REST
+ * client, and forces a fresh session when `forceRefresh` is set (e.g. after a
+ * streaming reconnect where the old tokens may have expired).
+ */
+export async function getCapitalSessionTokens(
+  forceRefresh = false,
+): Promise<{ cst: string; securityToken: string }> {
+  if (forceRefresh) {
+    cachedSession = null;
+  }
+  const session = await getSession();
+  return { cst: session.cst, securityToken: session.securityToken };
+}
+
 async function capitalFetch(path: string, options: RequestInit = {}): Promise<unknown> {
   const session = await getSession();
   const url = `${BASE_URL}${path}`;

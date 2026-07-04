@@ -18,6 +18,7 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DailyMarketBrief from "@/components/DailyMarketBrief";
 import ActivityFeed from "@/components/ActivityFeed";
+import LiveTickerStrip from "@/components/LiveTickerStrip";
 
 /* ── design tokens ── */
 const card = "hsl(var(--card))";
@@ -173,6 +174,9 @@ export default function Dashboard() {
           </span>
         )}
       </header>
+
+      {/* ── Live streaming prices ── */}
+      <LiveTickerStrip />
 
       {/* ── Circuit breaker banner ── */}
       {breaker?.tripped && (

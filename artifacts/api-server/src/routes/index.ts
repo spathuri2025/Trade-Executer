@@ -12,6 +12,7 @@ import signalAnalystRouter from "./signalAnalyst";
 import dailyMarketBriefRouter from "./dailyMarketBrief";
 import backtestRouter from "./backtest";
 import activityRouter from "./activity";
+import streamRouter from "./stream";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(signalAnalystRouter);
 router.use(dailyMarketBriefRouter);
 router.use(backtestRouter);
 router.use(activityRouter);
+router.use(streamRouter);
 
 export default router;
