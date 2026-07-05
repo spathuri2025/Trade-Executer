@@ -7,6 +7,7 @@ import Dashboard from "@/pages/dashboard";
 import Trades from "@/pages/trades";
 import Signals from "@/pages/signals";
 import Scanner from "@/pages/scanner";
+import MarketNews from "@/pages/market-news";
 import Performance from "@/pages/performance";
 import Instruments from "@/pages/instruments";
 import Charts from "@/pages/charts";
@@ -54,6 +55,7 @@ function Router() {
         <Route path="/trades" component={Trades} />
         <Route path="/signals" component={Signals} />
         <Route path="/scanner" component={Scanner} />
+        <Route path="/market-news" component={MarketNews} />
         <Route path="/performance" component={Performance} />
         <Route path="/instruments" component={Instruments} />
         <Route path="/charts" component={Charts} />

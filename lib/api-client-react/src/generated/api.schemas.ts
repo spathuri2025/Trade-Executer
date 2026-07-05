@@ -280,6 +280,33 @@ export const SignalRegime = {
   ranging: 'ranging',
 } as const;
 
+/**
+ * Deterministic risk classification for acting on this signal.
+ * @nullable
+ */
+export type SignalRiskLevel = typeof SignalRiskLevel[keyof typeof SignalRiskLevel] | null;
+
+
+export const SignalRiskLevel = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+} as const;
+
+/**
+ * Deterministic suggested action (educational, not advice).
+ * @nullable
+ */
+export type SignalSuggestedAction = typeof SignalSuggestedAction[keyof typeof SignalSuggestedAction] | null;
+
+
+export const SignalSuggestedAction = {
+  Watch: 'Watch',
+  Avoid: 'Avoid',
+  Consider: 'Consider',
+  Review: 'Review',
+} as const;
+
 export interface Signal {
   id: number;
   ticker: string;
@@ -304,6 +331,36 @@ export interface Signal {
      * @nullable
      */
   regime?: SignalRegime;
+  /**
+     * Deterministic plain-language reason for this signal (no LLM).
+     * @nullable
+     */
+  signalReason?: string | null;
+  /**
+     * Deterministic 0-100 confidence derived from MA gap and regime.
+     * @nullable
+     */
+  confidence?: number | null;
+  /**
+     * Deterministic technical explanation (MA relationship / crossover).
+     * @nullable
+     */
+  technicalReason?: string | null;
+  /**
+     * News/AI context for the signal, if any.
+     * @nullable
+     */
+  newsReason?: string | null;
+  /**
+     * Deterministic risk classification for acting on this signal.
+     * @nullable
+     */
+  riskLevel?: SignalRiskLevel;
+  /**
+     * Deterministic suggested action (educational, not advice).
+     * @nullable
+     */
+  suggestedAction?: SignalSuggestedAction;
 }
 
 export type NewsItemImpactLabel = typeof NewsItemImpactLabel[keyof typeof NewsItemImpactLabel];
@@ -611,6 +668,212 @@ export interface Candle {
   close: number;
 }
 
+export type MarketNewsItemImpactLabel = typeof MarketNewsItemImpactLabel[keyof typeof MarketNewsItemImpactLabel];
+
+
+export const MarketNewsItemImpactLabel = {
+  HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+  LOW: 'LOW',
+} as const;
+
+export interface MarketNewsItem {
+  id: number;
+  title: string;
+  url: string;
+  source: string;
+  /** @nullable */
+  publishedAt?: string | null;
+  impactScore: number;
+  impactLabel: MarketNewsItemImpactLabel;
+  createdAt?: string;
+}
+
+export interface MarketNewsList {
+  items: MarketNewsItem[];
+  /** True when sample data is shown because no live news was available */
+  mock: boolean;
+}
+
+export interface AnalyseNewsInput {
+  headline: string;
+  source?: string;
+  articleText?: string;
+  articleUrl?: string;
+  timestamp?: string;
+}
+
+export type NewsAnalysisSentiment = typeof NewsAnalysisSentiment[keyof typeof NewsAnalysisSentiment];
+
+
+export const NewsAnalysisSentiment = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
+} as const;
+
+export type NewsAnalysisImpactLevel = typeof NewsAnalysisImpactLevel[keyof typeof NewsAnalysisImpactLevel];
+
+
+export const NewsAnalysisImpactLevel = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+export interface NewsAnalysis {
+  /** @nullable */
+  id?: number | null;
+  affectedAssets: string[];
+  sentiment: NewsAnalysisSentiment;
+  impactLevel: NewsAnalysisImpactLevel;
+  summary: string;
+  whyItMatters: string;
+  possibleReaction: string;
+  riskWarning: string;
+  disclaimer?: string;
+}
+
+export interface BrainDriver {
+  title: string;
+  detail: string;
+}
+
+export type BrainEventImportance = typeof BrainEventImportance[keyof typeof BrainEventImportance];
+
+
+export const BrainEventImportance = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+export interface BrainEvent {
+  name: string;
+  when: string;
+  importance: BrainEventImportance;
+}
+
+export interface BrainOpportunity {
+  asset: string;
+  rationale: string;
+}
+
+export interface BrainRisk {
+  title: string;
+  detail: string;
+}
+
+export type MarketBrainSnapshotRegime = typeof MarketBrainSnapshotRegime[keyof typeof MarketBrainSnapshotRegime];
+
+
+export const MarketBrainSnapshotRegime = {
+  'Risk-On': 'Risk-On',
+  'Risk-Off': 'Risk-Off',
+  Mixed: 'Mixed',
+  High_Volatility: 'High Volatility',
+} as const;
+
+export interface MarketBrainSnapshot {
+  id: number;
+  regime: MarketBrainSnapshotRegime;
+  /** 0-100 confidence in the regime read */
+  confidence: number;
+  drivers: BrainDriver[];
+  highImpactNewsCount: number;
+  upcomingEvents: BrainEvent[];
+  opportunities: BrainOpportunity[];
+  risks: BrainRisk[];
+  disclaimer: string;
+  createdAt: string;
+}
+
+export interface LatestMarketBrainResult {
+  snapshot: MarketBrainSnapshot | null;
+}
+
+export type ChartInsightTrend = typeof ChartInsightTrend[keyof typeof ChartInsightTrend];
+
+
+export const ChartInsightTrend = {
+  Uptrend: 'Uptrend',
+  Downtrend: 'Downtrend',
+  Sideways: 'Sideways',
+} as const;
+
+export type ChartInsightVolatility = typeof ChartInsightVolatility[keyof typeof ChartInsightVolatility];
+
+
+export const ChartInsightVolatility = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+} as const;
+
+export interface ChartInsight {
+  epic: string;
+  trend: ChartInsightTrend;
+  /** @nullable */
+  support?: number | null;
+  /** @nullable */
+  resistance?: number | null;
+  volatility: ChartInsightVolatility;
+  confidence: number;
+  explanation: string;
+  riskWarning: string;
+}
+
+export interface InstrumentPnl {
+  ticker: string;
+  netPnl: number;
+  trades: number;
+}
+
+export interface PerformanceCoach {
+  totalTrades: number;
+  closedTrades: number;
+  /** @nullable */
+  winRate?: number | null;
+  /** @nullable */
+  avgWin?: number | null;
+  /** @nullable */
+  avgLoss?: number | null;
+  bestInstrument?: InstrumentPnl | null;
+  worstInstrument?: InstrumentPnl | null;
+  /** @nullable */
+  overtradingWarning?: string | null;
+  riskDisciplineScore: number;
+  suggestedImprovement: string;
+  disclaimer: string;
+}
+
+export type BriefHighlightType = typeof BriefHighlightType[keyof typeof BriefHighlightType];
+
+
+export const BriefHighlightType = {
+  risk: 'risk',
+  opportunity: 'opportunity',
+  alert: 'alert',
+} as const;
+
+export interface BriefHighlight {
+  type: BriefHighlightType;
+  text: string;
+}
+
+export interface UserAiBrief {
+  id: number;
+  briefDate: string;
+  message: string;
+  highlights: BriefHighlight[];
+  disclaimer: string;
+  createdAt: string;
+}
+
+export interface LatestAssistantBriefResult {
+  brief: UserAiBrief | null;
+}
+
 export type ListTradesParams = {
 limit?: number;
 };
@@ -652,5 +915,14 @@ export type GetActivityFeedParams = {
  * @maximum 100
  */
 limit?: number;
+};
+
+export type ListMarketNewsParams = {
+limit?: number;
+};
+
+export type GetChartInsightParams = {
+epic: string;
+resolution?: string;
 };
 

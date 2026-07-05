@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SignalRegime } from './signalRegime';
+import type { SignalRiskLevel } from './signalRiskLevel';
 import type { SignalSignal } from './signalSignal';
 import type { SignalStrategy } from './signalStrategy';
+import type { SignalSuggestedAction } from './signalSuggestedAction';
 
 export interface Signal {
   id: number;
@@ -33,4 +35,34 @@ export interface Signal {
      * @nullable
      */
   regime?: SignalRegime;
+  /**
+     * Deterministic plain-language reason for this signal (no LLM).
+     * @nullable
+     */
+  signalReason?: string | null;
+  /**
+     * Deterministic 0-100 confidence derived from MA gap and regime.
+     * @nullable
+     */
+  confidence?: number | null;
+  /**
+     * Deterministic technical explanation (MA relationship / crossover).
+     * @nullable
+     */
+  technicalReason?: string | null;
+  /**
+     * News/AI context for the signal, if any.
+     * @nullable
+     */
+  newsReason?: string | null;
+  /**
+     * Deterministic risk classification for acting on this signal.
+     * @nullable
+     */
+  riskLevel?: SignalRiskLevel;
+  /**
+     * Deterministic suggested action (educational, not advice).
+     * @nullable
+     */
+  suggestedAction?: SignalSuggestedAction;
 }

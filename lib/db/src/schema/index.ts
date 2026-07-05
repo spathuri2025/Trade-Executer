@@ -5,3 +5,7 @@ export * from "./scannerResults";
 export * from "./dailyMarketBriefs";
 export * from "./conversations";
 export * from "./messages";
+export * from "./marketNews";
+export * from "./aiMarketAnalysis";
+export * from "./marketBrainSnapshots";
+export * from "./userAiBriefs";

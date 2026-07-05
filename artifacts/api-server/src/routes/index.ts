@@ -14,6 +14,11 @@ import backtestRouter from "./backtest";
 import activityRouter from "./activity";
 import streamRouter from "./stream";
 import candlesRouter from "./candles";
+import marketNewsRouter from "./marketNews";
+import marketBrainRouter from "./marketBrain";
+import chartInsightRouter from "./chartInsight";
+import performanceCoachRouter from "./performanceCoach";
+import assistantBriefRouter from "./assistantBrief";
 
 const router: IRouter = Router();
 
@@ -32,5 +37,10 @@ router.use(backtestRouter);
 router.use(activityRouter);
 router.use(streamRouter);
 router.use(candlesRouter);
+router.use(marketNewsRouter);
+router.use(marketBrainRouter);
+router.use(chartInsightRouter);
+router.use(performanceCoachRouter);
+router.use(assistantBriefRouter);
 
 export default router;

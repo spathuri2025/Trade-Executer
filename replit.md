@@ -32,7 +32,18 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 TradeBuzz — algorithmic trading bot dashboard (ClinAITech Limited, UK). Brokers: Trading 212 + Capital.com. MA-crossover strategy with a market scanner. "Obsidian Noir" dark theme.
 
-Pages: Dashboard, Trades, Signals, Scanner, Performance, Instruments, **Charts** (live candlesticks), **Assistant** (AI day-trading chat), Signal Analyst, **Setup Wizard**, Settings.
+Pages: Dashboard, Trades, Signals, Scanner, **Market News** (headlines + on-demand AI analysis), Performance, Instruments, **Charts** (live candlesticks + AI read), **Assistant** (AI day-trading chat + proactive daily brief), Signal Analyst, **Setup Wizard**, Settings.
+
+### AI Market Intelligence ("Market Brain")
+An 11-part AI intelligence layer. All AI text is Claude `claude-sonnet-4-6` via `@workspace/integrations-anthropic-ai` through the shared `lib/aiJson.ts` helper (`generateClaudeJson` + `asString/asStringArray/asNumber/clampInt/oneOf/extractJson` for robust JSON parsing). Disclaimers are always pinned server-side, never trusted from the model. Every AI endpoint has a deterministic mock fallback so the UI never breaks when Claude/news are unavailable.
+- **DB** (`lib/db/src/schema/`): `marketNews`, `aiMarketAnalysis`, `marketBrainSnapshots`, `userAiBriefs`.
+- **Market Brain** (dashboard top section, `components/MarketBrain.tsx`): regime (Risk-On/Risk-Off/Mixed/High Volatility) + 0-100 confidence, drivers, high-impact news count, upcoming events, opportunities, risks. Backend `routes/marketBrain.ts` (`GET /market-brain/latest` self-populates in background; `POST /market-brain/generate` admin refresh) + `lib/marketBrainService.ts`.
+- **Market News page** (`pages/market-news.tsx`, nav "Market News", Newspaper icon): `GET /market-news` (live RSS persisted, `{items,mock}` mock fallback). Per-headline "AI Analyse" → `POST /market-news/analyse` (`lib/newsAnalysisService.ts`) returns affectedAssets/sentiment/impactLevel/summary/whyItMatters/possibleReaction/riskWarning/disclaimer.
+- **Richer Signals**: `signals.ts` mapping adds signalReason/confidence/technicalReason/newsReason/riskLevel/suggestedAction via `lib/signalExplanation.ts` (**deterministic, no LLM**). These fields are in the OpenAPI `Signal` schema (all nullable) and surfaced on the Signals page (`pages/signals.tsx`) as Confidence bar + Risk badge columns and a "Why" explanation cell (mobile + desktop). `winRate` from `/performance/coach` is already a percentage (0-100) — render it directly, do NOT multiply by 100.
+- **Charts AI overlay** (`components/ChartInsightPanel.tsx` under the candles): `GET /charts/insight?epic=&resolution=` (`lib/chartInsightService.ts`) → trend/support/resistance/volatility/confidence/explanation/riskWarning.
+- **Proactive Assistant brief** (`components/AssistantDailyBrief.tsx` banner on Assistant page): `GET /assistant/daily-brief` self-populates one brief/day (`lib/assistantDailyBriefService.ts`), message + typed highlights (risk/opportunity/alert).
+- **Performance Coach** (`components/PerformanceCoach.tsx` top of Performance page): `GET /performance/coach` (`lib/performanceCoachService.ts`, **FIFO round-trip P&L pairing**) → win rate, avg win/loss, best/worst instrument, overtrading warning, 0-100 risk discipline score, AI suggested improvement.
+- **OpenAPI/codegen**: all 7 paths + ~16 schemas in `openapi.yaml`; nullable fields use `type: ["x","null"]`. Routes validate inputs **manually** (like `news.ts`) rather than importing generated Zod, to decouple from codegen names (only `signals.ts` imports `ListSignalsQueryParams`). Re-run `pnpm --filter @workspace/api-spec run codegen` after spec edits.
 
 ### Strategy Expectancy & Costs
 The backtest computes the classic trading edge/expectancy for each strategy so a user can see whether it has a net positive edge, not just raw win rate.

@@ -331,7 +331,13 @@ export const ListSignalsResponseItem = zod.object({
   "tradeExecuted": zod.boolean().optional(),
   "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).'),
   "strategy": zod.union([zod.literal('trend_following'),zod.literal('mean_reversion'),zod.literal(null)]).nullish().describe('Which strategy produced this signal. Routed automatically by the regime filter.'),
-  "regime": zod.union([zod.literal('trending'),zod.literal('ranging'),zod.literal(null)]).nullish().describe('Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.')
+  "regime": zod.union([zod.literal('trending'),zod.literal('ranging'),zod.literal(null)]).nullish().describe('Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.'),
+  "signalReason": zod.string().nullish().describe('Deterministic plain-language reason for this signal (no LLM).'),
+  "confidence": zod.number().nullish().describe('Deterministic 0-100 confidence derived from MA gap and regime.'),
+  "technicalReason": zod.string().nullish().describe('Deterministic technical explanation (MA relationship \/ crossover).'),
+  "newsReason": zod.string().nullish().describe('News\/AI context for the signal, if any.'),
+  "riskLevel": zod.union([zod.literal('Low'),zod.literal('Medium'),zod.literal('High'),zod.literal(null)]).nullish().describe('Deterministic risk classification for acting on this signal.'),
+  "suggestedAction": zod.union([zod.literal('Watch'),zod.literal('Avoid'),zod.literal('Consider'),zod.literal('Review'),zod.literal(null)]).nullish().describe('Deterministic suggested action (educational, not advice).')
 })
 export const ListSignalsResponse = zod.array(ListSignalsResponseItem)
 
@@ -350,7 +356,13 @@ export const RunSignalCheckResponseItem = zod.object({
   "tradeExecuted": zod.boolean().optional(),
   "aiReason": zod.string().nullish().describe('Claude\'s plain-language reason for this decision (AI modes only).'),
   "strategy": zod.union([zod.literal('trend_following'),zod.literal('mean_reversion'),zod.literal(null)]).nullish().describe('Which strategy produced this signal. Routed automatically by the regime filter.'),
-  "regime": zod.union([zod.literal('trending'),zod.literal('ranging'),zod.literal(null)]).nullish().describe('Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.')
+  "regime": zod.union([zod.literal('trending'),zod.literal('ranging'),zod.literal(null)]).nullish().describe('Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.'),
+  "signalReason": zod.string().nullish().describe('Deterministic plain-language reason for this signal (no LLM).'),
+  "confidence": zod.number().nullish().describe('Deterministic 0-100 confidence derived from MA gap and regime.'),
+  "technicalReason": zod.string().nullish().describe('Deterministic technical explanation (MA relationship \/ crossover).'),
+  "newsReason": zod.string().nullish().describe('News\/AI context for the signal, if any.'),
+  "riskLevel": zod.union([zod.literal('Low'),zod.literal('Medium'),zod.literal('High'),zod.literal(null)]).nullish().describe('Deterministic risk classification for acting on this signal.'),
+  "suggestedAction": zod.union([zod.literal('Watch'),zod.literal('Avoid'),zod.literal('Consider'),zod.literal('Review'),zod.literal(null)]).nullish().describe('Deterministic suggested action (educational, not advice).')
 })
 export const RunSignalCheckResponse = zod.array(RunSignalCheckResponseItem)
 
@@ -716,6 +728,152 @@ export const GetLatestDailyBriefResponse = zod.object({
   "support": zod.string().describe('Key support level(s)'),
   "resistance": zod.string().describe('Key resistance level(s)'),
   "summary": zod.string().describe('Short, plain-language paragraph covering the outlook, key news\/risks and what to watch')
+})),
+  "disclaimer": zod.string(),
+  "createdAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary List market news (live RSS, persisted; mock fallback if empty)
+ */
+export const listMarketNewsQueryLimitDefault = 30;
+
+export const ListMarketNewsQueryParams = zod.object({
+  "limit": zod.coerce.number().default(listMarketNewsQueryLimitDefault)
+})
+
+export const ListMarketNewsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "url": zod.string(),
+  "source": zod.string(),
+  "publishedAt": zod.string().nullish(),
+  "impactScore": zod.number(),
+  "impactLabel": zod.enum(['HIGH', 'MEDIUM', 'LOW']),
+  "createdAt": zod.string().optional()
+})),
+  "mock": zod.boolean().describe('True when sample data is shown because no live news was available')
+})
+
+
+/**
+ * @summary Analyse a news item with Claude (affected assets, sentiment, impact, etc.)
+ */
+export const AnalyseNewsBody = zod.object({
+  "headline": zod.string(),
+  "source": zod.string().optional(),
+  "articleText": zod.string().optional(),
+  "articleUrl": zod.string().optional(),
+  "timestamp": zod.string().optional()
+})
+
+export const AnalyseNewsResponse = zod.object({
+  "id": zod.number().nullish(),
+  "affectedAssets": zod.array(zod.string()),
+  "sentiment": zod.enum(['bullish', 'bearish', 'neutral']),
+  "impactLevel": zod.enum(['low', 'medium', 'high']),
+  "summary": zod.string(),
+  "whyItMatters": zod.string(),
+  "possibleReaction": zod.string(),
+  "riskWarning": zod.string(),
+  "disclaimer": zod.string().optional()
+})
+
+
+/**
+ * @summary Latest AI Market Brain snapshot (self-populating)
+ */
+export const GetLatestMarketBrainResponse = zod.object({
+  "snapshot": zod.union([zod.object({
+  "id": zod.number(),
+  "regime": zod.enum(['Risk-On', 'Risk-Off', 'Mixed', 'High Volatility']),
+  "confidence": zod.number().describe('0-100 confidence in the regime read'),
+  "drivers": zod.array(zod.object({
+  "title": zod.string(),
+  "detail": zod.string()
+})),
+  "highImpactNewsCount": zod.number(),
+  "upcomingEvents": zod.array(zod.object({
+  "name": zod.string(),
+  "when": zod.string(),
+  "importance": zod.enum(['low', 'medium', 'high'])
+})),
+  "opportunities": zod.array(zod.object({
+  "asset": zod.string(),
+  "rationale": zod.string()
+})),
+  "risks": zod.array(zod.object({
+  "title": zod.string(),
+  "detail": zod.string()
+})),
+  "disclaimer": zod.string(),
+  "createdAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary AI technical read for an instrument (trend, S/R, volatility, confidence)
+ */
+export const getChartInsightQueryResolutionDefault = `HOUR`;
+
+export const GetChartInsightQueryParams = zod.object({
+  "epic": zod.coerce.string(),
+  "resolution": zod.coerce.string().default(getChartInsightQueryResolutionDefault)
+})
+
+export const GetChartInsightResponse = zod.object({
+  "epic": zod.string(),
+  "trend": zod.enum(['Uptrend', 'Downtrend', 'Sideways']),
+  "support": zod.number().nullish(),
+  "resistance": zod.number().nullish(),
+  "volatility": zod.enum(['Low', 'Medium', 'High']),
+  "confidence": zod.number(),
+  "explanation": zod.string(),
+  "riskWarning": zod.string()
+})
+
+
+/**
+ * @summary Behavioural performance analytics + AI coaching from trade history
+ */
+export const GetPerformanceCoachResponse = zod.object({
+  "totalTrades": zod.number(),
+  "closedTrades": zod.number(),
+  "winRate": zod.number().nullish(),
+  "avgWin": zod.number().nullish(),
+  "avgLoss": zod.number().nullish(),
+  "bestInstrument": zod.union([zod.object({
+  "ticker": zod.string(),
+  "netPnl": zod.number(),
+  "trades": zod.number()
+}),zod.null()]).optional(),
+  "worstInstrument": zod.union([zod.object({
+  "ticker": zod.string(),
+  "netPnl": zod.number(),
+  "trades": zod.number()
+}),zod.null()]).optional(),
+  "overtradingWarning": zod.string().nullish(),
+  "riskDisciplineScore": zod.number(),
+  "suggestedImprovement": zod.string(),
+  "disclaimer": zod.string()
+})
+
+
+/**
+ * @summary Proactive daily assistant briefing (self-populating, one per day)
+ */
+export const GetAssistantDailyBriefResponse = zod.object({
+  "brief": zod.union([zod.object({
+  "id": zod.number(),
+  "briefDate": zod.string(),
+  "message": zod.string(),
+  "highlights": zod.array(zod.object({
+  "type": zod.enum(['risk', 'opportunity', 'alert']),
+  "text": zod.string()
 })),
   "disclaimer": zod.string(),
   "createdAt": zod.coerce.date()

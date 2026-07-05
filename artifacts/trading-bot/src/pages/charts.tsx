@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CandlestickChart as CandlestickIcon } from "lucide-react";
 import { useLivePrices } from "@/hooks/use-live-prices";
 import CandlestickChart from "@/components/CandlestickChart";
+import ChartInsightPanel from "@/components/ChartInsightPanel";
 
 /* ── design tokens ── */
 const card = "hsl(var(--card))";
@@ -192,6 +193,9 @@ export default function Charts() {
           )}
         </div>
       </div>
+
+      {/* AI technical read */}
+      {epic && !noInstruments && <ChartInsightPanel epic={epic} resolution={resolution} />}
     </div>
   );
 }

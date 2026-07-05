@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DailyMarketBrief from "@/components/DailyMarketBrief";
+import MarketBrain from "@/components/MarketBrain";
 import ActivityFeed from "@/components/ActivityFeed";
 import LiveTickerStrip from "@/components/LiveTickerStrip";
 
@@ -177,6 +178,9 @@ export default function Dashboard() {
 
       {/* ── Live streaming prices ── */}
       <LiveTickerStrip />
+
+      {/* ── AI Market Brain ── */}
+      <MarketBrain />
 
       {/* ── Circuit breaker banner ── */}
       {breaker?.tripped && (

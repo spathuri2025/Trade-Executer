@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Menu, X } from "lucide-react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: ListOrdered },
   { href: "/signals", label: "Signals", icon: Activity },
   { href: "/scanner", label: "Scanner", icon: ScanSearch },
+  { href: "/market-news", label: "Market News", icon: Newspaper },
   { href: "/performance", label: "Performance", icon: TrendingUp },
   { href: "/instruments", label: "Instruments", icon: LineChart },
   { href: "/charts", label: "Charts", icon: CandlestickChart },

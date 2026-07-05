@@ -6,6 +6,7 @@ import {
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import PerformanceCoach from "@/components/PerformanceCoach";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -172,6 +173,9 @@ export default function Performance() {
 
   return (
     <div className="space-y-6 md:space-y-8">
+      {/* ── AI Performance Coach (behavioural analysis of real trade history) ── */}
+      <PerformanceCoach />
+
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl md:text-4xl font-light tracking-tight">Strategy Performance</h1>

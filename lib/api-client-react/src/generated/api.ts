@@ -22,12 +22,14 @@ import type {
 import type {
   AccountSummary,
   ActivityFeed,
+  AnalyseNewsInput,
   AssistantError,
   AssistantMessage,
   BacktestReport,
   BotConfigInput,
   BotStatus,
   Candle,
+  ChartInsight,
   Conversation,
   ConversationInput,
   ConversationWithMessages,
@@ -35,17 +37,25 @@ import type {
   ExecuteTradeInput,
   GetActivityFeedParams,
   GetCandlesParams,
+  GetChartInsightParams,
   GetMarketNewsParams,
   GetQuoteParams,
   GetScannerResultsParams,
   HealthStatus,
   Instrument,
   InstrumentInput,
+  LatestAssistantBriefResult,
   LatestDailyBriefResult,
+  LatestMarketBrainResult,
+  ListMarketNewsParams,
   ListSignalsParams,
   ListTradesParams,
+  MarketBrainSnapshot,
+  MarketNewsList,
   MessageInput,
+  NewsAnalysis,
   NewsItem,
+  PerformanceCoach,
   Position,
   Quote,
   RunScan200,
@@ -2937,4 +2947,544 @@ export const useCreateDailyBrief = <TError = ErrorType<AssistantError>,
       > => {
       return useMutation(getCreateDailyBriefMutationOptions(options));
     }
+
+export const getListMarketNewsUrl = (params?: ListMarketNewsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/market-news?${stringifiedParams}` : `/api/market-news`
+}
+
+/**
+ * @summary List market news (live RSS, persisted; mock fallback if empty)
+ */
+export const listMarketNews = async (params?: ListMarketNewsParams, options?: RequestInit): Promise<MarketNewsList> => {
+
+  return customFetch<MarketNewsList>(getListMarketNewsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMarketNewsQueryKey = (params?: ListMarketNewsParams,) => {
+    return [
+    `/api/market-news`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMarketNewsQueryOptions = <TData = Awaited<ReturnType<typeof listMarketNews>>, TError = ErrorType<unknown>>(params?: ListMarketNewsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMarketNews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMarketNewsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMarketNews>>> = ({ signal }) => listMarketNews(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMarketNews>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMarketNewsQueryResult = NonNullable<Awaited<ReturnType<typeof listMarketNews>>>
+export type ListMarketNewsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List market news (live RSS, persisted; mock fallback if empty)
+ */
+
+export function useListMarketNews<TData = Awaited<ReturnType<typeof listMarketNews>>, TError = ErrorType<unknown>>(
+ params?: ListMarketNewsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMarketNews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMarketNewsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAnalyseNewsUrl = () => {
+
+
+
+
+  return `/api/market-news/analyse`
+}
+
+/**
+ * @summary Analyse a news item with Claude (affected assets, sentiment, impact, etc.)
+ */
+export const analyseNews = async (analyseNewsInput: AnalyseNewsInput, options?: RequestInit): Promise<NewsAnalysis> => {
+
+  return customFetch<NewsAnalysis>(getAnalyseNewsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      analyseNewsInput,)
+  }
+);}
+
+
+
+
+export const getAnalyseNewsMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyseNews>>, TError,{data: BodyType<AnalyseNewsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyseNews>>, TError,{data: BodyType<AnalyseNewsInput>}, TContext> => {
+
+const mutationKey = ['analyseNews'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyseNews>>, {data: BodyType<AnalyseNewsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  analyseNews(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyseNewsMutationResult = NonNullable<Awaited<ReturnType<typeof analyseNews>>>
+    export type AnalyseNewsMutationBody = BodyType<AnalyseNewsInput>
+    export type AnalyseNewsMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Analyse a news item with Claude (affected assets, sentiment, impact, etc.)
+ */
+export const useAnalyseNews = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyseNews>>, TError,{data: BodyType<AnalyseNewsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyseNews>>,
+        TError,
+        {data: BodyType<AnalyseNewsInput>},
+        TContext
+      > => {
+      return useMutation(getAnalyseNewsMutationOptions(options));
+    }
+
+export const getGetLatestMarketBrainUrl = () => {
+
+
+
+
+  return `/api/market-brain/latest`
+}
+
+/**
+ * @summary Latest AI Market Brain snapshot (self-populating)
+ */
+export const getLatestMarketBrain = async ( options?: RequestInit): Promise<LatestMarketBrainResult> => {
+
+  return customFetch<LatestMarketBrainResult>(getGetLatestMarketBrainUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLatestMarketBrainQueryKey = () => {
+    return [
+    `/api/market-brain/latest`
+    ] as const;
+    }
+
+
+export const getGetLatestMarketBrainQueryOptions = <TData = Awaited<ReturnType<typeof getLatestMarketBrain>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestMarketBrain>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLatestMarketBrainQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLatestMarketBrain>>> = ({ signal }) => getLatestMarketBrain({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLatestMarketBrain>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLatestMarketBrainQueryResult = NonNullable<Awaited<ReturnType<typeof getLatestMarketBrain>>>
+export type GetLatestMarketBrainQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Latest AI Market Brain snapshot (self-populating)
+ */
+
+export function useGetLatestMarketBrain<TData = Awaited<ReturnType<typeof getLatestMarketBrain>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestMarketBrain>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLatestMarketBrainQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGenerateMarketBrainUrl = () => {
+
+
+
+
+  return `/api/market-brain/generate`
+}
+
+/**
+ * @summary Generate a new market brain snapshot with Claude
+ */
+export const generateMarketBrain = async ( options?: RequestInit): Promise<MarketBrainSnapshot> => {
+
+  return customFetch<MarketBrainSnapshot>(getGenerateMarketBrainUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGenerateMarketBrainMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateMarketBrain>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateMarketBrain>>, TError,void, TContext> => {
+
+const mutationKey = ['generateMarketBrain'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateMarketBrain>>, void> = () => {
+
+
+          return  generateMarketBrain(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateMarketBrainMutationResult = NonNullable<Awaited<ReturnType<typeof generateMarketBrain>>>
+
+    export type GenerateMarketBrainMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Generate a new market brain snapshot with Claude
+ */
+export const useGenerateMarketBrain = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateMarketBrain>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateMarketBrain>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getGenerateMarketBrainMutationOptions(options));
+    }
+
+export const getGetChartInsightUrl = (params: GetChartInsightParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/charts/insight?${stringifiedParams}` : `/api/charts/insight`
+}
+
+/**
+ * @summary AI technical read for an instrument (trend, S/R, volatility, confidence)
+ */
+export const getChartInsight = async (params: GetChartInsightParams, options?: RequestInit): Promise<ChartInsight> => {
+
+  return customFetch<ChartInsight>(getGetChartInsightUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChartInsightQueryKey = (params?: GetChartInsightParams,) => {
+    return [
+    `/api/charts/insight`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetChartInsightQueryOptions = <TData = Awaited<ReturnType<typeof getChartInsight>>, TError = ErrorType<AssistantError>>(params: GetChartInsightParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChartInsight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChartInsightQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChartInsight>>> = ({ signal }) => getChartInsight(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChartInsight>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChartInsightQueryResult = NonNullable<Awaited<ReturnType<typeof getChartInsight>>>
+export type GetChartInsightQueryError = ErrorType<AssistantError>
+
+
+/**
+ * @summary AI technical read for an instrument (trend, S/R, volatility, confidence)
+ */
+
+export function useGetChartInsight<TData = Awaited<ReturnType<typeof getChartInsight>>, TError = ErrorType<AssistantError>>(
+ params: GetChartInsightParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChartInsight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChartInsightQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPerformanceCoachUrl = () => {
+
+
+
+
+  return `/api/performance/coach`
+}
+
+/**
+ * @summary Behavioural performance analytics + AI coaching from trade history
+ */
+export const getPerformanceCoach = async ( options?: RequestInit): Promise<PerformanceCoach> => {
+
+  return customFetch<PerformanceCoach>(getGetPerformanceCoachUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPerformanceCoachQueryKey = () => {
+    return [
+    `/api/performance/coach`
+    ] as const;
+    }
+
+
+export const getGetPerformanceCoachQueryOptions = <TData = Awaited<ReturnType<typeof getPerformanceCoach>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPerformanceCoach>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPerformanceCoachQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPerformanceCoach>>> = ({ signal }) => getPerformanceCoach({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPerformanceCoach>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPerformanceCoachQueryResult = NonNullable<Awaited<ReturnType<typeof getPerformanceCoach>>>
+export type GetPerformanceCoachQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Behavioural performance analytics + AI coaching from trade history
+ */
+
+export function useGetPerformanceCoach<TData = Awaited<ReturnType<typeof getPerformanceCoach>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPerformanceCoach>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPerformanceCoachQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAssistantDailyBriefUrl = () => {
+
+
+
+
+  return `/api/assistant/daily-brief`
+}
+
+/**
+ * @summary Proactive daily assistant briefing (self-populating, one per day)
+ */
+export const getAssistantDailyBrief = async ( options?: RequestInit): Promise<LatestAssistantBriefResult> => {
+
+  return customFetch<LatestAssistantBriefResult>(getGetAssistantDailyBriefUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssistantDailyBriefQueryKey = () => {
+    return [
+    `/api/assistant/daily-brief`
+    ] as const;
+    }
+
+
+export const getGetAssistantDailyBriefQueryOptions = <TData = Awaited<ReturnType<typeof getAssistantDailyBrief>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantDailyBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssistantDailyBriefQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssistantDailyBrief>>> = ({ signal }) => getAssistantDailyBrief({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssistantDailyBrief>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssistantDailyBriefQueryResult = NonNullable<Awaited<ReturnType<typeof getAssistantDailyBrief>>>
+export type GetAssistantDailyBriefQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Proactive daily assistant briefing (self-populating, one per day)
+ */
+
+export function useGetAssistantDailyBrief<TData = Awaited<ReturnType<typeof getAssistantDailyBrief>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantDailyBrief>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssistantDailyBriefQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

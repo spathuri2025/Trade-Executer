@@ -1,0 +1,144 @@
+Upgrade TradeBuzz into an AI Market Intelligence platform.
+
+Current app already has:
+- Dashboard
+- Trades
+- Signals
+- Scanner
+- Performance
+- Instruments
+- Charts
+- Assistant
+- Signal Analyst
+- Setup Wizard
+- Settings
+- Capital.com integration
+- Claude AI assistant
+- Moving average scanner
+- Dry run mode
+- Manual trade page
+- Watchlist
+- AI market brief
+
+Goal:
+Make TradeBuzz stand out from normal trading bots by adding an “AI Market Brain”.
+
+Build the following features:
+
+1. AI Market Brain Dashboard
+Create a new top dashboard section showing:
+- Market regime: Risk-On, Risk-Off, Mixed, High Volatility
+- Overall market confidence score from 0–100
+- Top market drivers today
+- High-impact news count
+- Upcoming economic events
+- Best opportunities today
+- Main risks today
+
+2. Live Market News Feed
+Add a new page called “Market News”.
+The page should show:
+- Breaking news feed
+- Source
+- Timestamp
+- Affected assets
+- Sentiment: bullish, bearish, neutral
+- Impact level: low, medium, high
+- AI summary
+- Why it matters
+- Possible market reaction
+- Disclaimer: “AI-generated market commentary. Not financial advice.”
+
+Use mock news data first if no news API is configured.
+Design it so a real news provider API can be connected later.
+
+3. Claude News Analysis API
+Create backend endpoint:
+POST /api/market-news/analyse
+
+Input:
+headline, articleText, source, timestamp
+
+Claude should return structured JSON:
+{
+  "affectedAssets": [],
+  "sentiment": "bullish/bearish/neutral",
+  "impactLevel": "low/medium/high",
+  "summary": "",
+  "whyItMatters": "",
+  "possibleReaction": "",
+  "riskWarning": ""
+}
+
+4. Improved Signal Explanation
+Update the Signals page so every signal includes:
+- Signal reason
+- Confidence %
+- Technical reason
+- News reason if available
+- Risk level
+- Suggested action: Watch, Avoid, Consider, Review
+Do not just show BUY/SELL/HOLD.
+
+5. AI Overlay on Charts
+On the Charts page, add an AI insight panel next to the chart showing:
+- Current trend
+- Key support
+- Key resistance
+- Volatility level
+- AI confidence
+- Short explanation
+- Risk warning
+
+6. Trading Assistant Upgrade
+Make the Assistant proactive.
+When user opens Assistant, show a daily personalised message:
+“Good morning. Here are the key risks, opportunities and watchlist alerts today.”
+
+Assistant should be able to answer:
+- Why is this asset moving?
+- Should I avoid trading before news?
+- What is the risk on my open positions?
+- What changed in the last hour?
+- Explain this signal in simple words.
+
+7. Performance Coach
+Upgrade Performance page with behavioural analytics:
+- Win rate
+- Average win
+- Average loss
+- Best instrument
+- Worst instrument
+- Overtrading warning
+- Risk discipline score
+- Suggested improvement
+Use existing trade history first.
+
+8. Safety and Compliance
+Keep all disclaimers visible:
+- Not financial advice
+- AI commentary only
+- Trading involves substantial risk
+- User remains responsible for decisions
+
+Do not enable fully autonomous trading by default.
+Keep Dry Run mode as default.
+
+9. UI Style
+Keep the existing dark professional TradeBuzz design.
+Use cards, badges, confidence bars, and clean spacing.
+Do not redesign the whole app.
+Enhance the current UI.
+
+10. Database
+Add tables if needed for:
+- market_news
+- ai_market_analysis
+- market_brain_snapshots
+- user_ai_briefs
+
+Use existing database style and conventions.
+
+11. Deliverables
+Implement frontend pages/components, backend API endpoints, database models, and mock data fallback.
+Make sure the app runs without errors.

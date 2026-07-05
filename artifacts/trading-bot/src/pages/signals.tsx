@@ -33,6 +33,49 @@ function SignalBadge({ signal }: { signal: string }) {
 const strategyLabel = (s?: string | null) =>
   s === "mean_reversion" ? "Mean-reversion" : s === "trend_following" ? "Trend-following" : null;
 
+function RiskBadge({ level }: { level?: string | null }) {
+  if (!level) return null;
+  const cls =
+    level === "Low"
+      ? "text-emerald-400 border-emerald-400/40 bg-emerald-400/10"
+      : level === "Medium"
+      ? "text-amber-400 border-amber-400/40 bg-amber-400/10"
+      : "text-destructive border-destructive/40 bg-destructive/10";
+  return <Badge variant="outline" className={cls}>{level} risk</Badge>;
+}
+
+const actionColor = (a?: string | null) =>
+  a === "Consider" ? "text-emerald-400" : a === "Avoid" ? "text-destructive" : a === "Review" ? "text-amber-400" : muted;
+
+function ConfidenceBar({ value }: { value?: number | null }) {
+  if (value == null) return <span style={{ color: muted }}>—</span>;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-16 rounded-full overflow-hidden" style={{ backgroundColor: "hsl(var(--border))" }}>
+        <div className="h-full rounded-full" style={{ width: `${value}%`, backgroundColor: "hsl(var(--primary))" }} />
+      </div>
+      <span className="text-xs tabular-nums" style={{ color: muted }}>{value}%</span>
+    </div>
+  );
+}
+
+function SignalExplanation({ sig }: { sig: { signalReason?: string | null; technicalReason?: string | null; newsReason?: string | null; suggestedAction?: string | null } }) {
+  const primary = sig.signalReason ?? sig.technicalReason;
+  if (!primary && !sig.newsReason && !sig.suggestedAction) return <span style={{ color: muted }}>—</span>;
+  return (
+    <div className="space-y-1">
+      {primary && <div className="text-xs" style={{ color: "hsl(var(--foreground))" }}>{primary}</div>}
+      {sig.technicalReason && sig.technicalReason !== primary && (
+        <div className="text-[11px]" style={{ color: muted }}>{sig.technicalReason}</div>
+      )}
+      {sig.newsReason && <div className="text-[11px]" style={{ color: muted }}>News: {sig.newsReason}</div>}
+      {sig.suggestedAction && (
+        <div className={`text-[11px] font-medium ${actionColor(sig.suggestedAction)}`}>→ {sig.suggestedAction}</div>
+      )}
+    </div>
+  );
+}
+
 function RegimeCell({ regime, strategy }: { regime?: string | null; strategy?: string | null }) {
   const strat = strategyLabel(strategy);
   if (!regime && !strat) return <span style={{ color: muted }}>—</span>;
@@ -151,6 +194,13 @@ export default function Signals() {
                     <div className="text-sm font-mono mt-0.5">{sig.longMa.toFixed(2)}</div>
                   </div>
                 </div>
+                <div className="mt-3 pt-3 flex items-center justify-between gap-2" style={{ borderTop: divider }}>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Confidence</div>
+                    <div className="mt-1"><ConfidenceBar value={sig.confidence} /></div>
+                  </div>
+                  <RiskBadge level={sig.riskLevel} />
+                </div>
                 <div className="mt-2 pt-2 flex items-center justify-between" style={{ borderTop: divider }}>
                   <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Trade Executed</span>
                   {sig.tradeExecuted
@@ -158,10 +208,10 @@ export default function Signals() {
                     : <X className="h-4 w-4" style={{ color: muted }} />
                   }
                 </div>
-                {sig.aiReason && (
+                {(sig.signalReason || sig.technicalReason || sig.newsReason || sig.suggestedAction) && (
                   <div className="mt-2 pt-2" style={{ borderTop: divider }}>
-                    <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>AI Reason</div>
-                    <div className="text-xs mt-1">{sig.aiReason}</div>
+                    <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: muted }}>Why</div>
+                    <div className="mt-1"><SignalExplanation sig={sig} /></div>
                   </div>
                 )}
               </div>
@@ -174,7 +224,7 @@ export default function Signals() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr style={{ borderBottom: divider }}>
-                    {["Time", "Ticker", "Signal", "Regime", "Price", "Short MA", "Long MA", "Executed", "AI Reason"].map((h) => (
+                    {["Time", "Ticker", "Signal", "Regime", "Confidence", "Risk", "Price", "Short MA", "Long MA", "Executed", "Why"].map((h) => (
                       <th key={h} className="px-5 py-4">
                         <SectionLabel>{h}</SectionLabel>
                       </th>
@@ -195,6 +245,8 @@ export default function Signals() {
                       <td className="px-5 py-4 font-bold">{sig.ticker}</td>
                       <td className="px-5 py-4"><SignalBadge signal={sig.signal} /></td>
                       <td className="px-5 py-4"><RegimeCell regime={sig.regime} strategy={sig.strategy} /></td>
+                      <td className="px-5 py-4"><ConfidenceBar value={sig.confidence} /></td>
+                      <td className="px-5 py-4">{sig.riskLevel ? <RiskBadge level={sig.riskLevel} /> : <span style={{ color: muted }}>—</span>}</td>
                       <td className="px-5 py-4">{sig.price.toFixed(2)}</td>
                       <td className="px-5 py-4">{sig.shortMa.toFixed(2)}</td>
                       <td className="px-5 py-4">{sig.longMa.toFixed(2)}</td>
@@ -204,8 +256,8 @@ export default function Signals() {
                           : <X className="h-4 w-4" style={{ color: muted }} />
                         }
                       </td>
-                      <td className="px-5 py-4 font-sans text-xs max-w-xs whitespace-normal" style={{ color: muted }}>
-                        {sig.aiReason ?? "—"}
+                      <td className="px-5 py-4 font-sans max-w-xs whitespace-normal">
+                        <SignalExplanation sig={sig} />
                       </td>
                     </tr>
                   ))}

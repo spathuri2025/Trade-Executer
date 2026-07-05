@@ -753,6 +753,156 @@ paths:
               schema:
                 $ref: "#/components/schemas/AssistantError"
 
+  /market-news:
+    get:
+      operationId: listMarketNews
+      tags: [marketNews]
+      summary: List market news (live RSS, persisted; mock fallback if empty)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Market news list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketNewsList"
+
+  /market-news/analyse:
+    post:
+      operationId: analyseNews
+      tags: [marketNews]
+      summary: Analyse a news item with Claude (affected assets, sentiment, impact, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyseNewsInput"
+      responses:
+        "200":
+          description: AI analysis of the news item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsAnalysis"
+        "400":
+          description: Missing headline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "502":
+          description: Failed to analyse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /market-brain/latest:
+    get:
+      operationId: getLatestMarketBrain
+      tags: [marketBrain]
+      summary: Latest AI Market Brain snapshot (self-populating)
+      responses:
+        "200":
+          description: The latest market brain snapshot, or null if none exists yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestMarketBrainResult"
+
+  /market-brain/generate:
+    post:
+      operationId: generateMarketBrain
+      tags: [marketBrain]
+      summary: Generate a new market brain snapshot with Claude
+      responses:
+        "201":
+          description: The newly generated market brain snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketBrainSnapshot"
+        "429":
+          description: A snapshot was generated too recently (cooldown)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "502":
+          description: Failed to generate the snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /charts/insight:
+    get:
+      operationId: getChartInsight
+      tags: [charts]
+      summary: AI technical read for an instrument (trend, S/R, volatility, confidence)
+      parameters:
+        - name: epic
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: resolution
+          in: query
+          schema:
+            type: string
+            default: HOUR
+      responses:
+        "200":
+          description: Chart insight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartInsight"
+        "400":
+          description: Missing epic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "502":
+          description: Failed to compute insight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /performance/coach:
+    get:
+      operationId: getPerformanceCoach
+      tags: [performance]
+      summary: Behavioural performance analytics + AI coaching from trade history
+      responses:
+        "200":
+          description: Performance coach report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerformanceCoach"
+
+  /assistant/daily-brief:
+    get:
+      operationId: getAssistantDailyBrief
+      tags: [assistant]
+      summary: Proactive daily assistant briefing (self-populating, one per day)
+      responses:
+        "200":
+          description: The latest assistant daily brief, or null if none exists yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestAssistantBriefResult"
+
 components:
   schemas:
     HealthStatus:
@@ -1047,6 +1197,26 @@ components:
           type: ["string", "null"]
           enum: [trending, ranging, null]
           description: Market regime classified for the instrument (close-based ADX). trending → trend-following, ranging → mean-reversion.
+        signalReason:
+          type: ["string", "null"]
+          description: Deterministic plain-language reason for this signal (no LLM).
+        confidence:
+          type: ["integer", "null"]
+          description: Deterministic 0-100 confidence derived from MA gap and regime.
+        technicalReason:
+          type: ["string", "null"]
+          description: Deterministic technical explanation (MA relationship / crossover).
+        newsReason:
+          type: ["string", "null"]
+          description: News/AI context for the signal, if any.
+        riskLevel:
+          type: ["string", "null"]
+          enum: [Low, Medium, High, null]
+          description: Deterministic risk classification for acting on this signal.
+        suggestedAction:
+          type: ["string", "null"]
+          enum: [Watch, Avoid, Consider, Review, null]
+          description: Deterministic suggested action (educational, not advice).
 
     NewsItem:
       type: object
@@ -1423,3 +1593,295 @@ components:
           type: number
         close:
           type: number
+
+    MarketNewsItem:
+      type: object
+      required: [id, title, url, source, impactScore, impactLabel]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+        source:
+          type: string
+        publishedAt:
+          type: ["string", "null"]
+        impactScore:
+          type: integer
+        impactLabel:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        createdAt:
+          type: string
+
+    MarketNewsList:
+      type: object
+      required: [items, mock]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketNewsItem"
+        mock:
+          type: boolean
+          description: True when sample data is shown because no live news was available
+
+    AnalyseNewsInput:
+      type: object
+      required: [headline]
+      properties:
+        headline:
+          type: string
+        source:
+          type: string
+        articleText:
+          type: string
+        articleUrl:
+          type: string
+        timestamp:
+          type: string
+
+    NewsAnalysis:
+      type: object
+      required:
+        - affectedAssets
+        - sentiment
+        - impactLevel
+        - summary
+        - whyItMatters
+        - possibleReaction
+        - riskWarning
+      properties:
+        id:
+          type: ["integer", "null"]
+        affectedAssets:
+          type: array
+          items:
+            type: string
+        sentiment:
+          type: string
+          enum: [bullish, bearish, neutral]
+        impactLevel:
+          type: string
+          enum: [low, medium, high]
+        summary:
+          type: string
+        whyItMatters:
+          type: string
+        possibleReaction:
+          type: string
+        riskWarning:
+          type: string
+        disclaimer:
+          type: string
+
+    BrainDriver:
+      type: object
+      required: [title, detail]
+      properties:
+        title:
+          type: string
+        detail:
+          type: string
+
+    BrainEvent:
+      type: object
+      required: [name, when, importance]
+      properties:
+        name:
+          type: string
+        when:
+          type: string
+        importance:
+          type: string
+          enum: [low, medium, high]
+
+    BrainOpportunity:
+      type: object
+      required: [asset, rationale]
+      properties:
+        asset:
+          type: string
+        rationale:
+          type: string
+
+    BrainRisk:
+      type: object
+      required: [title, detail]
+      properties:
+        title:
+          type: string
+        detail:
+          type: string
+
+    MarketBrainSnapshot:
+      type: object
+      required:
+        - id
+        - regime
+        - confidence
+        - drivers
+        - highImpactNewsCount
+        - upcomingEvents
+        - opportunities
+        - risks
+        - disclaimer
+        - createdAt
+      properties:
+        id:
+          type: integer
+        regime:
+          type: string
+          enum: [Risk-On, Risk-Off, Mixed, High Volatility]
+        confidence:
+          type: integer
+          description: 0-100 confidence in the regime read
+        drivers:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrainDriver"
+        highImpactNewsCount:
+          type: integer
+        upcomingEvents:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrainEvent"
+        opportunities:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrainOpportunity"
+        risks:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrainRisk"
+        disclaimer:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    LatestMarketBrainResult:
+      type: object
+      required: [snapshot]
+      properties:
+        snapshot:
+          oneOf:
+            - $ref: "#/components/schemas/MarketBrainSnapshot"
+            - type: "null"
+
+    ChartInsight:
+      type: object
+      required:
+        - epic
+        - trend
+        - volatility
+        - confidence
+        - explanation
+        - riskWarning
+      properties:
+        epic:
+          type: string
+        trend:
+          type: string
+          enum: [Uptrend, Downtrend, Sideways]
+        support:
+          type: ["number", "null"]
+        resistance:
+          type: ["number", "null"]
+        volatility:
+          type: string
+          enum: [Low, Medium, High]
+        confidence:
+          type: integer
+        explanation:
+          type: string
+        riskWarning:
+          type: string
+
+    InstrumentPnl:
+      type: object
+      required: [ticker, netPnl, trades]
+      properties:
+        ticker:
+          type: string
+        netPnl:
+          type: number
+        trades:
+          type: integer
+
+    PerformanceCoach:
+      type: object
+      required:
+        - totalTrades
+        - closedTrades
+        - riskDisciplineScore
+        - suggestedImprovement
+        - disclaimer
+      properties:
+        totalTrades:
+          type: integer
+        closedTrades:
+          type: integer
+        winRate:
+          type: ["number", "null"]
+        avgWin:
+          type: ["number", "null"]
+        avgLoss:
+          type: ["number", "null"]
+        bestInstrument:
+          oneOf:
+            - $ref: "#/components/schemas/InstrumentPnl"
+            - type: "null"
+        worstInstrument:
+          oneOf:
+            - $ref: "#/components/schemas/InstrumentPnl"
+            - type: "null"
+        overtradingWarning:
+          type: ["string", "null"]
+        riskDisciplineScore:
+          type: integer
+        suggestedImprovement:
+          type: string
+        disclaimer:
+          type: string
+
+    BriefHighlight:
+      type: object
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          enum: [risk, opportunity, alert]
+        text:
+          type: string
+
+    UserAiBrief:
+      type: object
+      required: [id, briefDate, message, highlights, disclaimer, createdAt]
+      properties:
+        id:
+          type: integer
+        briefDate:
+          type: string
+        message:
+          type: string
+        highlights:
+          type: array
+          items:
+            $ref: "#/components/schemas/BriefHighlight"
+        disclaimer:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    LatestAssistantBriefResult:
+      type: object
+      required: [brief]
+      properties:
+        brief:
+          oneOf:
+            - $ref: "#/components/schemas/UserAiBrief"
+            - type: "null"

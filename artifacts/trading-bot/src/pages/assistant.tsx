@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import AssistantDailyBrief from "@/components/AssistantDailyBrief";
 import { Plus, Send, Trash2, Bot, User, MessageSquare, Loader2 } from "lucide-react";
 
 const card = "hsl(var(--card))";
@@ -184,6 +185,9 @@ export default function Assistant() {
           </p>
         </div>
       </div>
+
+      {/* Proactive daily briefing (self-populating, one per day) */}
+      <AssistantDailyBrief />
 
       <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4">
         {/* Conversation list */}
