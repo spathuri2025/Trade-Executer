@@ -881,3 +881,83 @@ export const GetAssistantDailyBriefResponse = zod.object({
 })
 
 
+/**
+ * @summary Claude-generated plain-English trade intelligence report from pre-computed factor scores
+ */
+export const EvaluateTradeIntelligenceWithClaudeBody = zod.object({
+  "symbol": zod.string(),
+  "timeframes": zod.array(zod.string()).optional(),
+  "factorScores": zod.object({
+  "trend": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "marketStructure": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "liquidity": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "volume": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "volatility": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "news": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "sentiment": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "multiTimeframe": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+}),
+  "pattern": zod.object({
+  "score": zod.number(),
+  "direction": zod.enum(['bullish', 'bearish', 'neutral']),
+  "reason": zod.string()
+})
+}),
+  "riskPlan": zod.object({
+  "entryZone": zod.string().optional(),
+  "stopLoss": zod.string().optional(),
+  "takeProfit1": zod.string().optional(),
+  "takeProfit2": zod.string().optional(),
+  "riskRewardRatio": zod.string().optional()
+}).optional(),
+  "finalScore": zod.number(),
+  "direction": zod.string(),
+  "recommendation": zod.string()
+})
+
+export const EvaluateTradeIntelligenceWithClaudeResponse = zod.object({
+  "summary": zod.string(),
+  "bullishFactors": zod.array(zod.string()),
+  "bearishFactors": zod.array(zod.string()),
+  "warnings": zod.array(zod.string()),
+  "tradeNarrative": zod.string(),
+  "beginnerExplanation": zod.string(),
+  "advancedExplanation": zod.string(),
+  "finalRecommendation": zod.string(),
+  "invalidationReason": zod.string(),
+  "riskWarning": zod.string(),
+  "disclaimer": zod.string()
+})
+
+

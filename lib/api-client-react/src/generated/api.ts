@@ -63,7 +63,9 @@ import type {
   ScannerResult,
   ScannerStatus,
   Signal,
-  Trade
+  Trade,
+  TradeIntelligenceInput,
+  TradeIntelligenceReport
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -3487,4 +3489,75 @@ export function useGetAssistantDailyBrief<TData = Awaited<ReturnType<typeof getA
 
 
 
+
+export const getEvaluateTradeIntelligenceWithClaudeUrl = () => {
+
+
+
+
+  return `/api/trade-intelligence/evaluate-with-claude`
+}
+
+/**
+ * @summary Claude-generated plain-English trade intelligence report from pre-computed factor scores
+ */
+export const evaluateTradeIntelligenceWithClaude = async (tradeIntelligenceInput: TradeIntelligenceInput, options?: RequestInit): Promise<TradeIntelligenceReport> => {
+
+  return customFetch<TradeIntelligenceReport>(getEvaluateTradeIntelligenceWithClaudeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      tradeIntelligenceInput,)
+  }
+);}
+
+
+
+
+export const getEvaluateTradeIntelligenceWithClaudeMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateTradeIntelligenceWithClaude>>, TError,{data: BodyType<TradeIntelligenceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof evaluateTradeIntelligenceWithClaude>>, TError,{data: BodyType<TradeIntelligenceInput>}, TContext> => {
+
+const mutationKey = ['evaluateTradeIntelligenceWithClaude'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof evaluateTradeIntelligenceWithClaude>>, {data: BodyType<TradeIntelligenceInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  evaluateTradeIntelligenceWithClaude(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EvaluateTradeIntelligenceWithClaudeMutationResult = NonNullable<Awaited<ReturnType<typeof evaluateTradeIntelligenceWithClaude>>>
+    export type EvaluateTradeIntelligenceWithClaudeMutationBody = BodyType<TradeIntelligenceInput>
+    export type EvaluateTradeIntelligenceWithClaudeMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Claude-generated plain-English trade intelligence report from pre-computed factor scores
+ */
+export const useEvaluateTradeIntelligenceWithClaude = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateTradeIntelligenceWithClaude>>, TError,{data: BodyType<TradeIntelligenceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof evaluateTradeIntelligenceWithClaude>>,
+        TError,
+        {data: BodyType<TradeIntelligenceInput>},
+        TContext
+      > => {
+      return useMutation(getEvaluateTradeIntelligenceWithClaudeMutationOptions(options));
+    }
 

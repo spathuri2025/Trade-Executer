@@ -734,6 +734,65 @@ export interface NewsAnalysis {
   disclaimer?: string;
 }
 
+export type TradeFactorScoreDirection = typeof TradeFactorScoreDirection[keyof typeof TradeFactorScoreDirection];
+
+
+export const TradeFactorScoreDirection = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
+} as const;
+
+export interface TradeFactorScore {
+  score: number;
+  direction: TradeFactorScoreDirection;
+  reason: string;
+}
+
+export interface TradeFactorScores {
+  trend: TradeFactorScore;
+  marketStructure: TradeFactorScore;
+  liquidity: TradeFactorScore;
+  volume: TradeFactorScore;
+  volatility: TradeFactorScore;
+  news: TradeFactorScore;
+  sentiment: TradeFactorScore;
+  multiTimeframe: TradeFactorScore;
+  pattern: TradeFactorScore;
+}
+
+export interface TradeRiskPlan {
+  entryZone?: string;
+  stopLoss?: string;
+  takeProfit1?: string;
+  takeProfit2?: string;
+  riskRewardRatio?: string;
+}
+
+export interface TradeIntelligenceInput {
+  symbol: string;
+  timeframes?: string[];
+  factorScores: TradeFactorScores;
+  riskPlan?: TradeRiskPlan;
+  finalScore: number;
+  direction: string;
+  recommendation: string;
+}
+
+export interface TradeIntelligenceReport {
+  summary: string;
+  bullishFactors: string[];
+  bearishFactors: string[];
+  warnings: string[];
+  tradeNarrative: string;
+  beginnerExplanation: string;
+  advancedExplanation: string;
+  finalRecommendation: string;
+  invalidationReason: string;
+  riskWarning: string;
+  disclaimer: string;
+}
+
 export interface BrainDriver {
   title: string;
   detail: string;
