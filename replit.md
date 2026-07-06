@@ -107,7 +107,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- **shadcn Select clipping**: the generated `ui/select.tsx` `SelectPrimitive.Viewport` ships with `h-[var(--radix-select-trigger-height)]` in popper mode, which pins the dropdown list to the trigger's height and clips long option lists (only a sliver shows). Removed it so the viewport grows to fit items. Do NOT reintroduce that class when regenerating/updating the Select component.
 
 ## Pointers
 
