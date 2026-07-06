@@ -19,6 +19,7 @@ import marketBrainRouter from "./marketBrain";
 import chartInsightRouter from "./chartInsight";
 import performanceCoachRouter from "./performanceCoach";
 import assistantBriefRouter from "./assistantBrief";
+import tradeIntelligenceRouter from "./tradeIntelligence";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(marketBrainRouter);
 router.use(chartInsightRouter);
 router.use(performanceCoachRouter);
 router.use(assistantBriefRouter);
+router.use(tradeIntelligenceRouter);
 
 export default router;

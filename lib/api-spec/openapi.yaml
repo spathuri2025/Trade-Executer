@@ -903,6 +903,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/LatestAssistantBriefResult"
 
+  /trade-intelligence/evaluate-with-claude:
+    post:
+      operationId: evaluateTradeIntelligenceWithClaude
+      tags: [tradeIntelligence]
+      summary: Claude-generated plain-English trade intelligence report from pre-computed factor scores
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeIntelligenceInput"
+      responses:
+        "200":
+          description: AI trade intelligence report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeIntelligenceReport"
+        "400":
+          description: Missing or malformed input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "502":
+          description: Failed to generate the report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
 components:
   schemas:
     HealthStatus:
@@ -1671,6 +1702,129 @@ components:
         whyItMatters:
           type: string
         possibleReaction:
+          type: string
+        riskWarning:
+          type: string
+        disclaimer:
+          type: string
+
+    TradeFactorScore:
+      type: object
+      required: [score, direction, reason]
+      properties:
+        score:
+          type: integer
+        direction:
+          type: string
+          enum: [bullish, bearish, neutral]
+        reason:
+          type: string
+
+    TradeFactorScores:
+      type: object
+      required:
+        - trend
+        - marketStructure
+        - liquidity
+        - volume
+        - volatility
+        - news
+        - sentiment
+        - multiTimeframe
+        - pattern
+      properties:
+        trend:
+          $ref: "#/components/schemas/TradeFactorScore"
+        marketStructure:
+          $ref: "#/components/schemas/TradeFactorScore"
+        liquidity:
+          $ref: "#/components/schemas/TradeFactorScore"
+        volume:
+          $ref: "#/components/schemas/TradeFactorScore"
+        volatility:
+          $ref: "#/components/schemas/TradeFactorScore"
+        news:
+          $ref: "#/components/schemas/TradeFactorScore"
+        sentiment:
+          $ref: "#/components/schemas/TradeFactorScore"
+        multiTimeframe:
+          $ref: "#/components/schemas/TradeFactorScore"
+        pattern:
+          $ref: "#/components/schemas/TradeFactorScore"
+
+    TradeRiskPlan:
+      type: object
+      properties:
+        entryZone:
+          type: string
+        stopLoss:
+          type: string
+        takeProfit1:
+          type: string
+        takeProfit2:
+          type: string
+        riskRewardRatio:
+          type: string
+
+    TradeIntelligenceInput:
+      type: object
+      required: [symbol, factorScores, finalScore, direction, recommendation]
+      properties:
+        symbol:
+          type: string
+        timeframes:
+          type: array
+          items:
+            type: string
+        factorScores:
+          $ref: "#/components/schemas/TradeFactorScores"
+        riskPlan:
+          $ref: "#/components/schemas/TradeRiskPlan"
+        finalScore:
+          type: integer
+        direction:
+          type: string
+        recommendation:
+          type: string
+
+    TradeIntelligenceReport:
+      type: object
+      required:
+        - summary
+        - bullishFactors
+        - bearishFactors
+        - warnings
+        - tradeNarrative
+        - beginnerExplanation
+        - advancedExplanation
+        - finalRecommendation
+        - invalidationReason
+        - riskWarning
+        - disclaimer
+      properties:
+        summary:
+          type: string
+        bullishFactors:
+          type: array
+          items:
+            type: string
+        bearishFactors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        tradeNarrative:
+          type: string
+        beginnerExplanation:
+          type: string
+        advancedExplanation:
+          type: string
+        finalRecommendation:
+          type: string
+        invalidationReason:
           type: string
         riskWarning:
           type: string

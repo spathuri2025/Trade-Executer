@@ -1,2 +1,3 @@
 - [AI JSON endpoints](ai-json-endpoints.md) — TradeBuzz AI features share lib/aiJson.ts; disclaimers pinned server-side; every AI route needs a deterministic mock fallback.
 - [OpenAPI route conventions](openapi-route-conventions.md) — routes validate inputs manually (not generated Zod) to decouple from codegen; nullables use type:["x","null"]; re-run codegen after spec edits.
+- [Trade Intelligence (Claude layer)](trade-intelligence-claude.md) — no real multi-factor scoring engine exists; the Signals-page bridge honestly marks unscored factors as "not yet computed" instead of fabricating data.

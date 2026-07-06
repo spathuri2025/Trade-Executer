@@ -8,6 +8,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Check, X } from "lucide-react";
+import { SignalBadge, RiskBadge, ConfidenceBar } from "@/components/SignalBadges";
+import { TradeIntelligenceDialog } from "@/components/TradeIntelligenceDialog";
 
 const card = "hsl(var(--card))";
 const cardBorder = "1px solid hsl(var(--card-border))";
@@ -22,42 +24,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SignalBadge({ signal }: { signal: string }) {
-  const cls =
-    signal === "BUY"  ? "text-primary border-primary bg-primary/10" :
-    signal === "SELL" ? "text-destructive border-destructive bg-destructive/10" :
-    "text-amber-500 border-amber-500 bg-amber-500/10";
-  return <Badge variant="outline" className={cls}>{signal}</Badge>;
-}
-
 const strategyLabel = (s?: string | null) =>
   s === "mean_reversion" ? "Mean-reversion" : s === "trend_following" ? "Trend-following" : null;
 
-function RiskBadge({ level }: { level?: string | null }) {
-  if (!level) return null;
-  const cls =
-    level === "Low"
-      ? "text-emerald-400 border-emerald-400/40 bg-emerald-400/10"
-      : level === "Medium"
-      ? "text-amber-400 border-amber-400/40 bg-amber-400/10"
-      : "text-destructive border-destructive/40 bg-destructive/10";
-  return <Badge variant="outline" className={cls}>{level} risk</Badge>;
-}
-
 const actionColor = (a?: string | null) =>
   a === "Consider" ? "text-emerald-400" : a === "Avoid" ? "text-destructive" : a === "Review" ? "text-amber-400" : muted;
-
-function ConfidenceBar({ value }: { value?: number | null }) {
-  if (value == null) return <span style={{ color: muted }}>—</span>;
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 rounded-full overflow-hidden" style={{ backgroundColor: "hsl(var(--border))" }}>
-        <div className="h-full rounded-full" style={{ width: `${value}%`, backgroundColor: "hsl(var(--primary))" }} />
-      </div>
-      <span className="text-xs tabular-nums" style={{ color: muted }}>{value}%</span>
-    </div>
-  );
-}
 
 function SignalExplanation({ sig }: { sig: { signalReason?: string | null; technicalReason?: string | null; newsReason?: string | null; suggestedAction?: string | null } }) {
   const primary = sig.signalReason ?? sig.technicalReason;
@@ -214,6 +185,9 @@ export default function Signals() {
                     <div className="mt-1"><SignalExplanation sig={sig} /></div>
                   </div>
                 )}
+                <div className="mt-2 pt-2" style={{ borderTop: divider }}>
+                  <TradeIntelligenceDialog signal={sig} />
+                </div>
               </div>
             ))}
           </div>
@@ -224,7 +198,7 @@ export default function Signals() {
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr style={{ borderBottom: divider }}>
-                    {["Time", "Ticker", "Signal", "Regime", "Confidence", "Risk", "Price", "Short MA", "Long MA", "Executed", "Why"].map((h) => (
+                    {["Time", "Ticker", "Signal", "Regime", "Confidence", "Risk", "Price", "Short MA", "Long MA", "Executed", "Why", "AI"].map((h) => (
                       <th key={h} className="px-5 py-4">
                         <SectionLabel>{h}</SectionLabel>
                       </th>
@@ -258,6 +232,9 @@ export default function Signals() {
                       </td>
                       <td className="px-5 py-4 font-sans max-w-xs whitespace-normal">
                         <SignalExplanation sig={sig} />
+                      </td>
+                      <td className="px-5 py-4 font-sans">
+                        <TradeIntelligenceDialog signal={sig} />
                       </td>
                     </tr>
                   ))}
