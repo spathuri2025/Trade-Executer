@@ -7,6 +7,7 @@ import {
 } from "../lib/brokerCredentialsService";
 import { getBrokerAccount } from "../lib/broker";
 import { stopBot } from "../lib/botEngine";
+import { evictCapitalStream } from "../lib/capitalStream";
 
 const router: IRouter = Router();
 
@@ -62,6 +63,9 @@ router.post("/broker/connect", async (req, res): Promise<void> => {
 
   try {
     await saveUserBrokerCredentials(req.user!.id, input);
+    // A running stream manager (if any) is holding the OLD credentials —
+    // evict it so the next SSE reconnect picks up the ones just saved.
+    evictCapitalStream(req.user!.id);
     res.status(201).json(await currentStatus(req.user!.id));
   } catch (err) {
     req.log.error({ err }, "Failed to save broker credentials");
@@ -75,6 +79,7 @@ router.get("/broker/status", async (req, res): Promise<void> => {
 
 router.delete("/broker/disconnect", async (req, res): Promise<void> => {
   stopBot(req.user!.id);
+  evictCapitalStream(req.user!.id);
   await clearUserBrokerCredentials(req.user!.id);
   res.sendStatus(204);
 });

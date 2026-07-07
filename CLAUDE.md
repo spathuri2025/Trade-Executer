@@ -15,7 +15,7 @@ connects their own broker (Capital.com or Trading 212) and gets a fully isolated
 `botEngine.ts`/`scannerEngine.ts` are per-user (`Map<userId, State>`), not global singletons. See
 `.agents/memory/multi-tenant-broker.md`. Exception: market-wide AI content (market news/brain/daily briefs)
 intentionally stays global/shared — see `.agents/memory/session-auth.md` for exactly which. Live price
-*streaming* (WebSocket push) is deferred to a later round — prices are polled instead.
+*streaming* (WebSocket push) is per-user too — see `.agents/memory/capital-streaming.md`.
 
 ## Commands
 
@@ -48,7 +48,7 @@ Define the endpoint in `lib/api-spec/openapi.yaml` first, then run codegen, then
 - Nullable fields use `type: ["string","null"]`, not `nullable: true`.
 - Route handlers validate inputs **manually** (mirror `routes/news.ts`) instead of importing generated Zod — this decouples handlers from Orval's generated names, which shift with `operationId`. Only `signals.ts` imports a generated type (`ListSignalsQueryParams`).
 - A path param + query params on the *same* operation makes Orval emit two colliding `<OpId>Params` exports — prefer an all-query-param design (e.g. `/candles?epic=`) when both are needed.
-- SSE endpoints (assistant chat, signal analyst chat) are **not** in the OpenAPI spec — Orval can't codegen SSE. They're consumed via raw `fetch`/`ReadableStream` on the client. (The live price stream used to be SSE too; it's now a plain polled `GET /quote` in the spec — see `.agents/memory/multi-tenant-broker.md`.)
+- SSE endpoints (assistant chat, signal analyst chat, live price stream) are **not** in the OpenAPI spec — Orval can't codegen SSE. They're consumed via raw `fetch`/`ReadableStream` or `EventSource` on the client.
 
 ### AI Market Intelligence ("Market Brain")
 An 11-part AI layer, all backend-only (no client-side API keys). Claude calls (`claude-sonnet-4-6`) go through `@workspace/integrations-anthropic-ai` + the shared `artifacts/api-server/src/lib/aiJson.ts` helper (`generateClaudeJson` + `asString/asStringArray/asNumber/clampInt/oneOf/extractJson` for robust JSON parsing). The in-app Assistant uses GPT (`gpt-5.4`) via `@workspace/integrations-openai-ai-server` instead.
@@ -65,7 +65,7 @@ Self-populating endpoints (Market Brain, Assistant daily brief, daily market bri
 Email+password, `bcrypt` hashing, opaque DB-backed session tokens (not JWT) in an httpOnly signed cookie (`lib/auth.ts`, `middlewares/requireAuth.ts`, `routes/auth.ts`). `routes/index.ts` mounts `healthRouter`/`authRouter` first, then `router.use(requireAuth)` gates every router mounted after that line — a new route file needs no auth wiring of its own. Frontend: `hooks/use-auth.tsx`'s `AuthProvider`/`useAuth()` wraps the generated `/auth/*` hooks; `App.tsx`'s `AppShell` renders `login.tsx`/`signup.tsx` while logged out and only mounts the real app (which fires real API queries) once a session is confirmed. See `.agents/memory/session-auth.md` for exactly what is/isn't per-tenant.
 
 ### Multi-tenant broker accounts
-Every user connects their own broker via `Settings` or the Setup Wizard's first step (`POST /broker/connect`, credentials encrypted at rest — see `.agents/memory/multi-tenant-broker.md`). `botEngine.ts`/`scannerEngine.ts` are `Map<userId, State>`, not global singletons — every exported function takes a leading `userId`. `broker.ts`/`capitalcom.ts`/`trading212.ts` take explicit credentials instead of reading env vars; Capital.com's session cache is `Map<userId, Session>`. `startBot`/`executeManualTrade` throw `BrokerNotConnectedError` (→ 400) if the user has no broker connected. Live price **streaming** (push WebSocket) is deferred — `capitalStream.ts`/`routes/stream.ts` were deleted; prices are polled via `GET /quote` instead (`hooks/use-live-prices.ts`).
+Every user connects their own broker via `Settings` or the Setup Wizard's first step (`POST /broker/connect`, credentials encrypted at rest — see `.agents/memory/multi-tenant-broker.md`). `botEngine.ts`/`scannerEngine.ts` are `Map<userId, State>`, not global singletons — every exported function takes a leading `userId`. `broker.ts`/`capitalcom.ts`/`trading212.ts` take explicit credentials instead of reading env vars; Capital.com's session cache is `Map<userId, Session>`. `startBot`/`executeManualTrade` throw `BrokerNotConnectedError` (→ 400) if the user has no broker connected. Live price streaming (`capitalStream.ts`) is also per-user — a ref-counted `Map<userId, CapitalStreamManager>` registry (`acquireCapitalStream`/`releaseCapitalStream`/`evictCapitalStream`), not a global singleton; see `.agents/memory/capital-streaming.md`.
 
 ### Trade execution & risk (read before touching `botEngine.ts`, `broker.ts`, or any execute route)
 - Manual trades and the automated bot **must** place orders through the same path — both read broker/dryRun/stopLossPercent from that user's bot config and write the same `trades` row shape (`FILLED`/`FAILED`/`DRY_RUN`, with `userId`).
@@ -76,7 +76,7 @@ Every user connects their own broker via `Settings` or the Setup Wizard's first 
 
 ### Other load-bearing conventions
 - **Backtest cost ordering** (`artifacts/api-server/src/lib/backtest.ts`): round-trip cost must be deducted *before* the bar's equity point is pushed and drawdown updated, or the equity curve/return/drawdown numbers stop agreeing with each other. See `.agents/memory/backtest-cost-ordering.md`.
-- **Capital.com streaming protocol** (implementation removed, facts still relevant for a future per-user rebuild): plain JSON WebSocket (not Lightstreamer), reuses the REST session's CST/token, max 40 epics/connection, quote field is `ofr` not `offer`. `instrumentsTable.ticker` IS the Capital.com epic — no separate mapping layer. See `.agents/memory/capital-streaming.md`.
+- **Capital.com streaming protocol**: plain JSON WebSocket (not Lightstreamer), reuses the REST session's CST/token, max 40 epics/connection, quote field is `ofr` not `offer`. `instrumentsTable.ticker` IS the Capital.com epic — no separate mapping layer. See `.agents/memory/capital-streaming.md`.
 - **Conversation kind isolation**: Assistant and Signal Analyst chats share the `conversations`/`messages` tables, discriminated by `conversations.kind`. Every ID-based route in both routers (get/delete/list-messages/send) must filter by `(id AND kind AND userId)` — `messages` has no `userId` of its own, so message routes re-verify the parent conversation's owner first. See `.agents/memory/conversation-kind-isolation.md`.
 - **Live data polling cadence**: broker-backed dashboard data (account/positions) polls at a fixed ~20s interval, not tied to the bot's scan interval — do not drop this toward sub-second polling, Capital.com/Trading 212 REST APIs are rate-limited. DB-only reads (signals, scanner) can poll faster. See `.agents/memory/live-data-refresh-cadence.md`.
 - **Onboarding wizard** (`/setup`): must always pin `dryRun: true` on finish (never spread a prior live config), and the first-run redirect must gate on `!onboarded && zero instruments`, not the localStorage flag alone, or existing users get trapped. See `.agents/memory/onboarding-wizard.md`.

@@ -1,6 +1,6 @@
 ---
-name: Multi-tenant broker accounts (Round 1)
-description: Per-user broker credentials, per-user bot/scanner engines, and what's deferred to a later round
+name: Multi-tenant broker accounts
+description: Per-user broker credentials, per-user bot/scanner/stream engines, and remaining known limitations
 ---
 
 # Multi-tenant broker accounts
@@ -39,31 +39,25 @@ in-flight trade dedupe lock (now keyed `${userId}:${broker}:${ticker}:${side}`).
 `.agents/memory/risk-control-fail-safe.md` and `.agents/memory/trade-execution-safety.md`
 — read both before touching `runCycle`.
 
-## Deferred to a later round (deliberate, not an oversight)
+**Live price streaming is now per-user too** (round 2, done — see
+`.agents/memory/capital-streaming.md` and `.agents/memory/live-price-store.md`).
+`capitalStream.ts` is a ref-counted `Map<userId, CapitalStreamManager>` registry
+(`acquireCapitalStream`/`releaseCapitalStream`/`evictCapitalStream`), not a global
+singleton. `routes/broker.ts` calls `evictCapitalStream(userId)` on both connect and
+disconnect so a running manager never keeps using stale credentials.
 
-**Live price streaming.** `capitalStream.ts` and `routes/stream.ts` (the shared
-Capital.com WebSocket + SSE relay) were **deleted** — they had no way to authenticate
-once the global env-var credentials were removed, and a real fix means redesigning them
-per-user (`Map<userId, CapitalStreamManager>`) as a dedicated project, not a patch. Fully
-recoverable from git history; the non-obvious WebSocket protocol details (endpoint,
-auth, `ofr` field name, 40-epic cap) are preserved in `.agents/memory/capital-streaming.md`
-for whoever rebuilds this.
+**Chat conversations are now per-user too** (see
+`.agents/memory/conversation-kind-isolation.md`) — `conversations`/`messages` were the
+last shared-not-scoped tables from Round 1; that gap is closed.
 
-**Interim fallback:** `artifacts/trading-bot/src/hooks/use-live-prices.ts` now polls
-`GET /quote` per ticker (via React Query, ~20s cadence — see
-`.agents/memory/live-data-refresh-cadence.md`) instead of subscribing to the SSE stream.
-Each ticker is its own query subscription, which incidentally solves the old store's
-"don't re-render unrelated instruments" problem for free (see
-`.agents/memory/live-price-store.md` for why that mattered) — no manual
-`useSyncExternalStore` plumbing needed anymore.
+## Still deferred / known limitations
 
 **Scanner is Capital.com-only, unchanged.** `scannerEngine.ts`'s `fetchMarkets` still
 only works for `credentials.broker === "capitalcom"` (uses Capital.com's market-search
 endpoint directly) — a Trading 212–connected user's scan returns zero results. This
 predates multi-tenancy and wasn't in scope to fix here.
 
-**How to apply:** if/when per-user WebSocket streaming is rebuilt, it needs its own
-`Map<userId, CapitalStreamManager>` (one upstream connection per user, subscribed to
-*that user's* enabled instruments, authenticated with *that user's* Capital.com session
-via `getCapitalSessionTokens(userId, credentials)`) — mirror the `botStates`/
-`scannerStates` Map pattern already established.
+**Admin centre (account/billing/contracts/usage management) has not been built yet** —
+flagged by the user as a future, separate, larger initiative (likely needs its own admin
+role concept and a payments provider integration for billing) — do not assume any
+admin-only surface exists in the app today.

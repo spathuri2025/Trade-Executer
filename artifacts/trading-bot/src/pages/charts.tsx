@@ -99,7 +99,7 @@ export default function Charts() {
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.01em" }}>Charts</h1>
             <p style={{ fontSize: 12, color: muted }}>
-              Historical candles from Capital.com with a live price overlay
+              Historical candles from Capital.com with a live streaming overlay
             </p>
           </div>
         </div>
@@ -164,7 +164,7 @@ export default function Charts() {
               }}
             />
             <span style={{ fontSize: 11, color: muted }}>
-              {connected ? "Live" : "Waiting for quote…"}
+              {connected ? "Live" : "Stream offline"}
             </span>
           </div>
         </div>

@@ -77,17 +77,17 @@ function TickerTile({ ticker, name, quote }: { ticker: string; name: string; quo
 
 /**
  * Horizontal strip of live price tiles for every enabled instrument, fed by
- * polling GET /quote per ticker (see hooks/use-live-prices.ts — per-user
- * WebSocket streaming is a later-round upgrade). Markets permitting — closed
- * markets simply show the last value / "waiting".
+ * this user's own Capital.com streaming WebSocket via SSE. Prices update in
+ * real time (markets permitting — closed markets simply show the last value
+ * / "waiting").
  */
 export default function LiveTickerStrip() {
   const { data: instruments } = useListInstruments({
     query: { queryKey: getListInstrumentsQueryKey() },
   });
+  const { quotes, connected } = useLivePrices();
 
   const enabled = (instruments ?? []).filter((i) => i.enabled);
-  const { quotes, connected } = useLivePrices(enabled.map((i) => i.ticker));
   if (enabled.length === 0) return null;
 
   return (
