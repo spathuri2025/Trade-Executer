@@ -46,9 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return result;
     },
     logout: async () => {
-      await logoutMutation.mutateAsync();
-      queryClient.setQueryData(meQueryKey, undefined);
-      await queryClient.invalidateQueries({ queryKey: meQueryKey });
+      try {
+        await logoutMutation.mutateAsync();
+      } finally {
+        // Clear client-side state unconditionally — even if the network call
+        // failed, the user should never get stuck unable to log out.
+        // (setQueryData(key, undefined) is a documented no-op in React Query;
+        // removeQueries is what actually clears the cached user immediately.)
+        queryClient.removeQueries({ queryKey: meQueryKey });
+      }
     },
   };
 

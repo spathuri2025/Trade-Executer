@@ -101,6 +101,7 @@ router.post("/auth/logout", async (req, res): Promise<void> => {
 });
 
 router.get("/auth/me", requireAuth, (req, res): void => {
+  res.set("Cache-Control", "no-store");
   res.json(req.user);
 });
 
