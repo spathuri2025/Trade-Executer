@@ -1,6 +1,7 @@
 import { getCapitalPriceHistory } from "./capitalcom";
 import { sma, stdev, adx } from "./indicators";
 import { asString, clampInt, generateClaudeJson } from "./aiJson";
+import type { CapitalCredentials } from "./brokerCredentialsService";
 
 export const CHART_DISCLAIMER =
   "AI-generated technical read. Not financial advice. Markets can move against any setup.";
@@ -32,10 +33,12 @@ function roundPrice(n: number): number {
  * explanation; if that call fails we fall back to a templated sentence.
  */
 export async function computeChartInsight(
+  userId: number,
+  capitalCredentials: CapitalCredentials,
   epic: string,
   resolution = "HOUR",
 ): Promise<ChartInsight> {
-  const prices = await getCapitalPriceHistory(epic, resolution, 200);
+  const prices = await getCapitalPriceHistory(userId, capitalCredentials, epic, resolution, 200);
   if (prices.length < 20) {
     throw new Error("Not enough price history to analyse this instrument");
   }

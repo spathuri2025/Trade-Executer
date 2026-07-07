@@ -196,6 +196,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/BotStatus"
 
+  /broker/connect:
+    post:
+      operationId: connectBroker
+      tags: [broker]
+      summary: Connect (or replace) this user's broker credentials
+      description: >
+        Tests the credentials against the broker before saving. Credentials are
+        encrypted at rest and never returned to the client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerConnectInput"
+      responses:
+        "201":
+          description: Broker connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerStatus"
+        "400":
+          description: Invalid input or the credentials did not work
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /broker/status:
+    get:
+      operationId: getBrokerStatus
+      tags: [broker]
+      summary: This user's current broker connection status
+      responses:
+        "200":
+          description: Broker connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerStatus"
+
+  /broker/disconnect:
+    delete:
+      operationId: disconnectBroker
+      tags: [broker]
+      summary: Disconnect this user's broker (also stops their bot if running)
+      responses:
+        "204":
+          description: Disconnected
+
   /trades:
     get:
       operationId: listTrades
@@ -1174,6 +1224,43 @@ components:
         costPerTradePercent:
           type: number
           description: Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders.
+
+    BrokerConnectInput:
+      type: object
+      required: [broker]
+      properties:
+        broker:
+          type: string
+          enum: [trading212, capitalcom]
+        capital:
+          type: object
+          description: Required when broker is capitalcom.
+          properties:
+            apiKey:
+              type: string
+            identifier:
+              type: string
+            password:
+              type: string
+        trading212:
+          type: object
+          description: Required when broker is trading212.
+          properties:
+            apiKey:
+              type: string
+
+    BrokerStatus:
+      type: object
+      required: [connected]
+      properties:
+        connected:
+          type: boolean
+        broker:
+          type: string
+          enum: [trading212, capitalcom]
+        identifierMasked:
+          type: string
+          description: Partially masked identifier/key for display — never the credential itself.
 
     Trade:
       type: object

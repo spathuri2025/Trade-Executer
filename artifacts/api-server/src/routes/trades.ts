@@ -1,15 +1,16 @@
 import { Router, type IRouter } from "express";
 import { db, tradesTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { ListTradesQueryParams, ExecuteTradeBody } from "@workspace/api-zod";
 import {
   executeManualTrade,
   TradeExecutionError,
   TradeValidationError,
   DuplicateTradeError,
-  getBotStatus,
+  BrokerNotConnectedError,
 } from "../lib/botEngine";
 import { getBrokerQuote } from "../lib/broker";
+import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
 
 const router: IRouter = Router();
 
@@ -20,6 +21,7 @@ router.get("/trades", async (req, res): Promise<void> => {
   const trades = await db
     .select()
     .from(tradesTable)
+    .where(eq(tradesTable.userId, req.user!.id))
     .orderBy(desc(tradesTable.executedAt))
     .limit(limit);
 
@@ -48,9 +50,14 @@ router.get("/quote", async (req, res): Promise<void> => {
     return;
   }
 
+  const credentials = await getUserBrokerCredentials(req.user!.id);
+  if (!credentials) {
+    res.status(400).json({ error: "Connect a broker account first" });
+    return;
+  }
+
   try {
-    const broker = getBotStatus().config.broker;
-    const quote = await getBrokerQuote(broker, ticker);
+    const quote = await getBrokerQuote(req.user!.id, credentials, ticker);
     res.json(quote);
   } catch (err) {
     req.log.error({ err, ticker }, "Failed to fetch quote");
@@ -66,7 +73,7 @@ router.post("/trades/execute", async (req, res): Promise<void> => {
   }
 
   try {
-    const trade = await executeManualTrade({
+    const trade = await executeManualTrade(req.user!.id, {
       ticker: parsed.data.ticker,
       side: parsed.data.side,
       amount: parsed.data.amount,
@@ -91,7 +98,7 @@ router.post("/trades/execute", async (req, res): Promise<void> => {
       aiConfidence: trade.aiConfidence ?? null,
     });
   } catch (err) {
-    if (err instanceof TradeValidationError) {
+    if (err instanceof TradeValidationError || err instanceof BrokerNotConnectedError) {
       res.status(400).json({ error: err.message });
       return;
     }

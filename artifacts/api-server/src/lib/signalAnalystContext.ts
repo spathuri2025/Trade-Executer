@@ -24,8 +24,8 @@ const SYSTEM_PROMPT = `You are a trading analyst inside TradeBuzz. The person yo
  * Builds the full system prompt: the plain-language analyst persona, grounded in
  * a live snapshot of the user's TradeBuzz account and activity.
  */
-export async function buildSignalAnalystSystemPrompt(): Promise<string> {
-  const context = await buildTradingContext();
+export async function buildSignalAnalystSystemPrompt(userId: number): Promise<string> {
+  const context = await buildTradingContext(userId);
   return [
     SYSTEM_PROMPT,
     "",

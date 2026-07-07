@@ -18,8 +18,8 @@ const HIGHLIGHT_TYPES = ["risk", "opportunity", "alert"] as const;
  * Generates a short, proactive good-morning briefing for the Assistant, grounded
  * in the user's live TradeBuzz state and today's news headlines.
  */
-export async function generateAssistantDailyBrief(): Promise<GeneratedAssistantBrief> {
-  const context = await buildTradingContext();
+export async function generateAssistantDailyBrief(userId: number): Promise<GeneratedAssistantBrief> {
+  const context = await buildTradingContext(userId);
   const news = await getMarketNews(10);
   const headlines = news
     .slice(0, 8)

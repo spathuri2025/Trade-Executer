@@ -8,6 +8,9 @@ import { logger } from "./lib/logger";
 if (!process.env.SESSION_SECRET) {
   throw new Error("SESSION_SECRET must be set (used to sign session cookies).");
 }
+if (!process.env.CREDENTIALS_ENCRYPTION_KEY) {
+  throw new Error("CREDENTIALS_ENCRYPTION_KEY must be set (32-byte hex — used to encrypt broker credentials at rest).");
+}
 
 const app: Express = express();
 

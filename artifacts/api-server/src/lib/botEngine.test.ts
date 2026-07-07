@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { NormalizedAccount, NormalizedPosition } from "./broker";
 import type { BotConfig } from "./botEngine";
 
+const TEST_USER_ID = 1;
+
 /**
  * Shared mock surface for botEngine's dependencies. Everything botEngine touches
  * at import time (the DB pool, broker HTTP clients, the AI trader, the pino
- * logger) is replaced so the risk-control logic can be exercised in isolation
- * with no real network, DB, or side effects.
+ * logger, broker credential lookup) is replaced so the risk-control logic can
+ * be exercised in isolation with no real network, DB, or side effects.
  */
 const mocks = vi.hoisted(() => ({
   enabledInstruments: [] as Array<{ ticker: string; enabled: boolean }>,
@@ -18,18 +20,32 @@ const mocks = vi.hoisted(() => ({
   },
   ma: { computeMASignal: vi.fn() },
   ai: { reviewSignal: vi.fn(), decideTrades: vi.fn() },
+  credentials: { getUserBrokerCredentials: vi.fn() },
 }));
+
+/** A Promise that also exposes the extra Drizzle chain methods botEngine calls. */
+function insertResult<T>(returningValue: T[] = []) {
+  const p = Promise.resolve() as Promise<void> & {
+    onConflictDoUpdate: () => Promise<void>;
+    returning: () => Promise<T[]>;
+  };
+  p.onConflictDoUpdate = () => Promise.resolve();
+  p.returning = () => Promise.resolve(returningValue);
+  return p;
+}
 
 vi.mock("@workspace/db", () => ({
   db: {
     select: () => ({
       from: () => ({ where: () => Promise.resolve(mocks.enabledInstruments) }),
     }),
-    insert: () => ({ values: () => Promise.resolve() }),
+    insert: () => ({ values: () => insertResult() }),
+    delete: () => ({ where: () => Promise.resolve() }),
   },
   instrumentsTable: { __name: "instruments" },
   tradesTable: { __name: "trades" },
   signalsTable: { __name: "signals" },
+  botConfigTable: { __name: "bot_config", userId: "user_id" },
 }));
 
 // Keep everything from drizzle-orm except eq, which botEngine calls with a
@@ -37,9 +53,11 @@ vi.mock("@workspace/db", () => ({
 vi.mock("drizzle-orm", async (orig) => ({
   ...(await orig<typeof import("drizzle-orm")>()),
   eq: vi.fn(() => ({})),
+  and: vi.fn(() => ({})),
 }));
 
 vi.mock("./broker", () => mocks.broker);
+vi.mock("./brokerCredentialsService", () => mocks.credentials);
 vi.mock("./maStrategy", () => mocks.ma);
 vi.mock("./aiTrader", () => mocks.ai);
 vi.mock("./logger", () => ({
@@ -108,6 +126,12 @@ beforeEach(async () => {
   broker.getBrokerPriceHistory.mockResolvedValue(defaultPrices);
   broker.placeBrokerOrder.mockResolvedValue({ id: "order-1" });
   ma.computeMASignal.mockReturnValue({ signal: "HOLD", shortMa: 1, longMa: 1 });
+  // Every test's user has a broker "connected" by default, matching the
+  // pre-multi-tenant assumption that the single global account was always configured.
+  mocks.credentials.getUserBrokerCredentials.mockResolvedValue({
+    broker: "capitalcom",
+    capital: { apiKey: "test-key", identifier: "test-id", password: "test-pw" },
+  });
 
   // Fresh module = fresh in-memory bot state (running flag + circuit breaker).
   vi.resetModules();
@@ -117,7 +141,7 @@ beforeEach(async () => {
 afterEach(() => {
   // Clear the interval startBot may have scheduled so timers don't leak.
   try {
-    engine.stopBot();
+    engine.stopBot(TEST_USER_ID);
   } catch {
     /* ignore */
   }
@@ -131,8 +155,8 @@ afterEach(() => {
  */
 async function startLiveBot(patch: Partial<BotConfig> = {}) {
   mocks.enabledInstruments = [];
-  engine.updateConfig(buildConfig({ dryRun: false, ...patch }));
-  engine.startBot();
+  await engine.updateConfig(TEST_USER_ID, buildConfig({ dryRun: false, ...patch }));
+  await engine.startBot(TEST_USER_ID);
   await flush();
 }
 
@@ -179,13 +203,13 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
       { ticker: "NEWBUY", enabled: true },
       { ticker: "HELD", enabled: true },
     ];
-    const results = await engine.runCycle();
+    const results = await engine.runCycle(TEST_USER_ID);
 
     // Only the closing SELL on the already-held ticker reaches the broker.
     const orders = broker.placeBrokerOrder.mock.calls;
     expect(orders).toHaveLength(1);
-    expect(orders[0][1]).toBe("HELD");
-    expect(orders[0][3]).toBe("SELL");
+    expect(orders[0][2]).toBe("HELD");
+    expect(orders[0][4]).toBe("SELL");
 
     expect(results.find((r) => r.ticker === "NEWBUY")?.tradeExecuted).toBe(false);
     expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(true);
@@ -201,7 +225,7 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
 
     await startLiveBot();
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
-    const results = await engine.runCycle();
+    const results = await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
     expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(false);
@@ -216,7 +240,7 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
 
     await startLiveBot({ aiTradeMode: "autonomous" });
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
-    const results = await engine.runCycle();
+    const results = await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
     expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(false);
@@ -229,7 +253,7 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
 
     await startLiveBot();
     mocks.enabledInstruments = [{ ticker: "NEWSHORT", enabled: true }];
-    const results = await engine.runCycle();
+    const results = await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
     expect(results.find((r) => r.ticker === "NEWSHORT")?.tradeExecuted).toBe(false);
@@ -250,10 +274,10 @@ describe("max concurrent positions — distinct open tickers", () => {
       { ticker: "CCC", enabled: true }, // brand-new ticker → should be blocked
       { ticker: "AAA", enabled: true }, // already held → adding does NOT need a new slot
     ];
-    const results = await engine.runCycle();
+    const results = await engine.runCycle(TEST_USER_ID);
 
     // Adding to the existing AAA is allowed; opening the new CCC is blocked.
-    const orderedTickers = broker.placeBrokerOrder.mock.calls.map((c) => c[1]);
+    const orderedTickers = broker.placeBrokerOrder.mock.calls.map((c) => c[2]);
     expect(orderedTickers).toEqual(["AAA"]);
     expect(results.find((r) => r.ticker === "CCC")?.tradeExecuted).toBe(false);
     expect(results.find((r) => r.ticker === "AAA")?.tradeExecuted).toBe(true);
@@ -265,9 +289,9 @@ describe("max concurrent positions — distinct open tickers", () => {
 
     await startLiveBot({ maxConcurrentPositions: 1 }); // already at the 1-slot limit
     mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
-    const results = await engine.runCycle();
+    const results = await engine.runCycle(TEST_USER_ID);
 
-    expect(broker.placeBrokerOrder.mock.calls.map((c) => c[1])).toEqual(["AAA"]);
+    expect(broker.placeBrokerOrder.mock.calls.map((c) => c[2])).toEqual(["AAA"]);
     expect(results.find((r) => r.ticker === "AAA")?.tradeExecuted).toBe(true);
   });
 });
@@ -279,7 +303,7 @@ describe("daily-loss circuit breaker", () => {
 
     await startLiveBot({ maxDailyLossPercent: 3 });
 
-    const status = engine.getBotStatus();
+    const status = await engine.getBotStatus(TEST_USER_ID);
     expect(status.circuitBreaker.dayStartEquity).toBe(1000);
     expect(status.circuitBreaker.tripped).toBe(false);
     expect(status.running).toBe(true);
@@ -292,9 +316,9 @@ describe("daily-loss circuit breaker", () => {
       .mockResolvedValue(account(990)); // 1% loss < 3%
 
     await startLiveBot({ maxDailyLossPercent: 3 });
-    await engine.runCycle();
+    await engine.runCycle(TEST_USER_ID);
 
-    const status = engine.getBotStatus();
+    const status = await engine.getBotStatus(TEST_USER_ID);
     expect(status.circuitBreaker.tripped).toBe(false);
     expect(status.running).toBe(true);
   });
@@ -306,9 +330,9 @@ describe("daily-loss circuit breaker", () => {
       .mockResolvedValue(account(900)); // 10% loss ≥ 3%
 
     await startLiveBot({ maxDailyLossPercent: 3 });
-    await engine.runCycle(); // observes the loss → trips
+    await engine.runCycle(TEST_USER_ID); // observes the loss → trips
 
-    const status = engine.getBotStatus();
+    const status = await engine.getBotStatus(TEST_USER_ID);
     expect(status.circuitBreaker.tripped).toBe(true);
     expect(status.circuitBreaker.reason).toMatch(/limit/i);
     expect(status.running).toBe(false);
@@ -321,18 +345,18 @@ describe("daily-loss circuit breaker", () => {
       .mockResolvedValue(account(900));
 
     await startLiveBot({ maxDailyLossPercent: 3 });
-    await engine.runCycle(); // trip
+    await engine.runCycle(TEST_USER_ID); // trip
 
     // A tripped breaker skips the cycle entirely — no orders are placed.
     mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
     ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
-    await engine.runCycle();
+    await engine.runCycle(TEST_USER_ID);
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
 
     // Restarting the bot does not clear the breaker.
-    engine.startBot();
+    await engine.startBot(TEST_USER_ID);
     await flush();
-    expect(engine.getBotStatus().circuitBreaker.tripped).toBe(true);
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(true);
   });
 
   it("clears only via resumeBot, which resets the baseline and resumes trading", async () => {
@@ -342,13 +366,13 @@ describe("daily-loss circuit breaker", () => {
       .mockResolvedValue(account(900));
 
     await startLiveBot({ maxDailyLossPercent: 3 });
-    await engine.runCycle(); // trip
-    expect(engine.getBotStatus().circuitBreaker.tripped).toBe(true);
+    await engine.runCycle(TEST_USER_ID); // trip
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(true);
 
-    engine.resumeBot();
+    await engine.resumeBot(TEST_USER_ID);
     await flush();
 
-    const status = engine.getBotStatus();
+    const status = await engine.getBotStatus(TEST_USER_ID);
     expect(status.circuitBreaker.tripped).toBe(false);
     expect(status.running).toBe(true);
     // Baseline re-measured from the resume point (the 900 equity now in effect).

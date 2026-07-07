@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getCapitalCandles } from "../lib/capitalcom";
+import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
 import { GetCandlesQueryParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -27,8 +28,20 @@ router.get("/candles", async (req, res): Promise<void> => {
   const resolution = ALLOWED_RESOLUTIONS.has(resolutionRaw) ? resolutionRaw : "HOUR";
   const count = parsed.success ? (parsed.data.count ?? 200) : 200;
 
+  const credentials = await getUserBrokerCredentials(req.user!.id);
+  if (!credentials || credentials.broker !== "capitalcom") {
+    res.status(400).json({ error: "Connect a Capital.com broker account first" });
+    return;
+  }
+
   try {
-    const candles = await getCapitalCandles(epic, resolution, Math.min(Math.max(count, 1), 1000));
+    const candles = await getCapitalCandles(
+      req.user!.id,
+      credentials.capital,
+      epic,
+      resolution,
+      Math.min(Math.max(count, 1), 1000),
+    );
     res.json(candles);
   } catch (err) {
     req.log.warn({ err, epic, resolution }, "Could not fetch candles from Capital.com");

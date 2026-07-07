@@ -1,12 +1,16 @@
 import { Router, type IRouter } from "express";
 import { db, instrumentsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { AddInstrumentBody, DeleteInstrumentParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-router.get("/instruments", async (_req, res): Promise<void> => {
-  const instruments = await db.select().from(instrumentsTable).orderBy(instrumentsTable.addedAt);
+router.get("/instruments", async (req, res): Promise<void> => {
+  const instruments = await db
+    .select()
+    .from(instrumentsTable)
+    .where(eq(instrumentsTable.userId, req.user!.id))
+    .orderBy(instrumentsTable.addedAt);
   res.json(
     instruments.map((i) => ({
       id: i.id,
@@ -28,6 +32,7 @@ router.post("/instruments", async (req, res): Promise<void> => {
   const [instrument] = await db
     .insert(instrumentsTable)
     .values({
+      userId: req.user!.id,
       ticker: parsed.data.ticker.toUpperCase(),
       name: parsed.data.name,
       enabled: parsed.data.enabled ?? true,
@@ -53,7 +58,7 @@ router.delete("/instruments/:id", async (req, res): Promise<void> => {
 
   const [deleted] = await db
     .delete(instrumentsTable)
-    .where(eq(instrumentsTable.id, params.data.id))
+    .where(and(eq(instrumentsTable.id, params.data.id), eq(instrumentsTable.userId, req.user!.id)))
     .returning();
 
   if (!deleted) {

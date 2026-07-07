@@ -1,10 +1,11 @@
 import { db, scannerResultsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { logger } from "./logger";
-import { placeBrokerOrder, getBrokerAccount, type BrokerName } from "./broker";
-import { getCapitalPriceHistory } from "./capitalcom";
+import { placeBrokerOrder, getBrokerAccount } from "./broker";
+import { capitalAuthFetch, getCapitalPriceHistory } from "./capitalcom";
 import { routeStrategy, requiredBars } from "./strategyRouter";
 import { getBotStatus } from "./botEngine";
+import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 
 export interface ScannerConfig {
   scanEnabled: boolean;
@@ -26,25 +27,40 @@ interface ScannerState {
   intervalHandle: ReturnType<typeof setInterval> | null;
 }
 
-const state: ScannerState = {
-  running: false,
-  scanning: false,
-  lastRunAt: null,
-  nextRunAt: null,
-  lastScanCount: 0,
-  lastHitCount: 0,
-  config: {
+function defaultScannerConfig(): ScannerConfig {
+  return {
     scanEnabled: false,
     autoTrade: false,
     minTrendStrength: 0.3,
     scanIntervalMinutes: 60,
     instrumentTypes: ["SHARES", "INDICES", "CURRENCIES", "COMMODITIES"],
     maxInstrumentsPerScan: 40,
-  },
-  intervalHandle: null,
-};
+  };
+}
 
-export function getScannerStatus() {
+/** Per-user in-memory scanner state — mirrors botEngine.ts's per-user model. */
+const scannerStates = new Map<number, ScannerState>();
+
+function getOrCreateScannerState(userId: number): ScannerState {
+  let state = scannerStates.get(userId);
+  if (!state) {
+    state = {
+      running: false,
+      scanning: false,
+      lastRunAt: null,
+      nextRunAt: null,
+      lastScanCount: 0,
+      lastHitCount: 0,
+      config: defaultScannerConfig(),
+      intervalHandle: null,
+    };
+    scannerStates.set(userId, state);
+  }
+  return state;
+}
+
+export function getScannerStatus(userId: number) {
+  const state = getOrCreateScannerState(userId);
   return {
     running: state.running,
     scanning: state.scanning,
@@ -56,40 +72,43 @@ export function getScannerStatus() {
   };
 }
 
-export function updateScannerConfig(patch: Partial<ScannerConfig>) {
+export function updateScannerConfig(userId: number, patch: Partial<ScannerConfig>) {
+  const state = getOrCreateScannerState(userId);
   Object.assign(state.config, patch);
 
   if (state.running) {
-    stopScanner();
-    if (state.config.scanEnabled) startScanner();
+    stopScanner(userId);
+    if (state.config.scanEnabled) startScanner(userId);
   }
 
-  return getScannerStatus();
+  return getScannerStatus(userId);
 }
 
-export function startScanner() {
-  if (state.running) return getScannerStatus();
+export function startScanner(userId: number) {
+  const state = getOrCreateScannerState(userId);
+  if (state.running) return getScannerStatus(userId);
 
   state.running = true;
-  runScan();
+  void runScan(userId);
 
   const ms = state.config.scanIntervalMinutes * 60 * 1000;
-  state.intervalHandle = setInterval(() => runScan(), ms);
+  state.intervalHandle = setInterval(() => void runScan(userId), ms);
   state.nextRunAt = new Date(Date.now() + ms);
 
-  logger.info({ config: state.config }, "Scanner started");
-  return getScannerStatus();
+  logger.info({ userId, config: state.config }, "Scanner started");
+  return getScannerStatus(userId);
 }
 
-export function stopScanner() {
+export function stopScanner(userId: number) {
+  const state = getOrCreateScannerState(userId);
   if (state.intervalHandle) {
     clearInterval(state.intervalHandle);
     state.intervalHandle = null;
   }
   state.running = false;
   state.nextRunAt = null;
-  logger.info("Scanner stopped");
-  return getScannerStatus();
+  logger.info({ userId }, "Scanner stopped");
+  return getScannerStatus(userId);
 }
 
 interface CapitalMarket {
@@ -100,30 +119,40 @@ interface CapitalMarket {
   offer: number;
 }
 
-async function fetchMarkets(instrumentType: string, limit: number): Promise<CapitalMarket[]> {
-  const { CAPITALCOM_API_KEY, CAPITALCOM_IDENTIFIER, CAPITALCOM_PASSWORD } = process.env;
-  if (!CAPITALCOM_API_KEY || !CAPITALCOM_IDENTIFIER || !CAPITALCOM_PASSWORD) return [];
+async function fetchMarkets(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  instrumentType: string,
+  limit: number,
+): Promise<CapitalMarket[]> {
+  // The scanner only knows how to query Capital.com's market-search endpoint today.
+  if (credentials.broker !== "capitalcom") return [];
 
   try {
-    // Re-use the existing capitalFetch indirectly — fetch markets via a plain authenticated call
-    // We piggyback on getCapitalPriceHistory which internally handles session auth.
-    // Instead, call the markets endpoint directly with a session we borrow from the module.
-    const { capitalAuthFetch } = await import("./capitalcom");
-    const data = await capitalAuthFetch(
-      `/markets?searchTerm=&instrumentTypes=${instrumentType}&limit=${limit}`
-    ) as { markets?: CapitalMarket[] };
+    const data = (await capitalAuthFetch(
+      userId,
+      credentials.capital,
+      `/markets?searchTerm=&instrumentTypes=${instrumentType}&limit=${limit}`,
+    )) as { markets?: CapitalMarket[] };
     return data?.markets ?? [];
   } catch (err) {
-    logger.warn({ instrumentType, err }, "Failed to fetch markets for scanning");
+    logger.warn({ userId, instrumentType, err }, "Failed to fetch markets for scanning");
     return [];
   }
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function runScan(): Promise<{ scanned: number; hits: number }> {
+export async function runScan(userId: number): Promise<{ scanned: number; hits: number }> {
+  const state = getOrCreateScannerState(userId);
   if (state.scanning) {
-    logger.warn("Scanner already running — skipping cycle");
+    logger.warn({ userId }, "Scanner already running — skipping cycle");
+    return { scanned: 0, hits: 0 };
+  }
+
+  const credentials = await getUserBrokerCredentials(userId);
+  if (!credentials || credentials.broker !== "capitalcom") {
+    logger.warn({ userId }, "No Capital.com broker connected — skipping scan (scanner is Capital.com-only)");
     return { scanned: 0, hits: 0 };
   }
 
@@ -134,8 +163,8 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
     state.nextRunAt = new Date(Date.now() + ms);
   }
 
-  const botStatus = getBotStatus();
-  const { shortPeriod, longPeriod, dryRun, broker, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled } = botStatus.config;
+  const botStatus = await getBotStatus(userId);
+  const { shortPeriod, longPeriod, dryRun, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled } = botStatus.config;
   const { autoTrade, minTrendStrength, instrumentTypes, maxInstrumentsPerScan } = state.config;
   const bars = requiredBars(longPeriod);
 
@@ -146,10 +175,10 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
   let accountBalance: number | null = null;
   if (autoTrade && riskPerTradePercent > 0) {
     try {
-      const account = await getBrokerAccount(broker);
+      const account = await getBrokerAccount(userId, credentials);
       accountBalance = account.total;
     } catch {
-      logger.warn("Could not fetch account balance for scanner auto-trade sizing");
+      logger.warn({ userId }, "Could not fetch account balance for scanner auto-trade sizing");
     }
   }
 
@@ -158,12 +187,12 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
   const allMarkets: CapitalMarket[] = [];
 
   for (const iType of instrumentTypes) {
-    const markets = await fetchMarkets(iType, perType);
+    const markets = await fetchMarkets(userId, credentials, iType, perType);
     allMarkets.push(...markets);
     await sleep(500);
   }
 
-  logger.info({ total: allMarkets.length, instrumentTypes }, "Scanner fetched market universe");
+  logger.info({ userId, total: allMarkets.length, instrumentTypes }, "Scanner fetched market universe");
 
   // Process in batches of 5 with a 1.5s pause between batches to respect rate limits
   const BATCH_SIZE = 5;
@@ -173,7 +202,7 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
     await Promise.allSettled(
       batch.map(async (market) => {
         try {
-          const prices = await getCapitalPriceHistory(market.epic, "HOUR", bars);
+          const prices = await getCapitalPriceHistory(userId, credentials.capital, market.epic, "HOUR", bars);
           totalScanned++;
 
           if (prices.length < longPeriod + 1) return;
@@ -189,7 +218,7 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
           // mean-reversion fires in low-trend ranges by design, so it is exempt.
           if (strategy === "trend_following" && trendStrength < minTrendStrength) return;
 
-          logger.info({ ticker: market.epic, signal, strategy, regime, trendStrength, price: currentPrice }, "Scanner hit");
+          logger.info({ userId, ticker: market.epic, signal, strategy, regime, trendStrength, price: currentPrice }, "Scanner hit");
 
           let autoTraded = false;
           let orderId: string | undefined;
@@ -205,16 +234,17 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
                 ? { stopLossPercent, entryPrice: currentPrice }
                 : undefined;
 
-              const order = await placeBrokerOrder(broker as BrokerName, market.epic, quantity, signal, stopLoss);
+              const order = await placeBrokerOrder(userId, credentials, market.epic, quantity, signal, stopLoss);
               orderId = order.id;
               autoTraded = true;
-              logger.info({ ticker: market.epic, signal, orderId }, "Scanner auto-trade executed");
+              logger.info({ userId, ticker: market.epic, signal, orderId }, "Scanner auto-trade executed");
             } catch (err) {
-              logger.error({ ticker: market.epic, err }, "Scanner auto-trade failed");
+              logger.error({ userId, ticker: market.epic, err }, "Scanner auto-trade failed");
             }
           }
 
           await db.insert(scannerResultsTable).values({
+            userId,
             ticker: market.epic,
             name: market.instrumentName,
             signal,
@@ -230,7 +260,7 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
 
           totalHits++;
         } catch (err) {
-          logger.warn({ ticker: market.epic, err }, "Scanner error processing instrument");
+          logger.warn({ userId, ticker: market.epic, err }, "Scanner error processing instrument");
         }
       })
     );
@@ -243,14 +273,15 @@ export async function runScan(): Promise<{ scanned: number; hits: number }> {
   state.lastHitCount = totalHits;
   state.scanning = false;
 
-  logger.info({ scanned: totalScanned, hits: totalHits }, "Scanner cycle complete");
+  logger.info({ userId, scanned: totalScanned, hits: totalHits }, "Scanner cycle complete");
   return { scanned: totalScanned, hits: totalHits };
 }
 
-export async function getScannerResults(limit = 50) {
+export async function getScannerResults(userId: number, limit = 50) {
   return db
     .select()
     .from(scannerResultsTable)
+    .where(eq(scannerResultsTable.userId, userId))
     .orderBy(desc(scannerResultsTable.scannedAt))
     .limit(limit);
 }

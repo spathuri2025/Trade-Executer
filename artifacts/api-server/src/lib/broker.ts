@@ -14,6 +14,7 @@ import {
 } from "./capitalcom";
 
 import { logger } from "./logger";
+import type { UserBrokerCredentials } from "./brokerCredentialsService";
 
 export type BrokerName = "trading212" | "capitalcom";
 
@@ -38,9 +39,9 @@ export interface NormalizedOrder {
   id: string;
 }
 
-export async function getBrokerPositions(broker: BrokerName): Promise<NormalizedPosition[]> {
-  if (broker === "capitalcom") {
-    const positions = await getCapitalPositions();
+export async function getBrokerPositions(userId: number, credentials: UserBrokerCredentials): Promise<NormalizedPosition[]> {
+  if (credentials.broker === "capitalcom") {
+    const positions = await getCapitalPositions(userId, credentials.capital);
     return positions.map((p) => {
       const avgPrice = p.position.level;
       const currentPrice = (p.market.bid + p.market.offer) / 2;
@@ -57,7 +58,7 @@ export async function getBrokerPositions(broker: BrokerName): Promise<Normalized
     });
   }
 
-  const positions = await t212GetPositions();
+  const positions = await t212GetPositions(credentials.trading212);
   return positions.map((p) => ({
     ticker: p.ticker,
     quantity: p.quantity,
@@ -68,9 +69,9 @@ export async function getBrokerPositions(broker: BrokerName): Promise<Normalized
   }));
 }
 
-export async function getBrokerAccount(broker: BrokerName): Promise<NormalizedAccount> {
-  if (broker === "capitalcom") {
-    const data = await getCapitalAccounts();
+export async function getBrokerAccount(userId: number, credentials: UserBrokerCredentials): Promise<NormalizedAccount> {
+  if (credentials.broker === "capitalcom") {
+    const data = await getCapitalAccounts(userId, credentials.capital);
     const preferred = data.accounts.find((a) => a.preferred) ?? data.accounts[0];
     if (!preferred) throw new Error("No Capital.com account found");
     const { balance } = preferred;
@@ -83,7 +84,7 @@ export async function getBrokerAccount(broker: BrokerName): Promise<NormalizedAc
     };
   }
 
-  const [info, cash] = await Promise.all([getAccountInfo(), getAccountCash()]);
+  const [info, cash] = await Promise.all([getAccountInfo(credentials.trading212), getAccountCash(credentials.trading212)]);
   return {
     cash: cash.free,
     invested: cash.invested,
@@ -94,16 +95,17 @@ export async function getBrokerAccount(broker: BrokerName): Promise<NormalizedAc
 }
 
 export async function getBrokerPriceHistory(
-  broker: BrokerName,
+  userId: number,
+  credentials: UserBrokerCredentials,
   ticker: string,
   count: number
 ): Promise<number[]> {
-  if (broker === "capitalcom") {
-    return getCapitalPriceHistory(ticker, "HOUR", count);
+  if (credentials.broker === "capitalcom") {
+    return getCapitalPriceHistory(userId, credentials.capital, ticker, "HOUR", count);
   }
 
   try {
-    const positions = await t212GetPositions();
+    const positions = await t212GetPositions(credentials.trading212);
     const pos = positions.find((p) => p.ticker === ticker);
     if (pos) {
       const price = pos.currentPrice;
@@ -127,9 +129,9 @@ export interface NormalizedQuote {
   currency: string | null;
 }
 
-export async function getBrokerQuote(broker: BrokerName, ticker: string): Promise<NormalizedQuote> {
-  if (broker === "capitalcom") {
-    const q = await getCapitalQuote(ticker);
+export async function getBrokerQuote(userId: number, credentials: UserBrokerCredentials, ticker: string): Promise<NormalizedQuote> {
+  if (credentials.broker === "capitalcom") {
+    const q = await getCapitalQuote(userId, credentials.capital, ticker);
     return {
       ticker,
       bid: q.bid,
@@ -141,7 +143,7 @@ export async function getBrokerQuote(broker: BrokerName, ticker: string): Promis
   }
 
   // Trading 212 has no live-quote endpoint — best-effort from the latest known price.
-  const prices = await getBrokerPriceHistory("trading212", ticker, 2);
+  const prices = await getBrokerPriceHistory(userId, credentials, ticker, 2);
   const last = prices[prices.length - 1];
   if (!last || !(last > 0)) {
     throw new Error(`No live quote available for ${ticker} on Trading 212`);
@@ -160,14 +162,15 @@ export interface TakeProfitParams {
 }
 
 export async function placeBrokerOrder(
-  broker: BrokerName,
+  userId: number,
+  credentials: UserBrokerCredentials,
   ticker: string,
   quantity: number,
   side: "BUY" | "SELL",
   stopLoss?: StopLossParams,
   takeProfit?: TakeProfitParams
 ): Promise<NormalizedOrder> {
-  if (broker === "capitalcom") {
+  if (credentials.broker === "capitalcom") {
     // A stop protects on the losing side, a profit target on the winning side —
     // mirrored by trade direction (a long stops below / targets above entry).
     const stopLevel = stopLoss
@@ -180,7 +183,7 @@ export async function placeBrokerOrder(
         ? takeProfit.entryPrice * (1 + takeProfit.takeProfitPercent / 100)
         : takeProfit.entryPrice * (1 - takeProfit.takeProfitPercent / 100)
       : undefined;
-    const result = await placeCapitalOrder(ticker, quantity, side, stopLevel, profitLevel);
+    const result = await placeCapitalOrder(userId, credentials.capital, ticker, quantity, side, stopLevel, profitLevel);
     return { id: result.dealReference };
   }
 
@@ -188,10 +191,10 @@ export async function placeBrokerOrder(
   // levels here, so those protections are silently unavailable on this broker.
   if (stopLoss || takeProfit) {
     logger.warn(
-      { broker, ticker },
+      { broker: credentials.broker, ticker },
       "Trading 212 does not support attached stop-loss / take-profit — order placed without them"
     );
   }
-  const result = await t212PlaceOrder(ticker, quantity, side);
+  const result = await t212PlaceOrder(credentials.trading212, ticker, quantity, side);
   return { id: result.id };
 }

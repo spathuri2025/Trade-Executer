@@ -162,7 +162,7 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
     .where(eq(messages.conversationId, conversationId))
     .orderBy(asc(messages.createdAt));
 
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(req.user!.id);
 
   const chatMessages = [
     { role: "system" as const, content: systemPrompt },

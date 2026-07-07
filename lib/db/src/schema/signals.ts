@@ -1,9 +1,12 @@
-import { pgTable, text, serial, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+import { usersTable } from "./users";
+
 export const signalsTable = pgTable("signals", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
   ticker: text("ticker").notNull(),
   signal: text("signal", { enum: ["BUY", "SELL", "HOLD"] }).notNull(),
   shortMa: numeric("short_ma", { precision: 18, scale: 8 }).notNull(),

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, signalsTable, type Signal } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { ListSignalsQueryParams } from "@workspace/api-zod";
 import { runCycle } from "../lib/botEngine";
 import { deriveSignalExplanation } from "../lib/signalExplanation";
@@ -38,6 +38,7 @@ router.get("/signals", async (req, res): Promise<void> => {
   const signals = await db
     .select()
     .from(signalsTable)
+    .where(eq(signalsTable.userId, req.user!.id))
     .orderBy(desc(signalsTable.createdAt))
     .limit(limit);
 
@@ -45,11 +46,12 @@ router.get("/signals", async (req, res): Promise<void> => {
 });
 
 router.post("/signals/run", async (req, res): Promise<void> => {
-  const results = await runCycle();
+  const results = await runCycle(req.user!.id);
 
   const signals = await db
     .select()
     .from(signalsTable)
+    .where(eq(signalsTable.userId, req.user!.id))
     .orderBy(desc(signalsTable.createdAt))
     .limit(results.length || 1);
 

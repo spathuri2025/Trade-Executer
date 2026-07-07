@@ -6,8 +6,9 @@ description: How manual and bot trade execution share config + recording, how Dr
 # Trade execution safety (TradeBuzz)
 
 Manual trades and the automated bot must place orders the SAME way. Both read
-broker / dryRun / stopLossPercent from the single bot config and write a row to
-the `trades` table with status `FILLED` / `FAILED` / `DRY_RUN`.
+broker / dryRun / stopLossPercent from that user's bot config (per-user since the
+multi-tenant round — see `.agents/memory/multi-tenant-broker.md`) and write a row to
+the `trades` table (with `userId`) with status `FILLED` / `FAILED` / `DRY_RUN`.
 
 **Why:** divergence between the two paths is how a "safe" manual trade ends up
 bypassing the Dry Run guard or stop-loss and sending a real order. Keep the
@@ -24,10 +25,11 @@ order-placement + DB-recording logic mirrored (manual reuses the bot's pattern).
   ticker, non-positive amount) → 400; an identical order already in flight → 429
   (in-memory lock keyed by broker:ticker:side prevents double-click double
   orders); upstream infra failure (price fetch / broker unreachable) → 502.
-- The execute endpoint requires a logged-in session (see `.agents/memory/session-auth.md`),
-  but there is no per-user ownership of the bot/broker connection — any logged-in user can
-  execute trades against the SAME shared account. The in-flight lock limits accidental
-  double-clicks but is NOT a per-tenant boundary.
+- The execute endpoint requires a logged-in session AND a connected broker
+  (`BrokerNotConnectedError` → 400 if not). Each user trades against their own broker
+  account now (see `.agents/memory/multi-tenant-broker.md`) — the in-flight lock is keyed
+  `${userId}:${broker}:${ticker}:${side}`, so it only dedupes a given user's own
+  double-clicks, not across users.
 
 ## AI trade modes + extra gates (guard / autonomous)
 - `bot.config.aiTradeMode` (`off`/`guard`/`autonomous`) lets Claude join the loop. guard reviews non-HOLD MA signals (veto = don't order); autonomous decides per instrument. On any Claude error the trade is **vetoed / held** (fail-safe), never placed.

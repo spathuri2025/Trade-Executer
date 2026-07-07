@@ -5,16 +5,21 @@ import {
   getGetBotStatusQueryKey,
   useUpdateBotConfig,
   useStartBot,
-  useStopBot
+  useStopBot,
+  useGetBrokerStatus,
+  getGetBrokerStatusQueryKey,
+  useConnectBroker,
+  useDisconnectBroker,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Play, Square } from "lucide-react";
+import { Play, Square, Link2, Unlink } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
 type AiTradeMode = "off" | "guard" | "autonomous";
@@ -127,6 +132,53 @@ export default function Settings() {
     updateConfig.mutate({ data: config });
   };
 
+  // Broker connection — separate from bot config: this is the credentials
+  // step every account needs before the bot (or any live data) can work at all.
+  const { data: brokerStatus, isLoading: brokerStatusLoading } = useGetBrokerStatus({
+    query: { queryKey: getGetBrokerStatusQueryKey() },
+  });
+  const [capitalApiKey, setCapitalApiKey] = useState("");
+  const [capitalIdentifier, setCapitalIdentifier] = useState("");
+  const [capitalPassword, setCapitalPassword] = useState("");
+  const [t212ApiKey, setT212ApiKey] = useState("");
+
+  const connectBroker = useConnectBroker({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetBrokerStatusQueryKey() });
+        setCapitalApiKey("");
+        setCapitalIdentifier("");
+        setCapitalPassword("");
+        setT212ApiKey("");
+        toast({ title: "Broker connected" });
+      },
+      onError: (err: unknown) => {
+        const message = err instanceof Error ? err.message : "Could not connect — check your credentials.";
+        toast({ title: "Failed to connect broker", description: message, variant: "destructive" });
+      },
+    },
+  });
+
+  const disconnectBroker = useDisconnectBroker({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetBrokerStatusQueryKey() });
+        toast({ title: "Broker disconnected" });
+      },
+    },
+  });
+
+  const handleConnectBroker = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (config.broker === "capitalcom") {
+      connectBroker.mutate({
+        data: { broker: "capitalcom", capital: { apiKey: capitalApiKey, identifier: capitalIdentifier, password: capitalPassword } },
+      });
+    } else {
+      connectBroker.mutate({ data: { broker: "trading212", trading212: { apiKey: t212ApiKey } } });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -139,6 +191,96 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl md:text-4xl font-light tracking-tight">Bot Controls &amp; Settings</h1>
+
+      {/* Broker connection — required before the bot or any live data can work */}
+      <Card className={brokerStatus?.connected ? undefined : "border-amber-500/40"}>
+        <CardHeader>
+          <CardTitle>Broker Connection</CardTitle>
+          <CardDescription>
+            Connect your own {BROKER_LABELS[config.broker]} account. Your credentials are encrypted and used only
+            for your own bot — never shared with other accounts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {brokerStatusLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : brokerStatus?.connected ? (
+            <div className="flex items-center justify-between gap-4 p-4 border border-border rounded-lg bg-muted/20">
+              <div className="flex items-center gap-2 text-sm">
+                <Link2 className="h-4 w-4 text-primary" />
+                <span>
+                  Connected to <span className="font-medium">{BROKER_LABELS[brokerStatus.broker ?? config.broker]}</span>
+                  {brokerStatus.identifierMasked && <span className="text-muted-foreground"> ({brokerStatus.identifierMasked})</span>}
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => disconnectBroker.mutate()}
+                disabled={disconnectBroker.isPending}
+                data-testid="button-disconnect-broker"
+              >
+                <Unlink className="mr-2 h-3.5 w-3.5" /> Disconnect
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-amber-500">No broker connected yet — the bot can't run until you connect one below.</p>
+          )}
+
+          <form onSubmit={handleConnectBroker} className="space-y-3">
+            {config.broker === "capitalcom" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="capital-api-key">API Key</Label>
+                  <Input
+                    id="capital-api-key"
+                    value={capitalApiKey}
+                    onChange={(e) => setCapitalApiKey(e.target.value)}
+                    required
+                    data-testid="input-capital-api-key"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capital-identifier">Identifier (email)</Label>
+                  <Input
+                    id="capital-identifier"
+                    value={capitalIdentifier}
+                    onChange={(e) => setCapitalIdentifier(e.target.value)}
+                    required
+                    data-testid="input-capital-identifier"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capital-password">Password</Label>
+                  <Input
+                    id="capital-password"
+                    type="password"
+                    value={capitalPassword}
+                    onChange={(e) => setCapitalPassword(e.target.value)}
+                    required
+                    data-testid="input-capital-password"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="t212-api-key">API Key</Label>
+                <Input
+                  id="t212-api-key"
+                  value={t212ApiKey}
+                  onChange={(e) => setT212ApiKey(e.target.value)}
+                  required
+                  data-testid="input-t212-api-key"
+                />
+              </div>
+            )}
+            <Button type="submit" disabled={connectBroker.isPending} data-testid="button-connect-broker">
+              {connectBroker.isPending ? "Connecting…" : brokerStatus?.connected ? "Reconnect" : "Connect"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {/* Engine status */}
       <Card className="border-primary/20">

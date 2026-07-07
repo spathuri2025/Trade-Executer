@@ -1,11 +1,11 @@
 ---
 name: Session authentication model
-description: How TradeBuzz's login system works, what it does and does not isolate, and why
+description: How TradeBuzz's login system works, and what is/isn't per-tenant now
 ---
 
 # Session authentication
 
-TradeBuzz now requires a logged-in session for every route except `/healthz` and
+TradeBuzz requires a logged-in session for every route except `/healthz` and
 `/auth/*` (signup/login/logout/me) — enforced by a single `requireAuth` middleware
 mounted in `artifacts/api-server/src/routes/index.ts` right after those public routers,
 before every other router. Adding a new top-level router file does not require touching
@@ -18,25 +18,21 @@ need to be revocable immediately (logout, forced logout on a compromised account
 `SESSION_SECRET` is a required env var (`app.ts` throws on boot if unset), same tier as
 `DATABASE_URL`.
 
-**What this does NOT do — read before assuming per-user data isolation exists:**
-Only `users`/`sessions` were added. `instruments`/`trades`/`signals`/`scannerResults`/
-`conversations`/`messages`/`userAiBriefs`/bot config are all still a single shared
-dataset — `botEngine.ts` remains the pre-existing global in-memory singleton (one bot
-loop, one broker connection). Any two logged-in users see and can control the exact same
-bot, trades, and chat conversations. This was a deliberate scope decision, not an
-oversight: true multi-tenant isolation needs `botEngine.ts`/`broker.ts`/`capitalStream.ts`
-re-architected from a global singleton into a per-tenant model (isolated state, isolated
-broker credentials, isolated intervals) — a much larger, separate project.
+**Update — as of the multi-tenant broker round, this IS now per-tenant for most data.**
+See `.agents/memory/multi-tenant-broker.md` for the full picture: `instruments`/`trades`/
+`signals`/`scannerResults`/`bot_config`/`broker_credentials` are all scoped by `userId`,
+and `botEngine.ts`/`scannerEngine.ts` are per-user (`Map<userId, State>`), each with their
+own connected broker credentials.
 
-**Why `conversations`/`userAiBriefs` weren't scoped by user despite being named/shaped
-per-user:** adding a `userId` column without wiring it into every query in
-`assistant.ts`/`signalAnalyst.ts` would be a half-finished, misleading change (a column
-that does nothing). Wiring it in touches the SSE streaming routes and is better done as
-its own deliberate follow-up once this auth layer is live and tested, not bundled into
-introducing auth itself.
+**Still shared/global, not per-user** (deliberate, documented, not an oversight):
+- `conversations`/`messages` (Assistant + Signal Analyst chat) — no `userId` column.
+  Adding one without wiring it into every query in `assistant.ts`/`signalAnalyst.ts`
+  would be a half-finished, misleading change; deferred as its own follow-up.
+- `userAiBriefs`, `marketBrainSnapshots`, `dailyMarketBriefs`, `marketNews`,
+  `aiMarketAnalysis` — these are intentionally app-wide "market intelligence" content,
+  not per-account data, so staying global is consistent with their design, not a gap.
 
-**How to apply:** if/when per-tenant bot isolation is built, `botEngine.ts`'s `state`
-singleton needs to become keyed by `userId` (e.g. `Map<userId, BotState>`), and
-`instruments`/`trades`/`signals`/`scannerResults` need a `userId` column each, mirroring
-this same pattern. Until then, do not assume any table other than `users`/`sessions` is
-private to the logged-in user making the request.
+**How to apply:** when adding a new feature, check whether it's about *the user's own
+trading data* (instruments/trades/signals/bot/broker — scope by `req.user.id`, mirror the
+existing route patterns) or *shared market content* (news/briefs — stays global). Don't
+assume `conversations`/`messages` are private per user even though most other tables now are.

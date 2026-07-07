@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db, instrumentsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { getBrokerPriceHistory } from "../lib/broker";
 import { getBotStatus } from "../lib/botEngine";
+import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
 import { backtestStrategy } from "../lib/backtest";
 import { requiredBars, type StrategyName } from "../lib/strategyRouter";
 
@@ -11,7 +13,14 @@ const STRATEGIES: StrategyName[] = ["trend_following", "mean_reversion"];
 const HISTORY_BARS = 300;
 
 router.get("/backtest", async (req, res): Promise<void> => {
-  const { config } = getBotStatus();
+  const userId = req.user!.id;
+  const credentials = await getUserBrokerCredentials(userId);
+  if (!credentials) {
+    res.status(400).json({ error: "Connect a broker account first" });
+    return;
+  }
+
+  const { config } = await getBotStatus(userId);
   const { broker, shortPeriod, longPeriod } = config;
   // Clamp to non-negative so the reported cost matches what the backtester
   // actually applies (it ignores negative costs).
@@ -21,6 +30,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
   const instruments = await db
     .select()
     .from(instrumentsTable)
+    .where(eq(instrumentsTable.userId, userId))
     .orderBy(instrumentsTable.addedAt);
 
   const enabled = instruments.filter((i) => i.enabled);
@@ -46,7 +56,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
   for (const inst of enabled) {
     let prices: number[];
     try {
-      prices = await getBrokerPriceHistory(broker, inst.ticker, HISTORY_BARS);
+      prices = await getBrokerPriceHistory(userId, credentials, inst.ticker, HISTORY_BARS);
     } catch (err) {
       req.log.warn({ err, ticker: inst.ticker }, "Backtest: price history fetch failed");
       continue;

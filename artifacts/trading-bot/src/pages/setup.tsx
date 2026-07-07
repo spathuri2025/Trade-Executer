@@ -13,16 +13,26 @@ import {
   getListInstrumentsQueryKey,
   useAddInstrument,
   useDeleteInstrument,
+  useGetBrokerStatus,
+  getGetBrokerStatusQueryKey,
+  useConnectBroker,
 } from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useOnboarding } from "@/hooks/use-onboarding";
-import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
+import { Check, ChevronRight, Trash2, Plus, Link2 } from "lucide-react";
 
 type AiTradeMode = "off" | "guard" | "autonomous";
 type PresetName = "conservative" | "balanced" | "aggressive";
+type BrokerName = "trading212" | "capitalcom";
+
+const BROKER_LABELS: Record<BrokerName, string> = {
+  trading212: "Trading 212",
+  capitalcom: "Capital.com",
+};
 
 type PresetValues = {
   maxPositionSizePercent: number;
@@ -98,7 +108,7 @@ const muted = "hsl(var(--muted-foreground))";
 const cardBorder = "1px solid hsl(var(--card-border))";
 const card = "hsl(var(--card))";
 
-const STEPS = ["Instruments", "Risk preset", "AI mode", "Review"];
+const STEPS = ["Connect Broker", "Instruments", "Risk preset", "AI mode", "Review"];
 
 function StepHeader({ step }: { step: number }) {
   return (
@@ -149,6 +159,37 @@ export default function Setup() {
 
   const [ticker, setTicker] = useState("");
   const [name, setName] = useState("");
+
+  const [broker, setBroker] = useState<BrokerName>("capitalcom");
+  const [capitalApiKey, setCapitalApiKey] = useState("");
+  const [capitalIdentifier, setCapitalIdentifier] = useState("");
+  const [capitalPassword, setCapitalPassword] = useState("");
+  const [t212ApiKey, setT212ApiKey] = useState("");
+
+  const { data: brokerStatus, isLoading: brokerStatusLoading } = useGetBrokerStatus({
+    query: { queryKey: getGetBrokerStatusQueryKey() },
+  });
+  const connectBroker = useConnectBroker({
+    mutation: {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetBrokerStatusQueryKey() }),
+      onError: (err: unknown) =>
+        toast({
+          title: "Failed to connect broker",
+          description: err instanceof Error ? err.message : "Check your credentials and try again.",
+          variant: "destructive",
+        }),
+    },
+  });
+  const handleConnectBroker = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (broker === "capitalcom") {
+      connectBroker.mutate({
+        data: { broker: "capitalcom", capital: { apiKey: capitalApiKey, identifier: capitalIdentifier, password: capitalPassword } },
+      });
+    } else {
+      connectBroker.mutate({ data: { broker: "trading212", trading212: { apiKey: t212ApiKey } } });
+    }
+  };
 
   const { data: botStatus, isLoading: botLoading } = useGetBotStatus({
     query: { queryKey: getGetBotStatusQueryKey() },
@@ -266,8 +307,81 @@ export default function Setup() {
       <StepHeader step={step} />
 
       <div className="p-6 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
-        {/* ── Step 1: instruments ── */}
+        {/* ── Step 1: connect broker ── */}
         {step === 0 && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-medium">Connect your broker</h2>
+              <p className="text-sm mt-1" style={{ color: muted }}>
+                Bring your own {BROKER_LABELS[broker]} account. Your credentials are encrypted and used only for
+                your own bot.
+              </p>
+            </div>
+
+            {brokerStatusLoading ? (
+              <Skeleton className="h-16 w-full" />
+            ) : brokerStatus?.connected ? (
+              <div className="flex items-center gap-2 p-4 rounded-lg text-sm" style={{ border: cardBorder }}>
+                <Link2 className="h-4 w-4 text-primary" />
+                <span>
+                  Connected to <span className="font-medium">{BROKER_LABELS[brokerStatus.broker ?? broker]}</span>
+                  {brokerStatus.identifierMasked && <span style={{ color: muted }}> ({brokerStatus.identifierMasked})</span>}
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(["capitalcom", "trading212"] as BrokerName[]).map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setBroker(b)}
+                      className="rounded-lg border px-4 py-3 text-sm font-medium text-left transition-all"
+                      style={{
+                        borderColor: broker === b ? "hsl(var(--primary))" : "hsl(var(--border))",
+                        backgroundColor: broker === b ? "hsl(var(--primary) / 0.1)" : "hsl(var(--accent) / 0.3)",
+                        color: broker === b ? "hsl(var(--primary))" : undefined,
+                      }}
+                      data-testid={`button-setup-broker-${b}`}
+                    >
+                      {BROKER_LABELS[b]}
+                    </button>
+                  ))}
+                </div>
+
+                <form onSubmit={handleConnectBroker} className="space-y-3">
+                  {broker === "capitalcom" ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="setup-capital-api-key">API Key</Label>
+                        <Input id="setup-capital-api-key" value={capitalApiKey} onChange={(e) => setCapitalApiKey(e.target.value)} required data-testid="input-setup-capital-api-key" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="setup-capital-identifier">Identifier (email)</Label>
+                        <Input id="setup-capital-identifier" value={capitalIdentifier} onChange={(e) => setCapitalIdentifier(e.target.value)} required data-testid="input-setup-capital-identifier" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="setup-capital-password">Password</Label>
+                        <Input id="setup-capital-password" type="password" value={capitalPassword} onChange={(e) => setCapitalPassword(e.target.value)} required data-testid="input-setup-capital-password" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="setup-t212-api-key">API Key</Label>
+                      <Input id="setup-t212-api-key" value={t212ApiKey} onChange={(e) => setT212ApiKey(e.target.value)} required data-testid="input-setup-t212-api-key" />
+                    </div>
+                  )}
+                  <Button type="submit" disabled={connectBroker.isPending} data-testid="button-setup-connect-broker">
+                    {connectBroker.isPending ? "Connecting…" : "Connect"}
+                  </Button>
+                </form>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 2: instruments ── */}
+        {step === 1 && (
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-medium">Pick instruments to track</h2>
@@ -329,8 +443,8 @@ export default function Setup() {
           </div>
         )}
 
-        {/* ── Step 2: risk preset ── */}
-        {step === 1 && (
+        {/* ── Step 3: risk preset ── */}
+        {step === 2 && (
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-medium">Choose a risk preset</h2>
@@ -403,8 +517,8 @@ export default function Setup() {
           </div>
         )}
 
-        {/* ── Step 3: AI mode ── */}
-        {step === 2 && (
+        {/* ── Step 4: AI mode ── */}
+        {step === 3 && (
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-medium">How should the AI take part?</h2>
@@ -447,8 +561,8 @@ export default function Setup() {
           </div>
         )}
 
-        {/* ── Step 4: review ── */}
-        {step === 3 && (
+        {/* ── Step 5: review ── */}
+        {step === 4 && (
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-medium">Review &amp; start</h2>
@@ -491,7 +605,10 @@ export default function Setup() {
         {step < STEPS.length - 1 ? (
           <Button
             onClick={() => setStep((s) => s + 1)}
-            disabled={step === 0 && (botLoading || !canProceedInstruments)}
+            disabled={
+              (step === 0 && !brokerStatus?.connected) ||
+              (step === 1 && (botLoading || !canProceedInstruments))
+            }
             data-testid="button-setup-next"
           >
             Next

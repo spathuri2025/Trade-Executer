@@ -1,5 +1,5 @@
 import { db, tradesTable, type Trade } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { asString, generateClaudeJson } from "./aiJson";
 
 export const COACH_DISCLAIMER =
@@ -89,10 +89,11 @@ function round2(n: number): number {
   return Number(n.toFixed(2));
 }
 
-export async function computePerformanceCoach(): Promise<PerformanceCoach> {
+export async function computePerformanceCoach(userId: number): Promise<PerformanceCoach> {
   const trades = await db
     .select()
     .from(tradesTable)
+    .where(eq(tradesTable.userId, userId))
     .orderBy(desc(tradesTable.executedAt))
     .limit(500);
 

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { computeChartInsight } from "../lib/chartInsightService";
+import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
 
 const router: IRouter = Router();
 
@@ -23,8 +24,14 @@ router.get("/charts/insight", async (req, res): Promise<void> => {
   const resParam = typeof req.query["resolution"] === "string" ? req.query["resolution"] : "HOUR";
   const resolution = ALLOWED_RESOLUTIONS.has(resParam) ? resParam : "HOUR";
 
+  const credentials = await getUserBrokerCredentials(req.user!.id);
+  if (!credentials || credentials.broker !== "capitalcom") {
+    res.status(400).json({ error: "Connect a Capital.com broker account first" });
+    return;
+  }
+
   try {
-    const insight = await computeChartInsight(epic, resolution);
+    const insight = await computeChartInsight(req.user!.id, credentials.capital, epic, resolution);
     res.set("Cache-Control", "no-store");
     res.json(insight);
   } catch (err) {

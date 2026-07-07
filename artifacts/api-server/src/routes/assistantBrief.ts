@@ -34,12 +34,18 @@ async function fetchLatest(): Promise<UserAiBrief | undefined> {
   return latest;
 }
 
-function triggerBackgroundGeneration(): void {
+/**
+ * Uses whichever user's request triggers generation to ground the brief —
+ * this brief is a single shared row (not per-user; see
+ * .agents/memory/session-auth.md), so the content reflects the first
+ * requester of the day, not any one specific customer.
+ */
+function triggerBackgroundGeneration(userId: number): void {
   creating = true;
   lastCreateAt = Date.now();
   void (async () => {
     try {
-      const generated = await generateAssistantDailyBrief();
+      const generated = await generateAssistantDailyBrief(userId);
       await db.insert(userAiBriefsTable).values({ ...generated, briefDate: todayUtc() });
       logger.info("Auto-generated assistant daily brief");
     } catch (err) {
@@ -55,7 +61,7 @@ router.get("/assistant/daily-brief", async (req, res): Promise<void> => {
     const latest = await fetchLatest();
     const needsFresh = !latest || latest.briefDate !== todayUtc();
     if (needsFresh && !creating && Date.now() - lastCreateAt >= COOLDOWN_MS) {
-      triggerBackgroundGeneration();
+      triggerBackgroundGeneration(req.user!.id);
     }
     res.set("Cache-Control", "no-store");
     res.json({ brief: latest ? serialize(latest) : null });

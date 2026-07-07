@@ -1,7 +1,10 @@
-import { pgTable, text, serial, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+
+import { usersTable } from "./users";
 
 export const scannerResultsTable = pgTable("scanner_results", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
   ticker: text("ticker").notNull(),
   name: text("name").notNull(),
   signal: text("signal", { enum: ["BUY", "SELL"] }).notNull(),

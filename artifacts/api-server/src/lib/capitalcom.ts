@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+import type { CapitalCredentials } from "./brokerCredentialsService";
 
 const LIVE_BASE = "https://api-capital.backend-capital.com/api/v1";
 const BASE_URL = LIVE_BASE;
@@ -9,18 +10,27 @@ interface Session {
   expiresAt: number;
 }
 
-let cachedSession: Session | null = null;
-let sessionCooldownUntil = 0;
-let sessionInFlight: Promise<Session> | null = null;
+interface SessionCacheEntry {
+  cachedSession: Session | null;
+  sessionCooldownUntil: number;
+  sessionInFlight: Promise<Session> | null;
+}
 
-async function createSession(): Promise<Session> {
-  const apiKey = process.env.CAPITALCOM_API_KEY;
-  const password = process.env.CAPITALCOM_PASSWORD;
-  const identifier = process.env.CAPITALCOM_IDENTIFIER;
+/** One session-cache entry per user — each customer has their own Capital.com login. */
+const sessionCacheByUser = new Map<number, SessionCacheEntry>();
 
-  if (!apiKey || !password || !identifier) {
-    throw new Error("CAPITALCOM_API_KEY, CAPITALCOM_PASSWORD and CAPITALCOM_IDENTIFIER must be set");
+function getCacheEntry(userId: number): SessionCacheEntry {
+  let entry = sessionCacheByUser.get(userId);
+  if (!entry) {
+    entry = { cachedSession: null, sessionCooldownUntil: 0, sessionInFlight: null };
+    sessionCacheByUser.set(userId, entry);
   }
+  return entry;
+}
+
+async function createSession(userId: number, credentials: CapitalCredentials): Promise<Session> {
+  const entry = getCacheEntry(userId);
+  const { apiKey, identifier, password } = credentials;
 
   const res = await fetch(`${BASE_URL}/session`, {
     method: "POST",
@@ -36,7 +46,7 @@ async function createSession(): Promise<Session> {
   });
 
   if (res.status === 429) {
-    sessionCooldownUntil = Date.now() + 60_000;
+    entry.sessionCooldownUntil = Date.now() + 60_000;
     throw new Error("Capital.com rate limit hit — session creation paused for 60s");
   }
 
@@ -60,32 +70,33 @@ async function createSession(): Promise<Session> {
     expiresAt: Date.now() + 9 * 60 * 1000,
   };
 
-  cachedSession = session;
-  sessionCooldownUntil = 0;
-  logger.info("Capital.com session created");
+  entry.cachedSession = session;
+  entry.sessionCooldownUntil = 0;
+  logger.info({ userId }, "Capital.com session created");
   return session;
 }
 
-async function getSession(): Promise<Session> {
-  const validSession = cachedSession && cachedSession.expiresAt > Date.now() + 30_000;
-  if (validSession) return cachedSession!;
+async function getSession(userId: number, credentials: CapitalCredentials): Promise<Session> {
+  const entry = getCacheEntry(userId);
+  const validSession = entry.cachedSession && entry.cachedSession.expiresAt > Date.now() + 30_000;
+  if (validSession) return entry.cachedSession!;
 
-  if (Date.now() < sessionCooldownUntil) {
-    if (cachedSession) {
-      logger.warn("Capital.com rate-limit cooldown active — reusing stale session");
-      return cachedSession;
+  if (Date.now() < entry.sessionCooldownUntil) {
+    if (entry.cachedSession) {
+      logger.warn({ userId }, "Capital.com rate-limit cooldown active — reusing stale session");
+      return entry.cachedSession;
     }
-    throw new Error(`Capital.com rate-limit cooldown active. Retry after ${Math.ceil((sessionCooldownUntil - Date.now()) / 1000)}s`);
+    throw new Error(`Capital.com rate-limit cooldown active. Retry after ${Math.ceil((entry.sessionCooldownUntil - Date.now()) / 1000)}s`);
   }
 
-  if (sessionInFlight) return sessionInFlight;
+  if (entry.sessionInFlight) return entry.sessionInFlight;
 
-  sessionInFlight = createSession().finally(() => { sessionInFlight = null; });
-  return sessionInFlight;
+  entry.sessionInFlight = createSession(userId, credentials).finally(() => { entry.sessionInFlight = null; });
+  return entry.sessionInFlight;
 }
 
-export async function capitalAuthFetch(path: string, options: RequestInit = {}): Promise<unknown> {
-  return capitalFetch(path, options);
+export async function capitalAuthFetch(userId: number, credentials: CapitalCredentials, path: string, options: RequestInit = {}): Promise<unknown> {
+  return capitalFetch(userId, credentials, path, options);
 }
 
 /**
@@ -95,17 +106,20 @@ export async function capitalAuthFetch(path: string, options: RequestInit = {}):
  * streaming reconnect where the old tokens may have expired).
  */
 export async function getCapitalSessionTokens(
+  userId: number,
+  credentials: CapitalCredentials,
   forceRefresh = false,
 ): Promise<{ cst: string; securityToken: string }> {
   if (forceRefresh) {
-    cachedSession = null;
+    getCacheEntry(userId).cachedSession = null;
   }
-  const session = await getSession();
+  const session = await getSession(userId, credentials);
   return { cst: session.cst, securityToken: session.securityToken };
 }
 
-async function capitalFetch(path: string, options: RequestInit = {}): Promise<unknown> {
-  const session = await getSession();
+async function capitalFetch(userId: number, credentials: CapitalCredentials, path: string, options: RequestInit = {}): Promise<unknown> {
+  const entry = getCacheEntry(userId);
+  const session = await getSession(userId, credentials);
   const url = `${BASE_URL}${path}`;
 
   const makeRequest = async (s: Session) =>
@@ -122,16 +136,16 @@ async function capitalFetch(path: string, options: RequestInit = {}): Promise<un
   let res = await makeRequest(session);
 
   if (res.status === 401) {
-    cachedSession = null;
-    if (Date.now() < sessionCooldownUntil) {
+    entry.cachedSession = null;
+    if (Date.now() < entry.sessionCooldownUntil) {
       throw new Error("Capital.com session expired and rate-limit cooldown active");
     }
-    const freshSession = await createSession();
+    const freshSession = await createSession(userId, credentials);
     res = await makeRequest(freshSession);
   }
 
   if (res.status === 429) {
-    sessionCooldownUntil = Date.now() + 60_000;
+    entry.sessionCooldownUntil = Date.now() + 60_000;
     throw new Error("Capital.com rate limit hit on request");
   }
 
@@ -218,18 +232,26 @@ export interface CapitalPrice {
   instrumentType: string;
 }
 
-export async function getCapitalPositions(): Promise<CapitalPosition[]> {
-  const data = await capitalFetch("/positions") as { positions: CapitalPosition[] };
+export async function getCapitalPositions(userId: number, credentials: CapitalCredentials): Promise<CapitalPosition[]> {
+  const data = await capitalFetch(userId, credentials, "/positions") as { positions: CapitalPosition[] };
   return data?.positions ?? [];
 }
 
-export async function getCapitalAccounts(): Promise<CapitalAccount> {
-  return capitalFetch("/accounts") as Promise<CapitalAccount>;
+export async function getCapitalAccounts(userId: number, credentials: CapitalCredentials): Promise<CapitalAccount> {
+  return capitalFetch(userId, credentials, "/accounts") as Promise<CapitalAccount>;
 }
 
-export async function getCapitalPriceHistory(epic: string, resolution: string = "HOUR", count: number = 50): Promise<number[]> {
+export async function getCapitalPriceHistory(
+  userId: number,
+  credentials: CapitalCredentials,
+  epic: string,
+  resolution: string = "HOUR",
+  count: number = 50,
+): Promise<number[]> {
   try {
     const data = await capitalFetch(
+      userId,
+      credentials,
       `/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=${count}`
     ) as CapitalPrice;
     return (data?.prices ?? []).map((p) => (p.closePrice.bid + p.closePrice.ask) / 2);
@@ -254,11 +276,15 @@ export interface Candle {
  * Times are converted to UNIX seconds (what lightweight-charts expects).
  */
 export async function getCapitalCandles(
+  userId: number,
+  credentials: CapitalCredentials,
   epic: string,
   resolution: string = "HOUR",
   count: number = 200,
 ): Promise<Candle[]> {
   const data = (await capitalFetch(
+    userId,
+    credentials,
     `/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=${count}`,
   )) as CapitalPrice;
   const mid = (p: { bid: number; ask: number }) => (p.bid + p.ask) / 2;
@@ -286,6 +312,8 @@ export async function getCapitalCandles(
 }
 
 export async function placeCapitalOrder(
+  userId: number,
+  credentials: CapitalCredentials,
   epic: string,
   size: number,
   direction: "BUY" | "SELL",
@@ -308,7 +336,7 @@ export async function placeCapitalOrder(
     body.profitLevel = Number(profitLevel.toFixed(5));
   }
 
-  const data = await capitalFetch("/positions", {
+  const data = await capitalFetch(userId, credentials, "/positions", {
     method: "POST",
     body: JSON.stringify(body),
   }) as { dealReference: string };
@@ -324,8 +352,8 @@ export interface CapitalQuote {
   updateTime: string | null;
 }
 
-export async function getCapitalQuote(epic: string): Promise<CapitalQuote> {
-  const data = await capitalFetch(`/markets/${encodeURIComponent(epic)}`) as {
+export async function getCapitalQuote(userId: number, credentials: CapitalCredentials, epic: string): Promise<CapitalQuote> {
+  const data = await capitalFetch(userId, credentials, `/markets/${encodeURIComponent(epic)}`) as {
     instrument?: { currency?: string };
     snapshot?: { bid?: number; offer?: number; marketStatus?: string; updateTime?: string };
   };

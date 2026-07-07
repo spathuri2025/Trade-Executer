@@ -1,5 +1,6 @@
 - [AI JSON endpoints](ai-json-endpoints.md) — TradeBuzz AI features share lib/aiJson.ts; disclaimers pinned server-side; every AI route needs a deterministic mock fallback.
 - [OpenAPI route conventions](openapi-route-conventions.md) — routes validate inputs manually (not generated Zod) to decouple from codegen; nullables use type:["x","null"]; re-run codegen after spec edits.
 - [Trade Intelligence (Claude layer)](trade-intelligence-claude.md) — no real multi-factor scoring engine exists; the Signals-page bridge honestly marks unscored factors as "not yet computed" instead of fabricating data.
-- [Session authentication](session-auth.md) — login is required app-wide now, but bot/trades/signals/conversations are still one shared dataset across all users, not per-tenant.
-- [Live price SSE store](live-price-store.md) — live-prices is a shared external store; use useLiveQuote(epic) for single instruments to avoid a re-render storm from all ~40 streaming epics.
+- [Session authentication](session-auth.md) — login required app-wide; most data is now per-tenant (see multi-tenant-broker.md), except conversations/messages and market-wide AI content which stay shared.
+- [Live price SSE store (superseded)](live-price-store.md) — old shared-SSE re-render fix; live prices now poll GET /quote per ticker instead.
+- [Multi-tenant broker accounts](multi-tenant-broker.md) — each user connects their own encrypted broker credentials; botEngine/scannerEngine are per-user Maps; live WebSocket streaming is deferred (capitalStream.ts deleted, see git history).

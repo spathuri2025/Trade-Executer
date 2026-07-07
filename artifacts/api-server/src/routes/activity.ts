@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, signalsTable, tradesTable, scannerResultsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { ListSignalsQueryParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -15,10 +15,11 @@ router.get("/activity", async (req, res): Promise<void> => {
   const parsed = ListSignalsQueryParams.safeParse(req.query);
   const perSource = parsed.success ? (parsed.data.limit ?? 30) : 30;
 
+  const userId = req.user!.id;
   const [signals, trades, scans] = await Promise.all([
-    db.select().from(signalsTable).orderBy(desc(signalsTable.createdAt)).limit(perSource),
-    db.select().from(tradesTable).orderBy(desc(tradesTable.executedAt)).limit(perSource),
-    db.select().from(scannerResultsTable).orderBy(desc(scannerResultsTable.scannedAt)).limit(perSource),
+    db.select().from(signalsTable).where(eq(signalsTable.userId, userId)).orderBy(desc(signalsTable.createdAt)).limit(perSource),
+    db.select().from(tradesTable).where(eq(tradesTable.userId, userId)).orderBy(desc(tradesTable.executedAt)).limit(perSource),
+    db.select().from(scannerResultsTable).where(eq(scannerResultsTable.userId, userId)).orderBy(desc(scannerResultsTable.scannedAt)).limit(perSource),
   ]);
 
   const items = [

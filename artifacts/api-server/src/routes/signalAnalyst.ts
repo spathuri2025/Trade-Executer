@@ -165,7 +165,7 @@ router.post("/signal-analyst/conversations/:id/messages", async (req, res): Prom
     .where(eq(messages.conversationId, conversationId))
     .orderBy(asc(messages.createdAt));
 
-  const systemPrompt = await buildSignalAnalystSystemPrompt();
+  const systemPrompt = await buildSignalAnalystSystemPrompt(req.user!.id);
 
   // Anthropic takes the system prompt as a top-level field; messages must be
   // user/assistant turns only.

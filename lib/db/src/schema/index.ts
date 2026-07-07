@@ -11,3 +11,5 @@ export * from "./marketBrainSnapshots";
 export * from "./userAiBriefs";
 export * from "./users";
 export * from "./sessions";
+export * from "./brokerCredentials";
+export * from "./botConfig";

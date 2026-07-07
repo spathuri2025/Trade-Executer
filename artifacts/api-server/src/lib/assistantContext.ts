@@ -1,7 +1,8 @@
 import { db, tradesTable, signalsTable, instrumentsTable, scannerResultsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { getBotStatus } from "./botEngine";
-import { getBrokerAccount, getBrokerPositions, type BrokerName } from "./broker";
+import { getBrokerAccount, getBrokerPositions } from "./broker";
+import { getUserBrokerCredentials } from "./brokerCredentialsService";
 import { logger } from "./logger";
 
 const PERSONA = `You are a day trading assistant for TradeBuzz, helping someone who is NOT an expert. You still review trade setups, spot patterns, explain why a strategy may be underperforming, and give risk guidance (position sizing, stop-losses, risk/reward) and market context — but you say it in a way a beginner can instantly understand.`;
@@ -24,10 +25,10 @@ function fmtMoney(n: number, currency: string | null): string {
  * Gathers a snapshot of the user's live TradeBuzz state and renders it as a
  * text block to ground the assistant's responses in the user's real activity.
  */
-export async function buildTradingContext(): Promise<string> {
-  const status = getBotStatus();
+export async function buildTradingContext(userId: number): Promise<string> {
+  const status = await getBotStatus(userId);
   const { config } = status;
-  const broker = config.broker as BrokerName;
+  const broker = config.broker;
 
   const lines: string[] = [];
 
@@ -44,42 +45,53 @@ export async function buildTradingContext(): Promise<string> {
   lines.push(`- Stop loss: ${config.stopLossPercent}%`);
   lines.push(`- Check interval: ${config.intervalMinutes} min`);
 
-  try {
-    const account = await getBrokerAccount(broker);
-    lines.push("");
-    lines.push("## Account");
-    lines.push(`- Total balance: ${fmtMoney(account.total, account.currency)}`);
-    lines.push(`- Cash available: ${fmtMoney(account.cash, account.currency)}`);
-    lines.push(`- Invested: ${fmtMoney(account.invested, account.currency)}`);
-    lines.push(`- Open P/L: ${fmtMoney(account.result, account.currency)}`);
-  } catch (err) {
-    logger.warn({ broker, err }, "Assistant context: could not fetch account");
-    lines.push("");
-    lines.push("## Account");
-    lines.push("- (Account data unavailable — broker connection error.)");
-  }
+  const credentials = await getUserBrokerCredentials(userId);
 
-  try {
-    const positions = await getBrokerPositions(broker);
+  if (!credentials) {
+    lines.push("");
+    lines.push("## Account");
+    lines.push("- (No broker connected yet.)");
     lines.push("");
     lines.push("## Open positions");
-    if (positions.length === 0) {
-      lines.push("- None.");
-    } else {
-      for (const p of positions.slice(0, 25)) {
-        lines.push(
-          `- ${p.ticker}: qty ${p.quantity}, avg ${p.averagePrice}, current ${p.currentPrice}, P/L ${p.pnl.toFixed(2)} (${p.pnlPercent.toFixed(2)}%)`,
-        );
-      }
+    lines.push("- (No broker connected yet.)");
+  } else {
+    try {
+      const account = await getBrokerAccount(userId, credentials);
+      lines.push("");
+      lines.push("## Account");
+      lines.push(`- Total balance: ${fmtMoney(account.total, account.currency)}`);
+      lines.push(`- Cash available: ${fmtMoney(account.cash, account.currency)}`);
+      lines.push(`- Invested: ${fmtMoney(account.invested, account.currency)}`);
+      lines.push(`- Open P/L: ${fmtMoney(account.result, account.currency)}`);
+    } catch (err) {
+      logger.warn({ userId, broker, err }, "Assistant context: could not fetch account");
+      lines.push("");
+      lines.push("## Account");
+      lines.push("- (Account data unavailable — broker connection error.)");
     }
-  } catch (err) {
-    logger.warn({ broker, err }, "Assistant context: could not fetch positions");
-    lines.push("");
-    lines.push("## Open positions");
-    lines.push("- (Positions unavailable — broker connection error.)");
+
+    try {
+      const positions = await getBrokerPositions(userId, credentials);
+      lines.push("");
+      lines.push("## Open positions");
+      if (positions.length === 0) {
+        lines.push("- None.");
+      } else {
+        for (const p of positions.slice(0, 25)) {
+          lines.push(
+            `- ${p.ticker}: qty ${p.quantity}, avg ${p.averagePrice}, current ${p.currentPrice}, P/L ${p.pnl.toFixed(2)} (${p.pnlPercent.toFixed(2)}%)`,
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn({ userId, broker, err }, "Assistant context: could not fetch positions");
+      lines.push("");
+      lines.push("## Open positions");
+      lines.push("- (Positions unavailable — broker connection error.)");
+    }
   }
 
-  const instruments = await db.select().from(instrumentsTable);
+  const instruments = await db.select().from(instrumentsTable).where(eq(instrumentsTable.userId, userId));
   lines.push("");
   lines.push("## Watchlist");
   if (instruments.length === 0) {
@@ -93,6 +105,7 @@ export async function buildTradingContext(): Promise<string> {
   const trades = await db
     .select()
     .from(tradesTable)
+    .where(eq(tradesTable.userId, userId))
     .orderBy(desc(tradesTable.executedAt))
     .limit(20);
   lines.push("");
@@ -110,6 +123,7 @@ export async function buildTradingContext(): Promise<string> {
   const signals = await db
     .select()
     .from(signalsTable)
+    .where(eq(signalsTable.userId, userId))
     .orderBy(desc(signalsTable.createdAt))
     .limit(20);
   lines.push("");
@@ -127,6 +141,7 @@ export async function buildTradingContext(): Promise<string> {
   const scans = await db
     .select()
     .from(scannerResultsTable)
+    .where(eq(scannerResultsTable.userId, userId))
     .orderBy(desc(scannerResultsTable.scannedAt))
     .limit(15);
   lines.push("");
@@ -144,8 +159,8 @@ export async function buildTradingContext(): Promise<string> {
   return lines.join("\n");
 }
 
-export async function buildSystemPrompt(): Promise<string> {
-  const context = await buildTradingContext();
+export async function buildSystemPrompt(userId: number): Promise<string> {
+  const context = await buildTradingContext(userId);
   return [
     PERSONA,
     "",

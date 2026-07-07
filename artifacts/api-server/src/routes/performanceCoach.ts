@@ -5,7 +5,7 @@ const router: IRouter = Router();
 
 router.get("/performance/coach", async (req, res): Promise<void> => {
   try {
-    const coach = await computePerformanceCoach();
+    const coach = await computePerformanceCoach(req.user!.id);
     res.set("Cache-Control", "no-store");
     res.json(coach);
   } catch (err) {

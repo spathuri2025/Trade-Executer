@@ -1,13 +1,13 @@
-import { db, instrumentsTable, tradesTable, signalsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, instrumentsTable, tradesTable, signalsTable, botConfigTable, type BotConfigRow } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   placeBrokerOrder,
   getBrokerPriceHistory,
   getBrokerAccount,
   getBrokerPositions,
-  type BrokerName,
 } from "./broker";
+import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import {
   routeStrategy,
   requiredBars,
@@ -36,7 +36,7 @@ export interface BotConfig {
   tradeAmount: number;
   intervalMinutes: number;
   dryRun: boolean;
-  broker: BrokerName;
+  broker: "trading212" | "capitalcom";
   stopLossPercent: number;
   takeProfitPercent: number;
   riskPerTradePercent: number;
@@ -58,6 +58,24 @@ export interface BotConfig {
    */
   costPerTradePercent: number;
 }
+
+const DEFAULT_CONFIG: BotConfig = {
+  shortPeriod: 9,
+  longPeriod: 21,
+  tradeAmount: 50,
+  intervalMinutes: 60,
+  dryRun: true,
+  broker: "capitalcom",
+  stopLossPercent: 2,
+  takeProfitPercent: 4,
+  riskPerTradePercent: 1,
+  maxPositionSizePercent: 5,
+  maxDailyLossPercent: 3,
+  maxConcurrentPositions: 5,
+  aiTradeMode: "off",
+  regimeFilterEnabled: true,
+  costPerTradePercent: 0,
+};
 
 /**
  * Daily-loss circuit breaker state. When `tripped`, the engine is stopped and
@@ -82,43 +100,75 @@ interface BotState {
   intervalHandle: ReturnType<typeof setInterval> | null;
 }
 
-const state: BotState = {
-  running: false,
-  lastRunAt: null,
-  nextRunAt: null,
-  config: {
-    shortPeriod: 9,
-    longPeriod: 21,
-    tradeAmount: 50,
-    intervalMinutes: 60,
-    dryRun: true,
-    broker: "capitalcom",
-    stopLossPercent: 2,
-    takeProfitPercent: 4,
-    riskPerTradePercent: 1,
-    maxPositionSizePercent: 5,
-    maxDailyLossPercent: 3,
-    maxConcurrentPositions: 5,
-    aiTradeMode: "off",
-    regimeFilterEnabled: true,
-    costPerTradePercent: 0,
-  },
-  circuitBreaker: {
-    tripped: false,
-    reason: null,
-    trippedAt: null,
-    dayKey: null,
-    dayStartEquity: null,
-  },
-  intervalHandle: null,
-};
+function freshCircuitBreaker(): CircuitBreakerState {
+  return { tripped: false, reason: null, trippedAt: null, dayKey: null, dayStartEquity: null };
+}
+
+/** Per-user in-memory bot state — one isolated bot per customer, no cross-tenant sharing. */
+const botStates = new Map<number, BotState>();
+
+function rowToConfig(row: BotConfigRow): BotConfig {
+  return {
+    shortPeriod: row.shortPeriod,
+    longPeriod: row.longPeriod,
+    tradeAmount: row.tradeAmount,
+    intervalMinutes: row.intervalMinutes,
+    dryRun: row.dryRun,
+    broker: row.broker,
+    stopLossPercent: row.stopLossPercent,
+    takeProfitPercent: row.takeProfitPercent,
+    riskPerTradePercent: row.riskPerTradePercent,
+    maxPositionSizePercent: row.maxPositionSizePercent,
+    maxDailyLossPercent: row.maxDailyLossPercent,
+    maxConcurrentPositions: row.maxConcurrentPositions,
+    aiTradeMode: row.aiTradeMode,
+    regimeFilterEnabled: row.regimeFilterEnabled,
+    costPerTradePercent: row.costPerTradePercent,
+  };
+}
+
+async function persistConfig(userId: number, config: BotConfig): Promise<void> {
+  await db
+    .insert(botConfigTable)
+    .values({ userId, ...config })
+    .onConflictDoUpdate({ target: botConfigTable.userId, set: { ...config, updatedAt: new Date() } });
+}
+
+/**
+ * Returns (creating if needed) a user's in-memory bot state. On first access
+ * this cycle, loads persisted config from `bot_config` so settings survive a
+ * server restart — falls back to defaults (and persists them) if the user has
+ * never configured anything yet.
+ */
+async function getOrCreateBotState(userId: number): Promise<BotState> {
+  const existing = botStates.get(userId);
+  if (existing) return existing;
+
+  const [row] = await db.select().from(botConfigTable).where(eq(botConfigTable.userId, userId));
+  const config = row ? rowToConfig(row) : { ...DEFAULT_CONFIG };
+  if (!row) await persistConfig(userId, config);
+
+  const state: BotState = {
+    running: false,
+    lastRunAt: null,
+    nextRunAt: null,
+    config,
+    circuitBreaker: freshCircuitBreaker(),
+    intervalHandle: null,
+  };
+  botStates.set(userId, state);
+  return state;
+}
 
 /** UTC calendar-day key (YYYY-MM-DD) used to reset the daily-loss baseline. */
 function utcDayKey(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function getBotStatus() {
+export class BrokerNotConnectedError extends Error {}
+
+export async function getBotStatus(userId: number) {
+  const state = await getOrCreateBotState(userId);
   return {
     running: state.running,
     lastRunAt: state.lastRunAt?.toISOString() ?? null,
@@ -138,53 +188,73 @@ export function getBotStatus() {
  * ONLY way to resume after the breaker trips — the engine never auto-resumes.
  * Resets the loss baseline so the breaker measures from the resume point onward.
  */
-export function resumeBot() {
-  state.circuitBreaker.tripped = false;
-  state.circuitBreaker.reason = null;
-  state.circuitBreaker.trippedAt = null;
-  state.circuitBreaker.dayKey = null;
-  state.circuitBreaker.dayStartEquity = null;
-  logger.info("Circuit breaker cleared — resuming bot");
-  return startBot();
+export async function resumeBot(userId: number) {
+  const state = await getOrCreateBotState(userId);
+  state.circuitBreaker = freshCircuitBreaker();
+  logger.info({ userId }, "Circuit breaker cleared — resuming bot");
+  return startBot(userId);
 }
 
-export function updateConfig(patch: Partial<BotConfig>) {
+export async function updateConfig(userId: number, patch: Partial<BotConfig>) {
+  const state = await getOrCreateBotState(userId);
   Object.assign(state.config, patch);
+  await persistConfig(userId, state.config);
 
   if (state.running) {
-    stopBot();
-    startBot();
+    stopBot(userId);
+    await startBot(userId);
   }
 
-  return getBotStatus();
+  return getBotStatus(userId);
 }
 
-export function startBot() {
-  if (state.running) return getBotStatus();
+export async function startBot(userId: number) {
+  const state = await getOrCreateBotState(userId);
+  if (state.running) return getBotStatus(userId);
+
+  const credentials = await getUserBrokerCredentials(userId);
+  if (!credentials) {
+    throw new BrokerNotConnectedError("Connect a broker account before starting the bot");
+  }
 
   state.running = true;
-  runCycle();
+  void runCycle(userId);
 
   const ms = state.config.intervalMinutes * 60 * 1000;
-  state.intervalHandle = setInterval(() => runCycle(), ms);
+  state.intervalHandle = setInterval(() => void runCycle(userId), ms);
   state.nextRunAt = new Date(Date.now() + ms);
 
-  logger.info({ config: state.config }, "Bot started");
-  return getBotStatus();
+  logger.info({ userId, config: state.config }, "Bot started");
+  return getBotStatus(userId);
 }
 
-export function stopBot() {
+export function stopBot(userId: number) {
+  const state = botStates.get(userId);
+  if (!state) return;
   if (state.intervalHandle) {
     clearInterval(state.intervalHandle);
     state.intervalHandle = null;
   }
   state.running = false;
   state.nextRunAt = null;
-  logger.info("Bot stopped");
-  return getBotStatus();
+  logger.info({ userId }, "Bot stopped");
 }
 
-export async function runCycle(): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
+export async function stopBotAndGetStatus(userId: number) {
+  stopBot(userId);
+  return getBotStatus(userId);
+}
+
+export async function runCycle(userId: number): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
+  const results: Array<{ ticker: string; signal: string; tradeExecuted: boolean }> = [];
+
+  const credentials = await getUserBrokerCredentials(userId);
+  if (!credentials) {
+    logger.warn({ userId }, "No broker connected — skipping trading cycle");
+    return results;
+  }
+
+  const state = await getOrCreateBotState(userId);
   state.lastRunAt = new Date();
   if (state.running) {
     const ms = state.config.intervalMinutes * 60 * 1000;
@@ -194,27 +264,26 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
   const instruments = await db
     .select()
     .from(instrumentsTable)
-    .where(eq(instrumentsTable.enabled, true));
+    .where(and(eq(instrumentsTable.userId, userId), eq(instrumentsTable.enabled, true)));
 
-  const results: Array<{ ticker: string; signal: string; tradeExecuted: boolean }> = [];
   const cfg = state.config;
-  const { broker, shortPeriod, longPeriod, aiTradeMode } = cfg;
+  const { shortPeriod, longPeriod, aiTradeMode } = cfg;
 
   // Safety gate: real orders are only ever placed while the bot is actually
   // running (scheduled). A manual trigger (e.g. POST /signals/run) while the
   // bot is Stopped is forced to simulate, so it can never move real money.
   const dryRun = cfg.dryRun || !state.running;
   if (cfg.dryRun === false && !state.running) {
-    logger.warn("Bot is stopped — forcing dry-run for this manual cycle (no real orders)");
+    logger.warn({ userId }, "Bot is stopped — forcing dry-run for this manual cycle (no real orders)");
   }
 
   // Fetch account once per cycle — used for position sizing and (in AI modes) context.
   let account: AccountSnapshot | null = null;
   try {
-    const a = await getBrokerAccount(broker);
+    const a = await getBrokerAccount(userId, credentials);
     account = { cash: a.cash, total: a.total, currency: a.currency };
   } catch (err) {
-    logger.warn({ broker, err }, "Could not fetch account balance — falling back to fixed tradeAmount");
+    logger.warn({ userId, broker: credentials.broker, err }, "Could not fetch account balance — falling back to fixed tradeAmount");
   }
   const accountBalance = account?.total ?? null;
 
@@ -223,7 +292,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
   // UTC day; once the loss from that baseline hits maxDailyLossPercent the bot is
   // stopped and will not trade again until manually resumed (no auto-resume).
   if (state.circuitBreaker.tripped) {
-    logger.warn({ reason: state.circuitBreaker.reason }, "Circuit breaker tripped — skipping trading cycle");
+    logger.warn({ userId, reason: state.circuitBreaker.reason }, "Circuit breaker tripped — skipping trading cycle");
     return results;
   }
   if (state.running && account !== null && account.total !== null) {
@@ -239,10 +308,10 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
         cb.trippedAt = new Date();
         cb.reason = `Daily loss of ${lossPct.toFixed(2)}% reached the ${cfg.maxDailyLossPercent}% limit. Trading is halted until you resume it.`;
         logger.error(
-          { lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: account.total },
+          { userId, lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: account.total },
           "Daily-loss circuit breaker TRIPPED — stopping bot"
         );
-        stopBot();
+        stopBot(userId);
         return results;
       }
     }
@@ -253,7 +322,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
   let positions: PositionSnapshot[] = [];
   let positionsFetchOk = true;
   try {
-    positions = (await getBrokerPositions(broker)).map((p) => ({
+    positions = (await getBrokerPositions(userId, credentials)).map((p) => ({
       ticker: p.ticker,
       quantity: p.quantity,
       averagePrice: p.averagePrice,
@@ -262,7 +331,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     }));
   } catch (err) {
     positionsFetchOk = false;
-    logger.warn({ broker, err }, "Could not fetch open positions");
+    logger.warn({ userId, broker: credentials.broker, err }, "Could not fetch open positions");
   }
 
   // Fail-closed: if we can't read the data a limit depends on, block any
@@ -279,7 +348,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     (!positionsFetchOk && cfg.maxConcurrentPositions > 0);
   if (riskDataUnavailable) {
     logger.warn(
-      { accountAvailable: account !== null, positionsFetchOk },
+      { userId, accountAvailable: account !== null, positionsFetchOk },
       "Risk data unavailable — blocking new BUY entries this cycle (fail-safe)"
     );
   }
@@ -298,9 +367,9 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
   const contexts: InstrumentContext[] = [];
   for (const instrument of instruments) {
     try {
-      const prices = await getBrokerPriceHistory(broker, instrument.ticker, bars);
+      const prices = await getBrokerPriceHistory(userId, credentials, instrument.ticker, bars);
       if (prices.length < longPeriod + 1) {
-        logger.warn({ ticker: instrument.ticker, broker }, "Not enough price data for signal computation");
+        logger.warn({ userId, ticker: instrument.ticker, broker: credentials.broker }, "Not enough price data for signal computation");
         continue;
       }
       const currentPrice = prices[prices.length - 1];
@@ -318,7 +387,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
         regime: routed.regime,
       });
     } catch (err) {
-      logger.error({ ticker: instrument.ticker, broker, err }, "Error processing instrument");
+      logger.error({ userId, ticker: instrument.ticker, broker: credentials.broker, err }, "Error processing instrument");
     }
   }
 
@@ -335,7 +404,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     try {
       decisions = await decideTrades(candidates, account, positions, logger);
     } catch (err) {
-      logger.error({ err }, "AI decision engine failed — holding all instruments this cycle");
+      logger.error({ userId, err }, "AI decision engine failed — holding all instruments this cycle");
       decisions = candidates.map((c) => ({
         ticker: c.ticker,
         action: "HOLD" as const,
@@ -378,23 +447,25 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
         if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = `Skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety. ${decision.reason}`;
           logger.warn(
-            { ticker: c.ticker, side: decision.action },
+            { userId, ticker: c.ticker, side: decision.action },
             "Autonomous exposure-increasing trade skipped — risk data unavailable (fail-safe)"
           );
         } else if (atPositionLimit) {
           aiReason = `Skipped: already at the ${cfg.maxConcurrentPositions}-position limit. ${decision.reason}`;
           logger.warn(
-            { ticker: c.ticker, side: decision.action, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
+            { userId, ticker: c.ticker, side: decision.action, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
             "Autonomous entry skipped — max concurrent positions reached"
           );
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = `Skipped: would exceed the account's available cash budget for this cycle. ${decision.reason}`;
           logger.warn(
-            { ticker: c.ticker, positionValue, deployedThisCycle, cashBudget },
+            { userId, ticker: c.ticker, positionValue, deployedThisCycle, cashBudget },
             "Autonomous BUY skipped — per-cycle cash budget exceeded"
           );
         } else {
           tradeExecuted = await placeAndRecord({
+            userId,
+            credentials,
             ticker: c.ticker,
             side: decision.action,
             quantity,
@@ -412,6 +483,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
         }
       }
       await db.insert(signalsTable).values({
+        userId,
         ticker: c.ticker,
         signal: decision.action,
         shortMa: String(c.shortMa),
@@ -466,10 +538,10 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
           aiConfidence = review.confidence;
           proceed = review.approved;
           if (!proceed) {
-            logger.info({ ticker, signal, reason: review.reason }, "AI vetoed signal");
+            logger.info({ userId, ticker, signal, reason: review.reason }, "AI vetoed signal");
           }
         } catch (err) {
-          logger.error({ ticker, signal, err }, "AI safety check failed — skipping trade for safety");
+          logger.error({ userId, ticker, signal, err }, "AI safety check failed — skipping trade for safety");
           aiReason = "AI safety check failed to respond, so the trade was skipped.";
           proceed = false;
         }
@@ -489,22 +561,24 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
           liveTickers.size >= cfg.maxConcurrentPositions;
         if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = "Trade skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety.";
-          logger.warn({ ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
+          logger.warn({ userId, ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
         } else if (atPositionLimit) {
           aiReason = `Trade skipped: already at the ${cfg.maxConcurrentPositions}-position limit.`;
           logger.warn(
-            { ticker, side: signal, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
+            { userId, ticker, side: signal, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
             "Entry skipped — max concurrent positions reached"
           );
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = "Trade skipped: it would exceed the account's available cash budget for this cycle.";
           logger.warn(
-            { ticker, positionValue, deployedThisCycle, cashBudget },
+            { userId, ticker, positionValue, deployedThisCycle, cashBudget },
             "BUY skipped — per-cycle cash budget exceeded"
           );
         } else {
-          logger.info({ ticker, signal, positionValue, quantity }, "Signal detected");
+          logger.info({ userId, ticker, signal, positionValue, quantity }, "Signal detected");
           tradeExecuted = await placeAndRecord({
+            userId,
+            credentials,
             ticker,
             side: signal,
             quantity,
@@ -524,6 +598,7 @@ export async function runCycle(): Promise<Array<{ ticker: string; signal: string
     }
 
     await db.insert(signalsTable).values({
+      userId,
       ticker,
       signal,
       shortMa: String(shortMa),
@@ -567,6 +642,8 @@ export function sizePosition(
  * (true for dry-run + filled, false for broker rejection).
  */
 async function placeAndRecord(args: {
+  userId: number;
+  credentials: UserBrokerCredentials;
   ticker: string;
   side: "BUY" | "SELL";
   quantity: number;
@@ -577,12 +654,13 @@ async function placeAndRecord(args: {
   aiReason?: string;
   aiConfidence?: string;
 }): Promise<boolean> {
-  const { ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence } = args;
-  const { broker, stopLossPercent, takeProfitPercent } = cfg;
+  const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence } = args;
+  const { stopLossPercent, takeProfitPercent } = cfg;
 
   if (dryRun) {
-    logger.info({ ticker, side, broker, dryRun: true }, "Dry-run signal");
+    logger.info({ userId, ticker, side, broker: credentials.broker, dryRun: true }, "Dry-run signal");
     await db.insert(tradesTable).values({
+      userId,
       ticker,
       side,
       quantity: String(quantity),
@@ -597,7 +675,8 @@ async function placeAndRecord(args: {
 
   try {
     const order = await placeBrokerOrder(
-      broker,
+      userId,
+      credentials,
       ticker,
       quantity,
       side,
@@ -605,6 +684,7 @@ async function placeAndRecord(args: {
       takeProfitPercent > 0 ? { takeProfitPercent, entryPrice: currentPrice } : undefined
     );
     await db.insert(tradesTable).values({
+      userId,
       ticker,
       side,
       quantity: String(quantity),
@@ -615,11 +695,12 @@ async function placeAndRecord(args: {
       aiReason: aiReason ?? null,
       aiConfidence: aiConfidence ?? null,
     });
-    logger.info({ ticker, side, broker, orderId: order.id }, "Trade executed");
+    logger.info({ userId, ticker, side, broker: credentials.broker, orderId: order.id }, "Trade executed");
     return true;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await db.insert(tradesTable).values({
+      userId,
       ticker,
       side,
       quantity: String(quantity),
@@ -630,7 +711,7 @@ async function placeAndRecord(args: {
       aiReason: aiReason ?? null,
       aiConfidence: aiConfidence ?? null,
     });
-    logger.error({ ticker, side, broker, err: msg }, "Trade failed");
+    logger.error({ userId, ticker, side, broker: credentials.broker, err: msg }, "Trade failed");
     return false;
   }
 }
@@ -649,19 +730,18 @@ export interface ManualTradeParams {
 }
 
 // In-flight guard: blocks concurrent duplicate submissions of the same
-// ticker+side while an order is being placed (e.g. double-clicks / retries).
+// user+ticker+side while an order is being placed (e.g. double-clicks / retries).
 const inFlightTrades = new Set<string>();
 
 /**
- * Execute a one-off manual trade through the broker selected in the bot config.
+ * Execute a one-off manual trade through the broker connected for this user.
  * Mirrors runCycle's order + recording logic and respects the same Dry Run and
  * stop-loss settings, so manual and bot execution behave identically.
  * Returns the persisted trade row.
  */
-export async function executeManualTrade(params: ManualTradeParams) {
+export async function executeManualTrade(userId: number, params: ManualTradeParams) {
   const ticker = params.ticker.trim();
   const { side, amount } = params;
-  const { broker, dryRun, stopLossPercent } = state.config;
 
   if (!ticker) {
     throw new TradeValidationError("Ticker is required");
@@ -670,43 +750,53 @@ export async function executeManualTrade(params: ManualTradeParams) {
     throw new TradeValidationError("Trade amount must be a positive number");
   }
 
-  const lockKey = `${broker}:${ticker}:${side}`;
+  const credentials = await getUserBrokerCredentials(userId);
+  if (!credentials) {
+    throw new BrokerNotConnectedError("Connect a broker account before placing trades");
+  }
+
+  const state = await getOrCreateBotState(userId);
+  const { dryRun, stopLossPercent } = state.config;
+
+  const lockKey = `${userId}:${credentials.broker}:${ticker}:${side}`;
   if (inFlightTrades.has(lockKey)) {
     throw new DuplicateTradeError(`A ${side} order for ${ticker} is already being placed`);
   }
   inFlightTrades.add(lockKey);
 
   try {
-    return await placeManualTrade({ ticker, side, amount, broker, dryRun, stopLossPercent });
+    return await placeManualTrade({ userId, credentials, ticker, side, amount, dryRun, stopLossPercent });
   } finally {
     inFlightTrades.delete(lockKey);
   }
 }
 
 async function placeManualTrade(args: {
+  userId: number;
+  credentials: UserBrokerCredentials;
   ticker: string;
   side: "BUY" | "SELL";
   amount: number;
-  broker: BrokerName;
   dryRun: boolean;
   stopLossPercent: number;
 }) {
-  const { ticker, side, amount, broker, dryRun, stopLossPercent } = args;
+  const { userId, credentials, ticker, side, amount, dryRun, stopLossPercent } = args;
 
-  const prices = await getBrokerPriceHistory(broker, ticker, 5);
+  const prices = await getBrokerPriceHistory(userId, credentials, ticker, 5);
   const currentPrice = prices[prices.length - 1];
   if (!currentPrice || !(currentPrice > 0)) {
-    throw new TradeExecutionError(`Could not fetch a current price for ${ticker} from ${broker}`);
+    throw new TradeExecutionError(`Could not fetch a current price for ${ticker} from ${credentials.broker}`);
   }
 
   const positionValue = amount;
   const quantity = positionValue / currentPrice;
 
   if (dryRun) {
-    logger.info({ ticker, side, broker, dryRun: true }, "Manual dry-run trade");
+    logger.info({ userId, ticker, side, broker: credentials.broker, dryRun: true }, "Manual dry-run trade");
     const [row] = await db
       .insert(tradesTable)
       .values({
+        userId,
         ticker,
         side,
         quantity: String(quantity),
@@ -720,7 +810,8 @@ async function placeManualTrade(args: {
 
   try {
     const order = await placeBrokerOrder(
-      broker,
+      userId,
+      credentials,
       ticker,
       quantity,
       side,
@@ -729,6 +820,7 @@ async function placeManualTrade(args: {
     const [row] = await db
       .insert(tradesTable)
       .values({
+        userId,
         ticker,
         side,
         quantity: String(quantity),
@@ -738,13 +830,14 @@ async function placeManualTrade(args: {
         orderId: order.id,
       })
       .returning();
-    logger.info({ ticker, side, broker, orderId: order.id }, "Manual trade executed");
+    logger.info({ userId, ticker, side, broker: credentials.broker, orderId: order.id }, "Manual trade executed");
     return row;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const [row] = await db
       .insert(tradesTable)
       .values({
+        userId,
         ticker,
         side,
         quantity: String(quantity),
@@ -754,7 +847,7 @@ async function placeManualTrade(args: {
         errorMessage: msg,
       })
       .returning();
-    logger.error({ ticker, side, broker, err: msg }, "Manual trade failed");
+    logger.error({ userId, ticker, side, broker: credentials.broker, err: msg }, "Manual trade failed");
     return row;
   }
 }

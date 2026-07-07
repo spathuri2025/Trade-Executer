@@ -1,4 +1,14 @@
-import { useSyncExternalStore } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { getGetQuoteQueryOptions, type Quote } from "@workspace/api-client-react";
+
+/**
+ * Matches the safe polling cadence documented in
+ * .agents/memory/live-data-refresh-cadence.md — brokers rate-limit REST calls,
+ * so this stays well above 1s even though it's now a per-user request (each
+ * customer has their own broker credentials as of the multi-tenant round —
+ * see .agents/memory/session-auth.md).
+ */
+const POLL_INTERVAL_MS = 20_000;
 
 export interface LiveQuote {
   epic: string;
@@ -8,120 +18,11 @@ export interface LiveQuote {
   timestamp: number;
 }
 
-interface SnapshotEvent {
-  type: "snapshot";
-  quotes: LiveQuote[];
-  connected: boolean;
-}
-interface QuoteEvent {
-  type: "quote";
-  quote: LiveQuote;
-}
-interface StatusEvent {
-  type: "status";
-  connected: boolean;
-}
-type StreamEvent = SnapshotEvent | QuoteEvent | StatusEvent;
-
 export interface LivePricesState {
-  /** Latest quote per epic. */
+  /** Latest quote per ticker. */
   quotes: Record<string, LiveQuote>;
-  /** Whether the upstream Capital.com stream is currently connected. */
+  /** Whether at least one quote has come back successfully. */
   connected: boolean;
-}
-
-/**
- * Shared, module-level SSE store for the server's live-price relay
- * (`/api/stream/prices`). A single EventSource is opened for the whole app and
- * ref-counted by subscribers, so mounting many price consumers never opens more
- * than one upstream connection.
- *
- * Crucially, `quotes[epic]` keeps a stable object reference for any epic that
- * did not change on a given tick. That lets `useLiveQuote(epic)` (via
- * `useSyncExternalStore`) re-render a component ONLY when its own epic ticks,
- * instead of on every tick from every subscribed instrument — the difference
- * between a chart that updates smoothly and one that feels laggy when dozens of
- * instruments are streaming.
- */
-let source: EventSource | null = null;
-let refCount = 0;
-let quotes: Record<string, LiveQuote> = {};
-let connected = false;
-let snapshot: LivePricesState = { quotes, connected };
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  snapshot = { quotes, connected };
-  for (const l of listeners) l();
-}
-
-function openConnection(): void {
-  if (source) return;
-  const es = new EventSource("/api/stream/prices");
-  source = es;
-
-  es.onmessage = (e) => {
-    let data: StreamEvent;
-    try {
-      data = JSON.parse(e.data) as StreamEvent;
-    } catch {
-      return;
-    }
-    if (data.type === "snapshot") {
-      const map: Record<string, LiveQuote> = {};
-      for (const q of data.quotes) map[q.epic] = q;
-      quotes = map;
-      connected = data.connected;
-      emit();
-    } else if (data.type === "quote") {
-      // New top-level object (so consumers of `quotes` see a change) but every
-      // other epic keeps its previous object reference.
-      quotes = { ...quotes, [data.quote.epic]: data.quote };
-      emit();
-    } else if (data.type === "status") {
-      if (connected !== data.connected) {
-        connected = data.connected;
-        emit();
-      }
-    }
-  };
-
-  es.onerror = () => {
-    // EventSource retries automatically; just reflect the dropped state once.
-    if (connected) {
-      connected = false;
-      emit();
-    }
-  };
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  refCount += 1;
-  openConnection();
-  return () => {
-    listeners.delete(listener);
-    refCount -= 1;
-    if (refCount === 0 && source) {
-      source.close();
-      source = null;
-      connected = false;
-      snapshot = { quotes, connected };
-    }
-  };
-}
-
-/**
- * Subscribe to the full live-quote map plus connection status. Re-renders on
- * every tick — use this only where you genuinely need all instruments (e.g. the
- * dashboard ticker strip). For a single instrument, prefer `useLiveQuote`.
- */
-export function useLivePrices(): LivePricesState {
-  return useSyncExternalStore(
-    subscribe,
-    () => snapshot,
-    () => snapshot,
-  );
 }
 
 export interface LiveQuoteState {
@@ -129,20 +30,59 @@ export interface LiveQuoteState {
   connected: boolean;
 }
 
+function toLiveQuote(ticker: string, q: Quote): LiveQuote {
+  return { epic: ticker, bid: q.bid, offer: q.offer, mid: q.price, timestamp: Date.now() };
+}
+
 /**
- * Subscribe to a single instrument's latest quote. Re-renders only when that
- * epic ticks (or the connection status flips), not on unrelated instruments.
+ * Polls `GET /quote` per ticker on a safe cadence — replaces the old shared
+ * Capital.com WebSocket/SSE relay (see .agents/memory/live-price-store.md),
+ * which depended on a single global broker connection that no longer exists
+ * now that broker credentials are per-user. True per-user WebSocket streaming
+ * is deferred to a later round; this is the interim fallback.
+ *
+ * Each ticker is its own React Query subscription, so — same as the old
+ * store's design goal — a tick on one instrument does not re-render consumers
+ * of a different instrument (see `useLiveQuote` below).
+ */
+export function useLivePrices(tickers: string[]): LivePricesState {
+  const results = useQueries({
+    queries: tickers.map((ticker) =>
+      getGetQuoteQueryOptions(
+        { ticker },
+        { query: { refetchInterval: POLL_INTERVAL_MS, staleTime: POLL_INTERVAL_MS, retry: false } },
+      ),
+    ),
+  });
+
+  const quotes: Record<string, LiveQuote> = {};
+  let connected = false;
+  results.forEach((r, i) => {
+    const ticker = tickers[i];
+    if (r.data) {
+      quotes[ticker] = toLiveQuote(ticker, r.data);
+      connected = true;
+    }
+  });
+
+  return { quotes, connected };
+}
+
+/**
+ * Subscribe to a single instrument's latest quote, polled independently of
+ * every other instrument (see `useLivePrices`'s doc comment on why this
+ * matters for chart responsiveness).
  */
 export function useLiveQuote(epic: string | undefined): LiveQuoteState {
-  const quote = useSyncExternalStore(
-    subscribe,
-    () => (epic ? quotes[epic] : undefined),
-    () => undefined,
+  const query = useQuery(
+    getGetQuoteQueryOptions(
+      { ticker: epic ?? "" },
+      { query: { refetchInterval: POLL_INTERVAL_MS, staleTime: POLL_INTERVAL_MS, retry: false, enabled: !!epic } },
+    ),
   );
-  const isConnected = useSyncExternalStore(
-    subscribe,
-    () => connected,
-    () => false,
-  );
-  return { quote, connected: isConnected };
+
+  return {
+    quote: epic && query.data ? toLiveQuote(epic, query.data) : undefined,
+    connected: !!query.data,
+  };
 }
