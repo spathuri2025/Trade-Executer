@@ -24,13 +24,14 @@ order-placement + DB-recording logic mirrored (manual reuses the bot's pattern).
   ticker, non-positive amount) → 400; an identical order already in flight → 429
   (in-memory lock keyed by broker:ticker:side prevents double-click double
   orders); upstream infra failure (price fetch / broker unreachable) → 502.
-- There is no auth in the app by design, so the execute endpoint is publicly
-  reachable. The in-flight lock limits accidental dupes but is NOT an authz
-  boundary — put login in front before exposing live trading publicly.
+- The execute endpoint requires a logged-in session (see `.agents/memory/session-auth.md`),
+  but there is no per-user ownership of the bot/broker connection — any logged-in user can
+  execute trades against the SAME shared account. The in-flight lock limits accidental
+  double-clicks but is NOT a per-tenant boundary.
 
 ## AI trade modes + extra gates (guard / autonomous)
 - `bot.config.aiTradeMode` (`off`/`guard`/`autonomous`) lets Claude join the loop. guard reviews non-HOLD MA signals (veto = don't order); autonomous decides per instrument. On any Claude error the trade is **vetoed / held** (fail-safe), never placed.
-- **Stopped ⇒ forced dry-run.** `runCycle` computes `dryRun = cfg.dryRun || !state.running`. A manual `POST /signals/run` while the bot is Stopped can therefore NEVER place real orders — it always simulates. Real orders only happen when the bot is actually running with Dry Run off. Preserve this; the manual run endpoint is unauthenticated.
+- **Stopped ⇒ forced dry-run.** `runCycle` computes `dryRun = cfg.dryRun || !state.running`. A manual `POST /signals/run` while the bot is Stopped can therefore NEVER place real orders — it always simulates. Real orders only happen when the bot is actually running with Dry Run off. Preserve this; the manual run endpoint requires login but is not otherwise access-controlled.
 - **Per-cycle cash budget.** Both the MA and autonomous loops cap total BUY notional deployed in a single cycle to the account's available cash (`account.cash`), so a cycle returning many BUYs can't multiply exposure beyond what the account holds. `riskPerTradePercent` is per-trade sizing, not a portfolio cap — this budget is the portfolio cap.
 - Any new DB column on `trades`/`signals` must be added to the route JSON mappings (`/trades`, `/signals`, `/signals/run`, execute response) or it silently never reaches the UI even though it's persisted.
 

@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Spinner } from "@/components/ui/spinner";
 import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import Trades from "@/pages/trades";
@@ -15,8 +16,11 @@ import Assistant from "@/pages/assistant";
 import SignalAnalyst from "@/pages/signal-analyst";
 import Settings from "@/pages/settings";
 import Setup from "@/pages/setup";
+import Login from "@/pages/login";
+import Signup from "@/pages/signup";
 import NotFound from "@/pages/not-found";
 import { useOnboarding } from "@/hooks/use-onboarding";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { useLocation, Redirect } from "wouter";
 import { useListInstruments, getListInstrumentsQueryKey } from "@workspace/api-client-react";
 
@@ -33,7 +37,8 @@ const queryClient = new QueryClient({
   },
 });
 
-function Router() {
+/** Rendered once a session is confirmed — everything here assumes an authenticated user. */
+function ProtectedRouter() {
   const { onboarded } = useOnboarding();
   const [location] = useLocation();
   const { data: instruments, isLoading: instrumentsLoading } = useListInstruments({
@@ -69,15 +74,47 @@ function Router() {
   );
 }
 
+/**
+ * Gates the whole app behind a session: shows the public login/signup pages
+ * for anyone not logged in, and only mounts ProtectedRouter (which fires
+ * real API queries) once a session is confirmed.
+ */
+function AppShell() {
+  const { user, isLoading } = useAuth();
+  const [location] = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner className="size-6" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    if (location === "/signup") return <Signup />;
+    if (location !== "/login") return <Redirect to="/login" />;
+    return <Login />;
+  }
+
+  if (location === "/login" || location === "/signup") {
+    return <Redirect to="/" />;
+  }
+
+  return <ProtectedRouter />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <AppShell />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

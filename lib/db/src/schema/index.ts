@@ -9,3 +9,5 @@ export * from "./marketNews";
 export * from "./aiMarketAnalysis";
 export * from "./marketBrainSnapshots";
 export * from "./userAiBriefs";
+export * from "./users";
+export * from "./sessions";

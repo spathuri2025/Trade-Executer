@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import authRouter from "./auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import botRouter from "./bot";
 import tradesRouter from "./trades";
 import positionsRouter from "./positions";
@@ -23,7 +25,13 @@ import tradeIntelligenceRouter from "./tradeIntelligence";
 
 const router: IRouter = Router();
 
+// Public — must be mounted before the auth gate below.
 router.use(healthRouter);
+router.use(authRouter);
+
+// Everything else requires a logged-in session.
+router.use(requireAuth);
+
 router.use(botRouter);
 router.use(tradesRouter);
 router.use(positionsRouter);

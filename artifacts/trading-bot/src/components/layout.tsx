@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X } from "lucide-react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -45,8 +46,31 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function SidebarFooter() {
+  const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login");
+  }
+
   return (
-    <div className="p-8">
+    <div className="px-8 pb-6 pt-4 space-y-4">
+      {user && (
+        <div className="flex items-center justify-between gap-2 pb-4 border-t border-white/10 pt-4">
+          <span className="text-xs text-white/50 truncate" title={user.email}>
+            {user.email}
+          </span>
+          <button
+            onClick={handleLogout}
+            className="p-1.5 rounded text-white/40 hover:text-white transition-colors shrink-0"
+            aria-label="Log out"
+            data-testid="button-logout"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <div className="text-[10px] uppercase tracking-widest text-white/30 space-y-0.5">
         <div className="font-mono">v1.0.0</div>
         <div>&copy; {new Date().getFullYear()} ClinAITech Limited</div>
