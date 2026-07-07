@@ -20,12 +20,15 @@ messages by guessing an ID. This is the only isolation boundary between the two 
 this exact gap after the initial implementation only scoped list/create.
 
 **How to apply:** When adding any new chat "kind" sharing these tables, or any new
-ID-based route, use `and(eq(conversations.id, id), eq(conversations.kind, KIND))`. For
-message routes, first verify the parent conversation exists with the right kind (404 if
-not), then operate on messages by `conversationId`.
+ID-based route, use `and(eq(conversations.id, id), eq(conversations.kind, KIND), eq(conversations.userId, req.user!.id))`.
+For message routes, first verify the parent conversation exists with the right kind AND
+owner (404 if not), then operate on messages by `conversationId` (messages have no
+`userId` of their own — ownership is inherited transitively through the parent
+conversation, which is why every message route re-checks the parent first).
 
-**Update:** the app now has session auth (see `.agents/memory/session-auth.md`) — every
-route including these requires a logged-in user — but `conversations`/`messages` have NO
-`userId` column and are not scoped per-user. Any logged-in user can see and act on every
-conversation of a given kind, not just their own. Adding real per-user scoping here was
-deliberately deferred (see `session-auth.md`) rather than half-wired in.
+**Update:** `conversations` now has a `userId` column and every one of the 5 ID-touching
+routes in both `assistant.ts` and `signalAnalyst.ts` (list, get, delete, list-messages,
+send-message) filters by `(id AND kind AND userId)` — this was the last per-user gap left
+after the multi-tenant broker round (see `.agents/memory/multi-tenant-broker.md`) and is
+now closed. `messages` itself intentionally has no `userId` column — it's scoped
+transitively via `conversations.id`.

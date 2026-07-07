@@ -40,11 +40,11 @@ function ensureDisclaimer(text: string): string {
   return `${text}${sep}${DISCLAIMER_LINE}`;
 }
 
-router.get("/signal-analyst/conversations", async (_req, res): Promise<void> => {
+router.get("/signal-analyst/conversations", async (req, res): Promise<void> => {
   const rows = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.kind, KIND))
+    .where(and(eq(conversations.kind, KIND), eq(conversations.userId, req.user!.id)))
     .orderBy(desc(conversations.createdAt));
   res.json(ListConversationsResponse.parse(rows));
 });
@@ -57,7 +57,7 @@ router.post("/signal-analyst/conversations", async (req, res): Promise<void> => 
   }
   const [row] = await db
     .insert(conversations)
-    .values({ title: parsed.data.title, kind: KIND })
+    .values({ title: parsed.data.title, kind: KIND, userId: req.user!.id })
     .returning();
   res.status(201).json(ListConversationsResponseItem.parse(row));
 });
@@ -71,7 +71,13 @@ router.get("/signal-analyst/conversations/:id", async (req, res): Promise<void> 
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, KIND)));
+    .where(
+      and(
+        eq(conversations.id, params.data.id),
+        eq(conversations.kind, KIND),
+        eq(conversations.userId, req.user!.id),
+      ),
+    );
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -92,7 +98,13 @@ router.delete("/signal-analyst/conversations/:id", async (req, res): Promise<voi
   }
   const [deleted] = await db
     .delete(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, KIND)))
+    .where(
+      and(
+        eq(conversations.id, params.data.id),
+        eq(conversations.kind, KIND),
+        eq(conversations.userId, req.user!.id),
+      ),
+    )
     .returning();
   if (!deleted) {
     res.status(404).json({ error: "Conversation not found" });
@@ -110,7 +122,13 @@ router.get("/signal-analyst/conversations/:id/messages", async (req, res): Promi
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, KIND)));
+    .where(
+      and(
+        eq(conversations.id, params.data.id),
+        eq(conversations.kind, KIND),
+        eq(conversations.userId, req.user!.id),
+      ),
+    );
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -145,7 +163,13 @@ router.post("/signal-analyst/conversations/:id/messages", async (req, res): Prom
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, conversationId), eq(conversations.kind, KIND)));
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        eq(conversations.kind, KIND),
+        eq(conversations.userId, req.user!.id),
+      ),
+    );
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;

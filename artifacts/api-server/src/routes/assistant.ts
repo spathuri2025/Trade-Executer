@@ -37,11 +37,11 @@ function ensureDisclaimer(text: string): string {
   return `${text}${sep}${DISCLAIMER_LINE}`;
 }
 
-router.get("/assistant/conversations", async (_req, res): Promise<void> => {
+router.get("/assistant/conversations", async (req, res): Promise<void> => {
   const rows = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.kind, "assistant"))
+    .where(and(eq(conversations.kind, "assistant"), eq(conversations.userId, req.user!.id)))
     .orderBy(desc(conversations.createdAt));
   res.json(ListConversationsResponse.parse(rows));
 });
@@ -54,7 +54,7 @@ router.post("/assistant/conversations", async (req, res): Promise<void> => {
   }
   const [row] = await db
     .insert(conversations)
-    .values({ title: parsed.data.title, kind: "assistant" })
+    .values({ title: parsed.data.title, kind: "assistant", userId: req.user!.id })
     .returning();
   res.status(201).json(ListConversationsResponseItem.parse(row));
 });
@@ -68,7 +68,13 @@ router.get("/assistant/conversations/:id", async (req, res): Promise<void> => {
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, "assistant")));
+    .where(
+      and(
+        eq(conversations.id, params.data.id),
+        eq(conversations.kind, "assistant"),
+        eq(conversations.userId, req.user!.id),
+      ),
+    );
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -89,7 +95,13 @@ router.delete("/assistant/conversations/:id", async (req, res): Promise<void> =>
   }
   const [deleted] = await db
     .delete(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, "assistant")))
+    .where(
+      and(
+        eq(conversations.id, params.data.id),
+        eq(conversations.kind, "assistant"),
+        eq(conversations.userId, req.user!.id),
+      ),
+    )
     .returning();
   if (!deleted) {
     res.status(404).json({ error: "Conversation not found" });
@@ -107,7 +119,13 @@ router.get("/assistant/conversations/:id/messages", async (req, res): Promise<vo
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.kind, "assistant")));
+    .where(
+      and(
+        eq(conversations.id, params.data.id),
+        eq(conversations.kind, "assistant"),
+        eq(conversations.userId, req.user!.id),
+      ),
+    );
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;
@@ -142,7 +160,13 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
   const [conversation] = await db
     .select()
     .from(conversations)
-    .where(and(eq(conversations.id, conversationId), eq(conversations.kind, "assistant")));
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        eq(conversations.kind, "assistant"),
+        eq(conversations.userId, req.user!.id),
+      ),
+    );
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
     return;

@@ -22,17 +22,14 @@ need to be revocable immediately (logout, forced logout on a compromised account
 See `.agents/memory/multi-tenant-broker.md` for the full picture: `instruments`/`trades`/
 `signals`/`scannerResults`/`bot_config`/`broker_credentials` are all scoped by `userId`,
 and `botEngine.ts`/`scannerEngine.ts` are per-user (`Map<userId, State>`), each with their
-own connected broker credentials.
+own connected broker credentials. `conversations`/`messages` (Assistant + Signal Analyst
+chat) are now also scoped by `userId` — see `.agents/memory/conversation-kind-isolation.md`.
 
 **Still shared/global, not per-user** (deliberate, documented, not an oversight):
-- `conversations`/`messages` (Assistant + Signal Analyst chat) — no `userId` column.
-  Adding one without wiring it into every query in `assistant.ts`/`signalAnalyst.ts`
-  would be a half-finished, misleading change; deferred as its own follow-up.
 - `userAiBriefs`, `marketBrainSnapshots`, `dailyMarketBriefs`, `marketNews`,
   `aiMarketAnalysis` — these are intentionally app-wide "market intelligence" content,
   not per-account data, so staying global is consistent with their design, not a gap.
 
 **How to apply:** when adding a new feature, check whether it's about *the user's own
-trading data* (instruments/trades/signals/bot/broker — scope by `req.user.id`, mirror the
-existing route patterns) or *shared market content* (news/briefs — stays global). Don't
-assume `conversations`/`messages` are private per user even though most other tables now are.
+trading data* (instruments/trades/signals/bot/broker/chat — scope by `req.user.id`, mirror
+the existing route patterns) or *shared market content* (news/briefs — stays global).

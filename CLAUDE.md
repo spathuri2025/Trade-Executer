@@ -11,11 +11,11 @@ MA-crossover strategy with a market scanner, plus an "AI Market Intelligence" la
 **Session auth is required app-wide** (login/signup at `/login`/`/signup`; every API route except `/healthz` and
 `/auth/*` requires a logged-in session — see `.agents/memory/session-auth.md`). **Multi-tenant**: each user
 connects their own broker (Capital.com or Trading 212) and gets a fully isolated bot — `instruments`/`trades`/
-`signals`/`scannerResults`/`bot_config`/`broker_credentials` are all scoped by `userId`, and `botEngine.ts`/
-`scannerEngine.ts` are per-user (`Map<userId, State>`), not global singletons. See
-`.agents/memory/multi-tenant-broker.md`. Exception: `conversations`/`messages` (chat) and market-wide AI content
-(market news/brain/daily briefs) intentionally stay global/shared — see `.agents/memory/session-auth.md` for
-exactly which. Live price *streaming* (WebSocket push) is deferred to a later round — prices are polled instead.
+`signals`/`scannerResults`/`bot_config`/`broker_credentials`/`conversations` are all scoped by `userId`, and
+`botEngine.ts`/`scannerEngine.ts` are per-user (`Map<userId, State>`), not global singletons. See
+`.agents/memory/multi-tenant-broker.md`. Exception: market-wide AI content (market news/brain/daily briefs)
+intentionally stays global/shared — see `.agents/memory/session-auth.md` for exactly which. Live price
+*streaming* (WebSocket push) is deferred to a later round — prices are polled instead.
 
 ## Commands
 
@@ -77,7 +77,7 @@ Every user connects their own broker via `Settings` or the Setup Wizard's first 
 ### Other load-bearing conventions
 - **Backtest cost ordering** (`artifacts/api-server/src/lib/backtest.ts`): round-trip cost must be deducted *before* the bar's equity point is pushed and drawdown updated, or the equity curve/return/drawdown numbers stop agreeing with each other. See `.agents/memory/backtest-cost-ordering.md`.
 - **Capital.com streaming protocol** (implementation removed, facts still relevant for a future per-user rebuild): plain JSON WebSocket (not Lightstreamer), reuses the REST session's CST/token, max 40 epics/connection, quote field is `ofr` not `offer`. `instrumentsTable.ticker` IS the Capital.com epic — no separate mapping layer. See `.agents/memory/capital-streaming.md`.
-- **Conversation kind isolation**: Assistant and Signal Analyst chats share the `conversations`/`messages` tables, discriminated by `conversations.kind`. Every ID-based route in both routers (get/delete/list-messages/send) must filter by `(id AND kind)`, not `id` alone — this is the only isolation boundary between the two chat *features*. It is not a per-user boundary: these tables have no `userId` column, so any logged-in user can see every conversation of a given kind. See `.agents/memory/conversation-kind-isolation.md`.
+- **Conversation kind isolation**: Assistant and Signal Analyst chats share the `conversations`/`messages` tables, discriminated by `conversations.kind`. Every ID-based route in both routers (get/delete/list-messages/send) must filter by `(id AND kind AND userId)` — `messages` has no `userId` of its own, so message routes re-verify the parent conversation's owner first. See `.agents/memory/conversation-kind-isolation.md`.
 - **Live data polling cadence**: broker-backed dashboard data (account/positions) polls at a fixed ~20s interval, not tied to the bot's scan interval — do not drop this toward sub-second polling, Capital.com/Trading 212 REST APIs are rate-limited. DB-only reads (signals, scanner) can poll faster. See `.agents/memory/live-data-refresh-cadence.md`.
 - **Onboarding wizard** (`/setup`): must always pin `dryRun: true` on finish (never spread a prior live config), and the first-run redirect must gate on `!onboarded && zero instruments`, not the localStorage flag alone, or existing users get trapped. See `.agents/memory/onboarding-wizard.md`.
 - **Orval codegen gotchas** beyond the path/query collision above — using a generated query hook with `enabled` requires passing an explicit `queryKey`. See `.agents/memory/orval-codegen-gotchas.md`.
