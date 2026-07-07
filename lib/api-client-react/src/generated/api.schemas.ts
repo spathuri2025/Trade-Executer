@@ -155,6 +155,53 @@ export interface BotConfigInput {
   costPerTradePercent?: number;
 }
 
+export type BrokerConnectInputBroker = typeof BrokerConnectInputBroker[keyof typeof BrokerConnectInputBroker];
+
+
+export const BrokerConnectInputBroker = {
+  trading212: 'trading212',
+  capitalcom: 'capitalcom',
+} as const;
+
+/**
+ * Required when broker is capitalcom.
+ */
+export type BrokerConnectInputCapital = {
+  apiKey?: string;
+  identifier?: string;
+  password?: string;
+};
+
+/**
+ * Required when broker is trading212.
+ */
+export type BrokerConnectInputTrading212 = {
+  apiKey?: string;
+};
+
+export interface BrokerConnectInput {
+  broker: BrokerConnectInputBroker;
+  /** Required when broker is capitalcom. */
+  capital?: BrokerConnectInputCapital;
+  /** Required when broker is trading212. */
+  trading212?: BrokerConnectInputTrading212;
+}
+
+export type BrokerStatusBroker = typeof BrokerStatusBroker[keyof typeof BrokerStatusBroker];
+
+
+export const BrokerStatusBroker = {
+  trading212: 'trading212',
+  capitalcom: 'capitalcom',
+} as const;
+
+export interface BrokerStatus {
+  connected: boolean;
+  broker?: BrokerStatusBroker;
+  /** Partially masked identifier/key for display — never the credential itself. */
+  identifierMasked?: string;
+}
+
 export type TradeSide = typeof TradeSide[keyof typeof TradeSide];
 
 

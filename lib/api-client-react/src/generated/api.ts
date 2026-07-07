@@ -30,6 +30,8 @@ import type {
   BacktestReport,
   BotConfigInput,
   BotStatus,
+  BrokerConnectInput,
+  BrokerStatus,
   Candle,
   ChartInsight,
   Conversation,
@@ -804,6 +806,226 @@ export const useUpdateBotConfig = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateBotConfigMutationOptions(options));
+    }
+
+export const getConnectBrokerUrl = () => {
+
+
+
+
+  return `/api/broker/connect`
+}
+
+/**
+ * Tests the credentials against the broker before saving. Credentials are encrypted at rest and never returned to the client.
+
+ * @summary Connect (or replace) this user's broker credentials
+ */
+export const connectBroker = async (brokerConnectInput: BrokerConnectInput, options?: RequestInit): Promise<BrokerStatus> => {
+
+  return customFetch<BrokerStatus>(getConnectBrokerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      brokerConnectInput,)
+  }
+);}
+
+
+
+
+export const getConnectBrokerMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectBroker>>, TError,{data: BodyType<BrokerConnectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectBroker>>, TError,{data: BodyType<BrokerConnectInput>}, TContext> => {
+
+const mutationKey = ['connectBroker'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectBroker>>, {data: BodyType<BrokerConnectInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  connectBroker(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectBrokerMutationResult = NonNullable<Awaited<ReturnType<typeof connectBroker>>>
+    export type ConnectBrokerMutationBody = BodyType<BrokerConnectInput>
+    export type ConnectBrokerMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Connect (or replace) this user's broker credentials
+ */
+export const useConnectBroker = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectBroker>>, TError,{data: BodyType<BrokerConnectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof connectBroker>>,
+        TError,
+        {data: BodyType<BrokerConnectInput>},
+        TContext
+      > => {
+      return useMutation(getConnectBrokerMutationOptions(options));
+    }
+
+export const getGetBrokerStatusUrl = () => {
+
+
+
+
+  return `/api/broker/status`
+}
+
+/**
+ * @summary This user's current broker connection status
+ */
+export const getBrokerStatus = async ( options?: RequestInit): Promise<BrokerStatus> => {
+
+  return customFetch<BrokerStatus>(getGetBrokerStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBrokerStatusQueryKey = () => {
+    return [
+    `/api/broker/status`
+    ] as const;
+    }
+
+
+export const getGetBrokerStatusQueryOptions = <TData = Awaited<ReturnType<typeof getBrokerStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBrokerStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBrokerStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBrokerStatus>>> = ({ signal }) => getBrokerStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBrokerStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBrokerStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getBrokerStatus>>>
+export type GetBrokerStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary This user's current broker connection status
+ */
+
+export function useGetBrokerStatus<TData = Awaited<ReturnType<typeof getBrokerStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBrokerStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBrokerStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDisconnectBrokerUrl = () => {
+
+
+
+
+  return `/api/broker/disconnect`
+}
+
+/**
+ * @summary Disconnect this user's broker (also stops their bot if running)
+ */
+export const disconnectBroker = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDisconnectBrokerUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDisconnectBrokerMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectBroker>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectBroker>>, TError,void, TContext> => {
+
+const mutationKey = ['disconnectBroker'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectBroker>>, void> = () => {
+
+
+          return  disconnectBroker(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectBrokerMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectBroker>>>
+
+    export type DisconnectBrokerMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Disconnect this user's broker (also stops their bot if running)
+ */
+export const useDisconnectBroker = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectBroker>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectBroker>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDisconnectBrokerMutationOptions(options));
     }
 
 export const getListTradesUrl = (params?: ListTradesParams,) => {
