@@ -57,10 +57,10 @@ export function extractJson(text: string): unknown {
 /** Call Claude with a single user prompt and return the parsed JSON object. */
 export async function generateClaudeJson(
   prompt: string,
-  opts: { maxTokens?: number } = {},
+  opts: { maxTokens?: number; model?: string } = {},
 ): Promise<Record<string, unknown>> {
   const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: opts.model ?? "claude-sonnet-4-6",
     max_tokens: opts.maxTokens ?? 4096,
     messages: [{ role: "user", content: prompt }],
   });

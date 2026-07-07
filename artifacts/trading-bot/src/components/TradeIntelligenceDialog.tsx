@@ -54,7 +54,12 @@ export function TradeIntelligenceDialog({ signal }: { signal: Signal }) {
         <Button
           size="sm"
           variant="outline"
-          onClick={() => evaluate.mutate({ data: buildTradeIntelligenceInput(signal) })}
+          onClick={() => {
+            // Only call Claude the first time — reuse the result on re-open.
+            if (!evaluate.data && !evaluate.isPending) {
+              evaluate.mutate({ data: buildTradeIntelligenceInput(signal) });
+            }
+          }}
           data-testid={`button-trade-intelligence-${signal.id}`}
         >
           <Sparkles className="h-3.5 w-3.5" />

@@ -108,12 +108,31 @@ function buildPrompt(input: TradeIntelligenceEvaluateInput): string {
     .join("\n");
 }
 
+// Small in-memory cache so re-opening the same setup is instant instead of
+// re-calling Claude. Keyed by the full input; entries expire after 5 minutes.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX = 200;
+const cache = new Map<string, { report: TradeIntelligenceReport; expires: number }>();
+
+function cacheKey(input: TradeIntelligenceEvaluateInput): string {
+  return JSON.stringify(input);
+}
+
 export async function evaluateTradeIntelligence(
   input: TradeIntelligenceEvaluateInput,
 ): Promise<TradeIntelligenceReport> {
-  const parsed = await generateClaudeJson(buildPrompt(input), { maxTokens: 2048 });
+  const key = cacheKey(input);
+  const hit = cache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.report;
 
-  return {
+  // Haiku is the fastest model — this is a bounded structured task, so it keeps
+  // the report quality high while cutting latency versus Sonnet.
+  const parsed = await generateClaudeJson(buildPrompt(input), {
+    maxTokens: 1536,
+    model: "claude-haiku-4-5",
+  });
+
+  const report: TradeIntelligenceReport = {
     summary: asString(parsed["summary"]),
     bullishFactors: asStringArray(parsed["bullishFactors"]).slice(0, 6),
     bearishFactors: asStringArray(parsed["bearishFactors"]).slice(0, 6),
@@ -127,4 +146,12 @@ export async function evaluateTradeIntelligence(
     riskWarning: TRADE_INTELLIGENCE_DISCLAIMER,
     disclaimer: TRADE_INTELLIGENCE_DISCLAIMER,
   };
+
+  cache.set(key, { report, expires: Date.now() + CACHE_TTL_MS });
+  if (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+
+  return report;
 }
