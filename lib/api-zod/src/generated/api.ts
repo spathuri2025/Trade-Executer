@@ -232,6 +232,34 @@ export const UpdateBotConfigResponse = zod.object({
 
 
 /**
+ * Tests the credentials against the broker before saving. Credentials are encrypted at rest and never returned to the client.
+
+ * @summary Connect (or replace) this user's broker credentials
+ */
+export const ConnectBrokerBody = zod.object({
+  "broker": zod.enum(['trading212', 'capitalcom']),
+  "capital": zod.object({
+  "apiKey": zod.string().optional(),
+  "identifier": zod.string().optional(),
+  "password": zod.string().optional()
+}).optional().describe('Required when broker is capitalcom.'),
+  "trading212": zod.object({
+  "apiKey": zod.string().optional()
+}).optional().describe('Required when broker is trading212.')
+})
+
+
+/**
+ * @summary This user's current broker connection status
+ */
+export const GetBrokerStatusResponse = zod.object({
+  "connected": zod.boolean(),
+  "broker": zod.enum(['trading212', 'capitalcom']).optional(),
+  "identifierMasked": zod.string().optional().describe('Partially masked identifier\/key for display — never the credential itself.')
+})
+
+
+/**
  * @summary List trade history
  */
 export const listTradesQueryLimitDefault = 50;
