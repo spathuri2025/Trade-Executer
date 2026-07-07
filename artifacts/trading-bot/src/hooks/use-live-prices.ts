@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 export interface LiveQuote {
   epic: string;
@@ -31,48 +31,118 @@ export interface LivePricesState {
 }
 
 /**
- * Subscribes to the server's SSE live-price relay (`/api/stream/prices`), which
- * fans out the shared Capital.com WebSocket feed. Returns the latest quote per
- * epic plus the upstream connection status. EventSource auto-reconnects on drop.
+ * Shared, module-level SSE store for the server's live-price relay
+ * (`/api/stream/prices`). A single EventSource is opened for the whole app and
+ * ref-counted by subscribers, so mounting many price consumers never opens more
+ * than one upstream connection.
+ *
+ * Crucially, `quotes[epic]` keeps a stable object reference for any epic that
+ * did not change on a given tick. That lets `useLiveQuote(epic)` (via
+ * `useSyncExternalStore`) re-render a component ONLY when its own epic ticks,
+ * instead of on every tick from every subscribed instrument — the difference
+ * between a chart that updates smoothly and one that feels laggy when dozens of
+ * instruments are streaming.
+ */
+let source: EventSource | null = null;
+let refCount = 0;
+let quotes: Record<string, LiveQuote> = {};
+let connected = false;
+let snapshot: LivePricesState = { quotes, connected };
+const listeners = new Set<() => void>();
+
+function emit(): void {
+  snapshot = { quotes, connected };
+  for (const l of listeners) l();
+}
+
+function openConnection(): void {
+  if (source) return;
+  const es = new EventSource("/api/stream/prices");
+  source = es;
+
+  es.onmessage = (e) => {
+    let data: StreamEvent;
+    try {
+      data = JSON.parse(e.data) as StreamEvent;
+    } catch {
+      return;
+    }
+    if (data.type === "snapshot") {
+      const map: Record<string, LiveQuote> = {};
+      for (const q of data.quotes) map[q.epic] = q;
+      quotes = map;
+      connected = data.connected;
+      emit();
+    } else if (data.type === "quote") {
+      // New top-level object (so consumers of `quotes` see a change) but every
+      // other epic keeps its previous object reference.
+      quotes = { ...quotes, [data.quote.epic]: data.quote };
+      emit();
+    } else if (data.type === "status") {
+      if (connected !== data.connected) {
+        connected = data.connected;
+        emit();
+      }
+    }
+  };
+
+  es.onerror = () => {
+    // EventSource retries automatically; just reflect the dropped state once.
+    if (connected) {
+      connected = false;
+      emit();
+    }
+  };
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  refCount += 1;
+  openConnection();
+  return () => {
+    listeners.delete(listener);
+    refCount -= 1;
+    if (refCount === 0 && source) {
+      source.close();
+      source = null;
+      connected = false;
+      snapshot = { quotes, connected };
+    }
+  };
+}
+
+/**
+ * Subscribe to the full live-quote map plus connection status. Re-renders on
+ * every tick — use this only where you genuinely need all instruments (e.g. the
+ * dashboard ticker strip). For a single instrument, prefer `useLiveQuote`.
  */
 export function useLivePrices(): LivePricesState {
-  const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
-  const [connected, setConnected] = useState(false);
-  const sourceRef = useRef<EventSource | null>(null);
+  return useSyncExternalStore(
+    subscribe,
+    () => snapshot,
+    () => snapshot,
+  );
+}
 
-  useEffect(() => {
-    const es = new EventSource("/api/stream/prices");
-    sourceRef.current = es;
+export interface LiveQuoteState {
+  quote: LiveQuote | undefined;
+  connected: boolean;
+}
 
-    es.onmessage = (e) => {
-      let data: StreamEvent;
-      try {
-        data = JSON.parse(e.data) as StreamEvent;
-      } catch {
-        return;
-      }
-      if (data.type === "snapshot") {
-        const map: Record<string, LiveQuote> = {};
-        for (const q of data.quotes) map[q.epic] = q;
-        setQuotes(map);
-        setConnected(data.connected);
-      } else if (data.type === "quote") {
-        setQuotes((prev) => ({ ...prev, [data.quote.epic]: data.quote }));
-      } else if (data.type === "status") {
-        setConnected(data.connected);
-      }
-    };
-
-    es.onerror = () => {
-      setConnected(false);
-      // EventSource retries automatically; nothing else to do here.
-    };
-
-    return () => {
-      es.close();
-      sourceRef.current = null;
-    };
-  }, []);
-
-  return { quotes, connected };
+/**
+ * Subscribe to a single instrument's latest quote. Re-renders only when that
+ * epic ticks (or the connection status flips), not on unrelated instruments.
+ */
+export function useLiveQuote(epic: string | undefined): LiveQuoteState {
+  const quote = useSyncExternalStore(
+    subscribe,
+    () => (epic ? quotes[epic] : undefined),
+    () => undefined,
+  );
+  const isConnected = useSyncExternalStore(
+    subscribe,
+    () => connected,
+    () => false,
+  );
+  return { quote, connected: isConnected };
 }

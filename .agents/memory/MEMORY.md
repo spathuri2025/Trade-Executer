@@ -2,3 +2,4 @@
 - [OpenAPI route conventions](openapi-route-conventions.md) — routes validate inputs manually (not generated Zod) to decouple from codegen; nullables use type:["x","null"]; re-run codegen after spec edits.
 - [Trade Intelligence (Claude layer)](trade-intelligence-claude.md) — no real multi-factor scoring engine exists; the Signals-page bridge honestly marks unscored factors as "not yet computed" instead of fabricating data.
 - [Session authentication](session-auth.md) — login is required app-wide now, but bot/trades/signals/conversations are still one shared dataset across all users, not per-tenant.
+- [Live price SSE store](live-price-store.md) — live-prices is a shared external store; use useLiveQuote(epic) for single instruments to avoid a re-render storm from all ~40 streaming epics.

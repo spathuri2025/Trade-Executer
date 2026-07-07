@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CandlestickChart as CandlestickIcon } from "lucide-react";
-import { useLivePrices } from "@/hooks/use-live-prices";
+import { useLiveQuote } from "@/hooks/use-live-prices";
 import CandlestickChart from "@/components/CandlestickChart";
 import ChartInsightPanel from "@/components/ChartInsightPanel";
 
@@ -65,8 +65,7 @@ export default function Charts() {
     },
   );
 
-  const { quotes, connected } = useLivePrices();
-  const liveQuote = epic ? quotes[epic] : undefined;
+  const { quote: liveQuote, connected } = useLiveQuote(epic);
   const liveMid = liveQuote ? liveQuote.mid : null;
   const liveTime = liveQuote ? liveQuote.timestamp : null;
 
