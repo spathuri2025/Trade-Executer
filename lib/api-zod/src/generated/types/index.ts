@@ -19,6 +19,8 @@ export * from './analyseNewsInput';
 export * from './assistantError';
 export * from './assistantMessage';
 export * from './assistantMessageRole';
+export * from './authCredentials';
+export * from './authUser';
 export * from './backtestPoint';
 export * from './backtestReport';
 export * from './backtestResult';

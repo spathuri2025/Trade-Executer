@@ -9,6 +9,16 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface AuthCredentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+}
+
 /**
  * Which broker to route trades through
  */

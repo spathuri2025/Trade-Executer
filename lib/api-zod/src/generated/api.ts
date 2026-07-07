@@ -17,6 +17,38 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Create an account and start a session
+ */
+export const SignupBody = zod.object({
+  "email": zod.string(),
+  "password": zod.string()
+})
+
+
+/**
+ * @summary Log in and start a session
+ */
+export const LoginBody = zod.object({
+  "email": zod.string(),
+  "password": zod.string()
+})
+
+export const LoginResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string()
+})
+
+
+/**
+ * @summary The currently logged-in user
+ */
+export const GetMeResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string()
+})
+
+
+/**
  * @summary Get current bot status and config
  */
 export const GetBotStatusResponse = zod.object({
