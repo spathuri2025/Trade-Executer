@@ -35,6 +35,21 @@ function toLiveQuote(ticker: string, q: Quote): LiveQuote {
 }
 
 /**
+ * Base query options for one ticker's quote, with polling overrides applied
+ * by spreading rather than passing through getGetQuoteQueryOptions's generic
+ * `options.query` parameter — the latter's TData/TError generics don't infer
+ * cleanly for a literal `{ refetchInterval, staleTime, retry }` object there.
+ */
+function quoteQueryOptions(ticker: string) {
+  return {
+    ...getGetQuoteQueryOptions({ ticker }),
+    refetchInterval: POLL_INTERVAL_MS,
+    staleTime: POLL_INTERVAL_MS,
+    retry: false as const,
+  };
+}
+
+/**
  * Polls `GET /quote` per ticker on a safe cadence — replaces the old shared
  * Capital.com WebSocket/SSE relay (see .agents/memory/live-price-store.md),
  * which depended on a single global broker connection that no longer exists
@@ -47,12 +62,7 @@ function toLiveQuote(ticker: string, q: Quote): LiveQuote {
  */
 export function useLivePrices(tickers: string[]): LivePricesState {
   const results = useQueries({
-    queries: tickers.map((ticker) =>
-      getGetQuoteQueryOptions(
-        { ticker },
-        { query: { refetchInterval: POLL_INTERVAL_MS, staleTime: POLL_INTERVAL_MS, retry: false } },
-      ),
-    ),
+    queries: tickers.map((ticker) => quoteQueryOptions(ticker)),
   });
 
   const quotes: Record<string, LiveQuote> = {};
@@ -74,12 +84,10 @@ export function useLivePrices(tickers: string[]): LivePricesState {
  * matters for chart responsiveness).
  */
 export function useLiveQuote(epic: string | undefined): LiveQuoteState {
-  const query = useQuery(
-    getGetQuoteQueryOptions(
-      { ticker: epic ?? "" },
-      { query: { refetchInterval: POLL_INTERVAL_MS, staleTime: POLL_INTERVAL_MS, retry: false, enabled: !!epic } },
-    ),
-  );
+  const query = useQuery({
+    ...quoteQueryOptions(epic ?? ""),
+    enabled: !!epic,
+  });
 
   return {
     quote: epic && query.data ? toLiveQuote(epic, query.data) : undefined,
