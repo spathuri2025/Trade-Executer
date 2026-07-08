@@ -20,8 +20,9 @@ router.use(requireAdmin);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-function parseUserId(raw: string): number | null {
-  const id = Number(raw);
+function parseUserId(raw: string | string[]): number | null {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
