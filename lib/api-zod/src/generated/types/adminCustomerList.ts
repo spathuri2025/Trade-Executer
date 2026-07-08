@@ -5,10 +5,8 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
-import type { AuthUserRole } from './authUserRole';
+import type { AdminCustomer } from './adminCustomer';
 
-export interface AuthUser {
-  id: number;
-  email: string;
-  role: AuthUserRole;
+export interface AdminCustomerList {
+  customers: AdminCustomer[];
 }
