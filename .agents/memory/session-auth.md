@@ -33,3 +33,9 @@ chat) are now also scoped by `userId` — see `.agents/memory/conversation-kind-
 **How to apply:** when adding a new feature, check whether it's about *the user's own
 trading data* (instruments/trades/signals/bot/broker/chat — scope by `req.user.id`, mirror
 the existing route patterns) or *shared market content* (news/briefs — stays global).
+
+**Update — as of the Admin Centre round, `users` also has `role` (`"customer"|"admin"`)
+and `suspendedAt`.** A suspended account is blocked both at `POST /auth/login` and on
+every subsequent `requireAuth`-gated request (not just at next login). `req.user` now
+carries `role` too. See `.agents/memory/admin-centre.md` for the full admin-only
+surface (`requireAdmin` middleware, customer management, subscriptions, contracts).

@@ -60,7 +60,7 @@ router.post("/auth/signup", authRateLimit, async (req, res): Promise<void> => {
 
     const { token } = await createSession(user.id);
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-    res.status(201).json({ id: user.id, email: user.email });
+    res.status(201).json({ id: user.id, email: user.email, role: user.role });
   } catch (err) {
     req.log.error({ err }, "Signup failed");
     res.status(500).json({ error: "Failed to create account" });
@@ -82,9 +82,16 @@ router.post("/auth/login", authRateLimit, async (req, res): Promise<void> => {
       return;
     }
 
+    // Checked here (not just in requireAuth) so a suspended customer finds out
+    // immediately at login instead of getting a session cookie that then 403s.
+    if (user.suspendedAt) {
+      res.status(403).json({ error: "Your account has been suspended. Contact support." });
+      return;
+    }
+
     const { token } = await createSession(user.id);
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-    res.json({ id: user.id, email: user.email });
+    res.json({ id: user.id, email: user.email, role: user.role });
   } catch (err) {
     req.log.error({ err }, "Login failed");
     res.status(500).json({ error: "Failed to log in" });

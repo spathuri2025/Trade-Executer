@@ -184,6 +184,15 @@ export async function getBotStatus(userId: number) {
 }
 
 /**
+ * Pure lookup of whether a user's bot is running — unlike getBotStatus, never
+ * creates in-memory state for a user who has never started a bot. Safe to call
+ * for every row of an admin customer list without side effects.
+ */
+export function peekBotRunning(userId: number): boolean {
+  return botStates.get(userId)?.running ?? false;
+}
+
+/**
  * Clears a tripped daily-loss circuit breaker and restarts the bot. This is the
  * ONLY way to resume after the breaker trips — the engine never auto-resumes.
  * Resets the loss baseline so the breaker measures from the resume point onward.

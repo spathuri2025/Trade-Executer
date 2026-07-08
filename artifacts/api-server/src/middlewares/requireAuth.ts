@@ -14,6 +14,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  req.user = { id: user.id, email: user.email };
+  // A suspended account is blocked on every request, not just at login — an
+  // admin suspending someone mid-session must take effect immediately.
+  if (user.suspendedAt) {
+    res.status(403).json({ error: "Your account has been suspended. Contact support." });
+    return;
+  }
+
+  req.user = { id: user.id, email: user.email, role: user.role };
   next();
 }

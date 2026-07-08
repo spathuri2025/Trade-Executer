@@ -15,7 +15,8 @@ connects their own broker (Capital.com or Trading 212) and gets a fully isolated
 `botEngine.ts`/`scannerEngine.ts` are per-user (`Map<userId, State>`), not global singletons. See
 `.agents/memory/multi-tenant-broker.md`. Exception: market-wide AI content (market news/brain/daily briefs)
 intentionally stays global/shared — see `.agents/memory/session-auth.md` for exactly which. Live price
-*streaming* (WebSocket push) is per-user too — see `.agents/memory/capital-streaming.md`.
+*streaming* (WebSocket push) is per-user too — see `.agents/memory/capital-streaming.md`. An **Admin
+Centre** (`/admin`, role-gated) lets an operator manage customers — see `.agents/memory/admin-centre.md`.
 
 ## Commands
 
@@ -66,6 +67,16 @@ Email+password, `bcrypt` hashing, opaque DB-backed session tokens (not JWT) in a
 
 ### Multi-tenant broker accounts
 Every user connects their own broker via `Settings` or the Setup Wizard's first step (`POST /broker/connect`, credentials encrypted at rest — see `.agents/memory/multi-tenant-broker.md`). `botEngine.ts`/`scannerEngine.ts` are `Map<userId, State>`, not global singletons — every exported function takes a leading `userId`. `broker.ts`/`capitalcom.ts`/`trading212.ts` take explicit credentials instead of reading env vars; Capital.com's session cache is `Map<userId, Session>`. `startBot`/`executeManualTrade` throw `BrokerNotConnectedError` (→ 400) if the user has no broker connected. Live price streaming (`capitalStream.ts`) is also per-user — a ref-counted `Map<userId, CapitalStreamManager>` registry (`acquireCapitalStream`/`releaseCapitalStream`/`evictCapitalStream`), not a global singleton; see `.agents/memory/capital-streaming.md`.
+
+### Admin Centre
+Role-gated (`users.role`, no self-serve promotion — direct DB update only) customer
+management at `/admin`, behind `requireAdmin` (`artifacts/api-server/src/routes/admin.ts`).
+Suspending a customer (`users.suspendedAt`) blocks login/every request immediately AND
+force-stops their bot + evicts their live stream (`stopBot`/`evictCapitalStream`) — not
+just a login-time check. Subscriptions (`plan`/`status`/`notes`/`renewsAt`) are
+admin-authored, not Stripe-driven. Contracts are base64 in Postgres (`contracts.fileData`,
+10MB cap via `multer`), not object storage; upload/download are deliberately **not** in
+the OpenAPI spec (same exception as SSE endpoints). See `.agents/memory/admin-centre.md`.
 
 ### Trade execution & risk (read before touching `botEngine.ts`, `broker.ts`, or any execute route)
 - Manual trades and the automated bot **must** place orders through the same path — both read broker/dryRun/stopLossPercent from that user's bot config and write the same `trades` row shape (`FILLED`/`FAILED`/`DRY_RUN`, with `userId`).

@@ -15,6 +15,7 @@ import Charts from "@/pages/charts";
 import Assistant from "@/pages/assistant";
 import SignalAnalyst from "@/pages/signal-analyst";
 import Settings from "@/pages/settings";
+import Admin from "@/pages/admin";
 import Setup from "@/pages/setup";
 import Login from "@/pages/login";
 import Signup from "@/pages/signup";
@@ -68,6 +69,7 @@ function ProtectedRouter() {
         <Route path="/signal-analyst" component={SignalAnalyst} />
         <Route path="/setup" component={Setup} />
         <Route path="/settings" component={Settings} />
+        <Route path="/admin" component={Admin} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

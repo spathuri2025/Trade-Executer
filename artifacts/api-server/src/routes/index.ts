@@ -23,6 +23,7 @@ import chartInsightRouter from "./chartInsight";
 import performanceCoachRouter from "./performanceCoach";
 import assistantBriefRouter from "./assistantBrief";
 import tradeIntelligenceRouter from "./tradeIntelligence";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(chartInsightRouter);
 router.use(performanceCoachRouter);
 router.use(assistantBriefRouter);
 router.use(tradeIntelligenceRouter);
+router.use(adminRouter);
 
 export default router;

@@ -26,6 +26,8 @@ tags:
     description: Claude-powered Signal Analyst chat
   - name: dailyMarketBrief
     description: AI-generated daily market briefs
+  - name: admin
+    description: Admin-only customer/tenant management
 
 paths:
   /healthz:
@@ -1068,6 +1070,185 @@ paths:
               schema:
                 $ref: "#/components/schemas/AssistantError"
 
+  /admin/customers:
+    get:
+      operationId: listAdminCustomers
+      tags: [admin]
+      summary: List every customer with broker/bot/subscription/activity summary
+      responses:
+        "200":
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerList"
+        "403":
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /admin/customers/{id}/suspend:
+    post:
+      operationId: suspendCustomer
+      tags: [admin]
+      summary: Suspend a customer — blocks login and immediately force-stops their bot and live stream
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer suspended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSuspendResult"
+        "400":
+          description: Invalid customer id, or attempting to suspend your own account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "404":
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /admin/customers/{id}/unsuspend:
+    post:
+      operationId: unsuspendCustomer
+      tags: [admin]
+      summary: Restore a suspended customer's access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer unsuspended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSuspendResult"
+        "404":
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /admin/customers/{id}:
+    delete:
+      operationId: deleteCustomer
+      tags: [admin]
+      summary: Permanently delete a customer and all their data (force-stops their bot and live stream first)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Customer deleted
+        "400":
+          description: Invalid customer id, or attempting to delete your own account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "404":
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /admin/customers/{id}/subscription:
+    put:
+      operationId: updateCustomerSubscription
+      tags: [admin]
+      summary: Admin-authored plan/billing status for a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionInput"
+      responses:
+        "200":
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+        "400":
+          description: Invalid plan or status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "404":
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /admin/customers/{id}/contracts:
+    get:
+      operationId: listCustomerContracts
+      tags: [admin]
+      summary: List a customer's uploaded contract/legal documents (metadata only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contract list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractList"
+
+  /admin/contracts/{contractId}:
+    delete:
+      operationId: deleteContract
+      tags: [admin]
+      summary: Delete a contract document
+      parameters:
+        - name: contractId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Contract deleted
+        "404":
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
 components:
   schemas:
     HealthStatus:
@@ -1088,12 +1269,15 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email]
+      required: [id, email, role]
       properties:
         id:
           type: integer
         email:
           type: string
+        role:
+          type: string
+          enum: [customer, admin]
 
     BotStatus:
       type: object
@@ -2228,3 +2412,125 @@ components:
           oneOf:
             - $ref: "#/components/schemas/UserAiBrief"
             - type: "null"
+
+    AdminCustomerBroker:
+      type: object
+      required: [broker, identifierMasked]
+      properties:
+        broker:
+          type: string
+          enum: [trading212, capitalcom]
+        identifierMasked:
+          type: string
+          description: Partially masked identifier/key for display — never the credential itself.
+
+    AdminCustomer:
+      type: object
+      required:
+        [id, email, role, suspendedAt, createdAt, broker, botRunning, subscription, tradeCount, signalCount, lastActivityAt]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        role:
+          type: string
+          enum: [customer, admin]
+        suspendedAt:
+          type: ["string", "null"]
+          description: ISO timestamp — non-null means the account is suspended.
+        createdAt:
+          type: string
+          format: date-time
+        broker:
+          oneOf:
+            - $ref: "#/components/schemas/AdminCustomerBroker"
+            - type: "null"
+        botRunning:
+          type: boolean
+        subscription:
+          $ref: "#/components/schemas/Subscription"
+        tradeCount:
+          type: integer
+        signalCount:
+          type: integer
+        lastActivityAt:
+          type: ["string", "null"]
+          description: ISO timestamp of the most recent trade or signal, whichever is later.
+
+    AdminCustomerList:
+      type: object
+      required: [customers]
+      properties:
+        customers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomer"
+
+    AdminSuspendResult:
+      type: object
+      required: [id, suspendedAt]
+      properties:
+        id:
+          type: integer
+        suspendedAt:
+          type: ["string", "null"]
+
+    SubscriptionInput:
+      type: object
+      required: [plan, status]
+      properties:
+        plan:
+          type: string
+          enum: [free, starter, pro, enterprise]
+        status:
+          type: string
+          enum: [active, trialing, past_due, canceled]
+        notes:
+          type: ["string", "null"]
+        renewsAt:
+          type: ["string", "null"]
+          description: ISO date/timestamp.
+
+    Subscription:
+      type: object
+      required: [plan, status, notes, renewsAt]
+      properties:
+        plan:
+          type: string
+          enum: [free, starter, pro, enterprise]
+        status:
+          type: string
+          enum: [active, trialing, past_due, canceled]
+        notes:
+          type: ["string", "null"]
+        renewsAt:
+          type: ["string", "null"]
+
+    Contract:
+      type: object
+      required: [id, fileName, fileType, fileSize, notes, uploadedAt]
+      properties:
+        id:
+          type: integer
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+          description: Bytes.
+        notes:
+          type: ["string", "null"]
+        uploadedAt:
+          type: string
+          format: date-time
+
+    ContractList:
+      type: object
+      required: [contracts]
+      properties:
+        contracts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contract"

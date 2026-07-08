@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X, LogOut } from "lucide-react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X, LogOut, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const links = [
@@ -20,9 +20,11 @@ const links = [
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const visibleLinks = user?.role === "admin" ? [...links, { href: "/admin", label: "Admin Centre", icon: ShieldCheck }] : links;
   return (
     <nav className="flex-1 px-4 py-2 space-y-0.5">
-      {links.map((link) => {
+      {visibleLinks.map((link) => {
         const active = location === link.href;
         return (
           <Link

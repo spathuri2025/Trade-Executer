@@ -6,6 +6,9 @@ export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  role: text("role", { enum: ["customer", "admin"] }).notNull().default("customer"),
+  /** Non-null = suspended. Blocks login and every authenticated request (see requireAuth.ts). */
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

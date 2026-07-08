@@ -5,3 +5,4 @@
 - [Live price SSE store](live-price-store.md) — shared-SSE re-render fix (stable per-epic references); briefly replaced with polling mid-round, now restored per-user.
 - [Multi-tenant broker accounts](multi-tenant-broker.md) — each user connects their own encrypted broker credentials; botEngine/scannerEngine/capitalStream are all per-user Maps; conversations are per-user too.
 - [Conversation kind isolation](conversation-kind-isolation.md) — Assistant/Signal Analyst chats share conversations/messages tables, discriminated by kind AND now userId.
+- [Admin Centre](admin-centre.md) — role/suspendedAt on users, no self-serve admin promotion, suspend force-stops bot+stream immediately, contracts are base64-in-Postgres not object storage.
