@@ -53,16 +53,48 @@ router.post("/broker/connect", async (req, res): Promise<void> => {
   // Verify the credentials actually work before saving them — better than
   // silently persisting broken credentials the user won't discover until the
   // bot fails to run.
-  try {
-    await getBrokerAccount(req.user!.id, input);
-  } catch (err) {
-    req.log.warn({ err, broker: input.broker }, "Broker connection test failed");
-    res.status(400).json({ error: `Could not connect to ${input.broker} with these credentials. Please check them and try again.` });
-    return;
+  let verified: SaveBrokerCredentialsInput;
+  if (input.broker === "trading212") {
+    // Trading 212 keys are environment-specific: a key generated on a practice
+    // account only authenticates against the demo host. Try live first, then demo,
+    // and remember whichever worked.
+    let detected: SaveBrokerCredentialsInput | null = null;
+    let lastErr: unknown = null;
+    for (const environment of ["live", "demo"] as const) {
+      const attempt: SaveBrokerCredentialsInput = {
+        broker: "trading212",
+        trading212: { apiKey: input.trading212.apiKey, environment },
+      };
+      try {
+        await getBrokerAccount(req.user!.id, attempt);
+        detected = attempt;
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (!detected) {
+      req.log.warn({ err: lastErr, broker: input.broker }, "Broker connection test failed");
+      res.status(400).json({
+        error:
+          "Could not connect to Trading 212 with this API key (tried both live and practice environments). In the Trading 212 app go to Settings → API, generate a new key, and paste the full value here.",
+      });
+      return;
+    }
+    verified = detected;
+  } else {
+    try {
+      await getBrokerAccount(req.user!.id, input);
+    } catch (err) {
+      req.log.warn({ err, broker: input.broker }, "Broker connection test failed");
+      res.status(400).json({ error: `Could not connect to ${input.broker} with these credentials. Please check them and try again.` });
+      return;
+    }
+    verified = input;
   }
 
   try {
-    await saveUserBrokerCredentials(req.user!.id, input);
+    await saveUserBrokerCredentials(req.user!.id, verified);
     // A running stream manager (if any) is holding the OLD credentials —
     // evict it so the next SSE reconnect picks up the ones just saved.
     evictCapitalStream(req.user!.id);
