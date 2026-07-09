@@ -36,8 +36,10 @@ function parseConnectInput(body: unknown): SaveBrokerCredentialsInput | null {
     if (typeof t212 !== "object" || t212 === null) return null;
     const t = t212 as Record<string, unknown>;
     const apiKey = typeof t["apiKey"] === "string" ? t["apiKey"].trim() : "";
-    if (!apiKey) return null;
-    return { broker: "trading212", trading212: { apiKey } };
+    const apiSecret = typeof t["apiSecret"] === "string" ? t["apiSecret"].trim() : "";
+    // Trading 212 requires a key+secret pair (HTTP Basic) — a bare key no longer authenticates.
+    if (!apiKey || !apiSecret) return null;
+    return { broker: "trading212", trading212: { apiKey, apiSecret } };
   }
 
   return null;
@@ -63,7 +65,7 @@ router.post("/broker/connect", async (req, res): Promise<void> => {
     for (const environment of ["live", "demo"] as const) {
       const attempt: SaveBrokerCredentialsInput = {
         broker: "trading212",
-        trading212: { apiKey: input.trading212.apiKey, environment },
+        trading212: { ...input.trading212, environment },
       };
       try {
         await getBrokerAccount(req.user!.id, attempt);

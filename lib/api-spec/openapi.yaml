@@ -1429,9 +1429,13 @@ components:
         trading212:
           type: object
           description: Required when broker is trading212.
+          required: [apiKey, apiSecret]
           properties:
             apiKey:
               type: string
+            apiSecret:
+              type: string
+              description: Trading 212 API secret — the API authenticates with a key+secret pair (HTTP Basic).
 
     BrokerStatus:
       type: object

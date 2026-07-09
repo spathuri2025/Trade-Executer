@@ -165,6 +165,7 @@ export default function Setup() {
   const [capitalIdentifier, setCapitalIdentifier] = useState("");
   const [capitalPassword, setCapitalPassword] = useState("");
   const [t212ApiKey, setT212ApiKey] = useState("");
+  const [t212ApiSecret, setT212ApiSecret] = useState("");
 
   const { data: brokerStatus, isLoading: brokerStatusLoading } = useGetBrokerStatus({
     query: { queryKey: getGetBrokerStatusQueryKey() },
@@ -187,7 +188,7 @@ export default function Setup() {
         data: { broker: "capitalcom", capital: { apiKey: capitalApiKey, identifier: capitalIdentifier, password: capitalPassword } },
       });
     } else {
-      connectBroker.mutate({ data: { broker: "trading212", trading212: { apiKey: t212ApiKey } } });
+      connectBroker.mutate({ data: { broker: "trading212", trading212: { apiKey: t212ApiKey, apiSecret: t212ApiSecret } } });
     }
   };
 
@@ -366,9 +367,16 @@ export default function Setup() {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="setup-t212-api-key">API Key</Label>
-                      <Input id="setup-t212-api-key" value={t212ApiKey} onChange={(e) => setT212ApiKey(e.target.value)} required data-testid="input-setup-t212-api-key" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="setup-t212-api-key">API Key</Label>
+                        <Input id="setup-t212-api-key" value={t212ApiKey} onChange={(e) => setT212ApiKey(e.target.value)} required data-testid="input-setup-t212-api-key" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="setup-t212-api-secret">API Secret</Label>
+                        <Input id="setup-t212-api-secret" type="password" value={t212ApiSecret} onChange={(e) => setT212ApiSecret(e.target.value)} required data-testid="input-setup-t212-api-secret" />
+                        <p className="text-xs text-muted-foreground">Generated together with the key in the Trading 212 app (Settings → API).</p>
+                      </div>
                     </div>
                   )}
                   <Button type="submit" disabled={connectBroker.isPending} data-testid="button-setup-connect-broker">

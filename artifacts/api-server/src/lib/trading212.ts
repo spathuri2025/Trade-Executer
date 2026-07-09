@@ -10,10 +10,16 @@ async function t212Fetch(credentials: Trading212Credentials, path: string, optio
   // Keys generated on a practice account only work against the demo host.
   // The environment is auto-detected at connect time and stored with the credentials.
   const url = `${BASE_URLS[credentials.environment ?? "live"]}${path}`;
+  // Trading 212 now authenticates with HTTP Basic (API key as username, API
+  // secret as password). Legacy rows without a secret fall back to the old
+  // bare-key header, though such keys no longer authenticate upstream.
+  const authorization = credentials.apiSecret
+    ? `Basic ${Buffer.from(`${credentials.apiKey}:${credentials.apiSecret}`).toString("base64")}`
+    : credentials.apiKey;
   const res = await fetch(url, {
     ...options,
     headers: {
-      Authorization: credentials.apiKey,
+      Authorization: authorization,
       "Content-Type": "application/json",
       ...(options.headers ?? {}),
     },

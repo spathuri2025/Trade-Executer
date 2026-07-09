@@ -141,6 +141,7 @@ export default function Settings() {
   const [capitalIdentifier, setCapitalIdentifier] = useState("");
   const [capitalPassword, setCapitalPassword] = useState("");
   const [t212ApiKey, setT212ApiKey] = useState("");
+  const [t212ApiSecret, setT212ApiSecret] = useState("");
 
   // True once the user picks a different Active Broker than the one actually
   // connected — the radio buttons alone never switch anything, they just pick
@@ -155,6 +156,7 @@ export default function Settings() {
         setCapitalIdentifier("");
         setCapitalPassword("");
         setT212ApiKey("");
+        setT212ApiSecret("");
         toast({ title: "Broker connected" });
       },
       onError: (err: unknown) => {
@@ -180,7 +182,7 @@ export default function Settings() {
         data: { broker: "capitalcom", capital: { apiKey: capitalApiKey, identifier: capitalIdentifier, password: capitalPassword } },
       });
     } else {
-      connectBroker.mutate({ data: { broker: "trading212", trading212: { apiKey: t212ApiKey } } });
+      connectBroker.mutate({ data: { broker: "trading212", trading212: { apiKey: t212ApiKey, apiSecret: t212ApiSecret } } });
     }
   };
 
@@ -277,15 +279,31 @@ export default function Settings() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                <Label htmlFor="t212-api-key">API Key</Label>
-                <Input
-                  id="t212-api-key"
-                  value={t212ApiKey}
-                  onChange={(e) => setT212ApiKey(e.target.value)}
-                  required
-                  data-testid="input-t212-api-key"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="t212-api-key">API Key</Label>
+                  <Input
+                    id="t212-api-key"
+                    value={t212ApiKey}
+                    onChange={(e) => setT212ApiKey(e.target.value)}
+                    required
+                    data-testid="input-t212-api-key"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="t212-api-secret">API Secret</Label>
+                  <Input
+                    id="t212-api-secret"
+                    type="password"
+                    value={t212ApiSecret}
+                    onChange={(e) => setT212ApiSecret(e.target.value)}
+                    required
+                    data-testid="input-t212-api-secret"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Trading 212 issues a key and a secret together (app → Settings → API). Both are required.
+                  </p>
+                </div>
               </div>
             )}
             <Button type="submit" disabled={connectBroker.isPending} data-testid="button-connect-broker">

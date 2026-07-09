@@ -18,6 +18,8 @@ export const brokerCredentialsTable = pgTable("broker_credentials", {
   capitalIdentifierEnc: text("capital_identifier_enc"),
   capitalPasswordEnc: text("capital_password_enc"),
   trading212ApiKeyEnc: text("trading212_api_key_enc"),
+  /** Trading 212 API secret (the API now authenticates with a key+secret pair via HTTP Basic). */
+  trading212ApiSecretEnc: text("trading212_api_secret_enc"),
   /** Which Trading 212 environment the key belongs to (auto-detected at connect time). */
   trading212Environment: text("trading212_environment", { enum: ["live", "demo"] }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

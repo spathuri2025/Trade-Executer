@@ -185,7 +185,9 @@ export type BrokerConnectInputCapital = {
  * Required when broker is trading212.
  */
 export type BrokerConnectInputTrading212 = {
-  apiKey?: string;
+  apiKey: string;
+  /** Trading 212 API secret — the API authenticates with a key+secret pair (HTTP Basic). */
+  apiSecret: string;
 };
 
 export interface BrokerConnectInput {

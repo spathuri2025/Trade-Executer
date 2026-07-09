@@ -12,6 +12,12 @@ export type Trading212Environment = "live" | "demo";
 
 export interface Trading212Credentials {
   apiKey: string;
+  /**
+   * Trading 212 now authenticates with a key+secret pair via HTTP Basic.
+   * Optional only for legacy rows saved before the API change; those keys
+   * no longer authenticate and their users must reconnect.
+   */
+  apiSecret?: string;
   /** Auto-detected at connect time; older rows without it default to "live". */
   environment?: Trading212Environment;
 }
@@ -53,6 +59,7 @@ function decodeRow(row: BrokerCredentialsRow): UserBrokerCredentials | null {
     broker: "trading212",
     trading212: {
       apiKey: decrypt(row.trading212ApiKeyEnc),
+      ...(row.trading212ApiSecretEnc ? { apiSecret: decrypt(row.trading212ApiSecretEnc) } : {}),
       environment: row.trading212Environment ?? "live",
     },
   };
@@ -81,6 +88,7 @@ export async function saveUserBrokerCredentials(userId: number, input: SaveBroke
           capitalIdentifierEnc: encrypt(input.capital.identifier),
           capitalPasswordEnc: encrypt(input.capital.password),
           trading212ApiKeyEnc: null,
+          trading212ApiSecretEnc: null,
           trading212Environment: null,
         }
       : {
@@ -90,6 +98,7 @@ export async function saveUserBrokerCredentials(userId: number, input: SaveBroke
           capitalIdentifierEnc: null,
           capitalPasswordEnc: null,
           trading212ApiKeyEnc: encrypt(input.trading212.apiKey),
+          trading212ApiSecretEnc: input.trading212.apiSecret ? encrypt(input.trading212.apiSecret) : null,
           trading212Environment: input.trading212.environment ?? "live",
         };
 

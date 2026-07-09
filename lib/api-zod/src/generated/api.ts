@@ -246,7 +246,8 @@ export const ConnectBrokerBody = zod.object({
   "password": zod.string().optional()
 }).optional().describe('Required when broker is capitalcom.'),
   "trading212": zod.object({
-  "apiKey": zod.string().optional()
+  "apiKey": zod.string(),
+  "apiSecret": zod.string().describe('Trading 212 API secret — the API authenticates with a key+secret pair (HTTP Basic).')
 }).optional().describe('Required when broker is trading212.')
 })
 
