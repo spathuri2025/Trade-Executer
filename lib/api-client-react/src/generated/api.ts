@@ -22,6 +22,8 @@ import type {
 import type {
   AccountSummary,
   ActivityFeed,
+  AdminCustomerList,
+  AdminSuspendResult,
   AnalyseNewsInput,
   AssistantError,
   AssistantMessage,
@@ -34,6 +36,7 @@ import type {
   BrokerStatus,
   Candle,
   ChartInsight,
+  ContractList,
   Conversation,
   ConversationInput,
   ConversationWithMessages,
@@ -67,6 +70,8 @@ import type {
   ScannerResult,
   ScannerStatus,
   Signal,
+  Subscription,
+  SubscriptionInput,
   Trade,
   TradeIntelligenceInput,
   TradeIntelligenceReport
@@ -4072,5 +4077,511 @@ export const useEvaluateTradeIntelligenceWithClaude = <TError = ErrorType<Assist
         TContext
       > => {
       return useMutation(getEvaluateTradeIntelligenceWithClaudeMutationOptions(options));
+    }
+
+export const getListAdminCustomersUrl = () => {
+
+
+
+
+  return `/api/admin/customers`
+}
+
+/**
+ * @summary List every customer with broker/bot/subscription/activity summary
+ */
+export const listAdminCustomers = async ( options?: RequestInit): Promise<AdminCustomerList> => {
+
+  return customFetch<AdminCustomerList>(getListAdminCustomersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminCustomersQueryKey = () => {
+    return [
+    `/api/admin/customers`
+    ] as const;
+    }
+
+
+export const getListAdminCustomersQueryOptions = <TData = Awaited<ReturnType<typeof listAdminCustomers>>, TError = ErrorType<AssistantError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminCustomers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminCustomersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminCustomers>>> = ({ signal }) => listAdminCustomers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminCustomers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminCustomersQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminCustomers>>>
+export type ListAdminCustomersQueryError = ErrorType<AssistantError>
+
+
+/**
+ * @summary List every customer with broker/bot/subscription/activity summary
+ */
+
+export function useListAdminCustomers<TData = Awaited<ReturnType<typeof listAdminCustomers>>, TError = ErrorType<AssistantError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminCustomers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminCustomersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSuspendCustomerUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/customers/${id}/suspend`
+}
+
+/**
+ * @summary Suspend a customer — blocks login and immediately force-stops their bot and live stream
+ */
+export const suspendCustomer = async (id: number, options?: RequestInit): Promise<AdminSuspendResult> => {
+
+  return customFetch<AdminSuspendResult>(getSuspendCustomerUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSuspendCustomerMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suspendCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof suspendCustomer>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['suspendCustomer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof suspendCustomer>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  suspendCustomer(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SuspendCustomerMutationResult = NonNullable<Awaited<ReturnType<typeof suspendCustomer>>>
+
+    export type SuspendCustomerMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Suspend a customer — blocks login and immediately force-stops their bot and live stream
+ */
+export const useSuspendCustomer = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suspendCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof suspendCustomer>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getSuspendCustomerMutationOptions(options));
+    }
+
+export const getUnsuspendCustomerUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/customers/${id}/unsuspend`
+}
+
+/**
+ * @summary Restore a suspended customer's access
+ */
+export const unsuspendCustomer = async (id: number, options?: RequestInit): Promise<AdminSuspendResult> => {
+
+  return customFetch<AdminSuspendResult>(getUnsuspendCustomerUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getUnsuspendCustomerMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unsuspendCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unsuspendCustomer>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['unsuspendCustomer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unsuspendCustomer>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  unsuspendCustomer(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnsuspendCustomerMutationResult = NonNullable<Awaited<ReturnType<typeof unsuspendCustomer>>>
+
+    export type UnsuspendCustomerMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Restore a suspended customer's access
+ */
+export const useUnsuspendCustomer = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unsuspendCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unsuspendCustomer>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getUnsuspendCustomerMutationOptions(options));
+    }
+
+export const getDeleteCustomerUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/customers/${id}`
+}
+
+/**
+ * @summary Permanently delete a customer and all their data (force-stops their bot and live stream first)
+ */
+export const deleteCustomer = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCustomerUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteCustomerMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCustomer>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteCustomer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCustomer>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteCustomer(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCustomerMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCustomer>>>
+
+    export type DeleteCustomerMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Permanently delete a customer and all their data (force-stops their bot and live stream first)
+ */
+export const useDeleteCustomer = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCustomer>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteCustomerMutationOptions(options));
+    }
+
+export const getUpdateCustomerSubscriptionUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/customers/${id}/subscription`
+}
+
+/**
+ * @summary Admin-authored plan/billing status for a customer
+ */
+export const updateCustomerSubscription = async (id: number,
+    subscriptionInput: SubscriptionInput, options?: RequestInit): Promise<Subscription> => {
+
+  return customFetch<Subscription>(getUpdateCustomerSubscriptionUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      subscriptionInput,)
+  }
+);}
+
+
+
+
+export const getUpdateCustomerSubscriptionMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerSubscription>>, TError,{id: number;data: BodyType<SubscriptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCustomerSubscription>>, TError,{id: number;data: BodyType<SubscriptionInput>}, TContext> => {
+
+const mutationKey = ['updateCustomerSubscription'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCustomerSubscription>>, {id: number;data: BodyType<SubscriptionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCustomerSubscription(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCustomerSubscriptionMutationResult = NonNullable<Awaited<ReturnType<typeof updateCustomerSubscription>>>
+    export type UpdateCustomerSubscriptionMutationBody = BodyType<SubscriptionInput>
+    export type UpdateCustomerSubscriptionMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Admin-authored plan/billing status for a customer
+ */
+export const useUpdateCustomerSubscription = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerSubscription>>, TError,{id: number;data: BodyType<SubscriptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCustomerSubscription>>,
+        TError,
+        {id: number;data: BodyType<SubscriptionInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCustomerSubscriptionMutationOptions(options));
+    }
+
+export const getListCustomerContractsUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/customers/${id}/contracts`
+}
+
+/**
+ * @summary List a customer's uploaded contract/legal documents (metadata only)
+ */
+export const listCustomerContracts = async (id: number, options?: RequestInit): Promise<ContractList> => {
+
+  return customFetch<ContractList>(getListCustomerContractsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCustomerContractsQueryKey = (id: number,) => {
+    return [
+    `/api/admin/customers/${id}/contracts`
+    ] as const;
+    }
+
+
+export const getListCustomerContractsQueryOptions = <TData = Awaited<ReturnType<typeof listCustomerContracts>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerContracts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCustomerContractsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCustomerContracts>>> = ({ signal }) => listCustomerContracts(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCustomerContracts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCustomerContractsQueryResult = NonNullable<Awaited<ReturnType<typeof listCustomerContracts>>>
+export type ListCustomerContractsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List a customer's uploaded contract/legal documents (metadata only)
+ */
+
+export function useListCustomerContracts<TData = Awaited<ReturnType<typeof listCustomerContracts>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerContracts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCustomerContractsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDeleteContractUrl = (contractId: number,) => {
+
+
+
+
+  return `/api/admin/contracts/${contractId}`
+}
+
+/**
+ * @summary Delete a contract document
+ */
+export const deleteContract = async (contractId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteContractUrl(contractId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteContractMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteContract>>, TError,{contractId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteContract>>, TError,{contractId: number}, TContext> => {
+
+const mutationKey = ['deleteContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteContract>>, {contractId: number}> = (props) => {
+          const {contractId} = props ?? {};
+
+          return  deleteContract(contractId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteContractMutationResult = NonNullable<Awaited<ReturnType<typeof deleteContract>>>
+
+    export type DeleteContractMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Delete a contract document
+ */
+export const useDeleteContract = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteContract>>, TError,{contractId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteContract>>,
+        TError,
+        {contractId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteContractMutationOptions(options));
     }
 

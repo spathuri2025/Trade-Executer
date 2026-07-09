@@ -14,9 +14,18 @@ export interface AuthCredentials {
   password: string;
 }
 
+export type AuthUserRole = typeof AuthUserRole[keyof typeof AuthUserRole];
+
+
+export const AuthUserRole = {
+  customer: 'customer',
+  admin: 'admin',
+} as const;
+
 export interface AuthUser {
   id: number;
   email: string;
+  role: AuthUserRole;
 }
 
 /**
@@ -988,6 +997,136 @@ export interface UserAiBrief {
 
 export interface LatestAssistantBriefResult {
   brief: UserAiBrief | null;
+}
+
+export type AdminCustomerBrokerBroker = typeof AdminCustomerBrokerBroker[keyof typeof AdminCustomerBrokerBroker];
+
+
+export const AdminCustomerBrokerBroker = {
+  trading212: 'trading212',
+  capitalcom: 'capitalcom',
+} as const;
+
+export interface AdminCustomerBroker {
+  broker: AdminCustomerBrokerBroker;
+  /** Partially masked identifier/key for display — never the credential itself. */
+  identifierMasked: string;
+}
+
+export type AdminCustomerRole = typeof AdminCustomerRole[keyof typeof AdminCustomerRole];
+
+
+export const AdminCustomerRole = {
+  customer: 'customer',
+  admin: 'admin',
+} as const;
+
+export type SubscriptionPlan = typeof SubscriptionPlan[keyof typeof SubscriptionPlan];
+
+
+export const SubscriptionPlan = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+  enterprise: 'enterprise',
+} as const;
+
+export type SubscriptionStatus = typeof SubscriptionStatus[keyof typeof SubscriptionStatus];
+
+
+export const SubscriptionStatus = {
+  active: 'active',
+  trialing: 'trialing',
+  past_due: 'past_due',
+  canceled: 'canceled',
+} as const;
+
+export interface Subscription {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  renewsAt: string | null;
+}
+
+export interface AdminCustomer {
+  id: number;
+  email: string;
+  role: AdminCustomerRole;
+  /**
+     * ISO timestamp — non-null means the account is suspended.
+     * @nullable
+     */
+  suspendedAt: string | null;
+  createdAt: string;
+  broker: AdminCustomerBroker | null;
+  botRunning: boolean;
+  subscription: Subscription;
+  tradeCount: number;
+  signalCount: number;
+  /**
+     * ISO timestamp of the most recent trade or signal, whichever is later.
+     * @nullable
+     */
+  lastActivityAt: string | null;
+}
+
+export interface AdminCustomerList {
+  customers: AdminCustomer[];
+}
+
+export interface AdminSuspendResult {
+  id: number;
+  /** @nullable */
+  suspendedAt: string | null;
+}
+
+export type SubscriptionInputPlan = typeof SubscriptionInputPlan[keyof typeof SubscriptionInputPlan];
+
+
+export const SubscriptionInputPlan = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+  enterprise: 'enterprise',
+} as const;
+
+export type SubscriptionInputStatus = typeof SubscriptionInputStatus[keyof typeof SubscriptionInputStatus];
+
+
+export const SubscriptionInputStatus = {
+  active: 'active',
+  trialing: 'trialing',
+  past_due: 'past_due',
+  canceled: 'canceled',
+} as const;
+
+export interface SubscriptionInput {
+  plan: SubscriptionInputPlan;
+  status: SubscriptionInputStatus;
+  /** @nullable */
+  notes?: string | null;
+  /**
+     * ISO date/timestamp.
+     * @nullable
+     */
+  renewsAt?: string | null;
+}
+
+export interface Contract {
+  id: number;
+  fileName: string;
+  fileType: string;
+  /** Bytes. */
+  fileSize: number;
+  /** @nullable */
+  notes: string | null;
+  uploadedAt: string;
+}
+
+export interface ContractList {
+  contracts: Contract[];
 }
 
 export type ListTradesParams = {

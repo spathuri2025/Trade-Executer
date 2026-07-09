@@ -35,7 +35,8 @@ export const LoginBody = zod.object({
 
 export const LoginResponse = zod.object({
   "id": zod.number(),
-  "email": zod.string()
+  "email": zod.string(),
+  "role": zod.enum(['customer', 'admin'])
 })
 
 
@@ -44,7 +45,8 @@ export const LoginResponse = zod.object({
  */
 export const GetMeResponse = zod.object({
   "id": zod.number(),
-  "email": zod.string()
+  "email": zod.string(),
+  "role": zod.enum(['customer', 'admin'])
 })
 
 
@@ -1018,6 +1020,117 @@ export const EvaluateTradeIntelligenceWithClaudeResponse = zod.object({
   "invalidationReason": zod.string(),
   "riskWarning": zod.string(),
   "disclaimer": zod.string()
+})
+
+
+/**
+ * @summary List every customer with broker/bot/subscription/activity summary
+ */
+export const ListAdminCustomersResponse = zod.object({
+  "customers": zod.array(zod.object({
+  "id": zod.number(),
+  "email": zod.string(),
+  "role": zod.enum(['customer', 'admin']),
+  "suspendedAt": zod.string().nullable().describe('ISO timestamp — non-null means the account is suspended.'),
+  "createdAt": zod.coerce.date(),
+  "broker": zod.union([zod.object({
+  "broker": zod.enum(['trading212', 'capitalcom']),
+  "identifierMasked": zod.string().describe('Partially masked identifier\/key for display — never the credential itself.')
+}),zod.null()]),
+  "botRunning": zod.boolean(),
+  "subscription": zod.object({
+  "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
+  "status": zod.enum(['active', 'trialing', 'past_due', 'canceled']),
+  "notes": zod.string().nullable(),
+  "renewsAt": zod.string().nullable()
+}),
+  "tradeCount": zod.number(),
+  "signalCount": zod.number(),
+  "lastActivityAt": zod.string().nullable().describe('ISO timestamp of the most recent trade or signal, whichever is later.')
+}))
+})
+
+
+/**
+ * @summary Suspend a customer — blocks login and immediately force-stops their bot and live stream
+ */
+export const SuspendCustomerParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SuspendCustomerResponse = zod.object({
+  "id": zod.number(),
+  "suspendedAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Restore a suspended customer's access
+ */
+export const UnsuspendCustomerParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UnsuspendCustomerResponse = zod.object({
+  "id": zod.number(),
+  "suspendedAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Permanently delete a customer and all their data (force-stops their bot and live stream first)
+ */
+export const DeleteCustomerParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Admin-authored plan/billing status for a customer
+ */
+export const UpdateCustomerSubscriptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateCustomerSubscriptionBody = zod.object({
+  "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
+  "status": zod.enum(['active', 'trialing', 'past_due', 'canceled']),
+  "notes": zod.string().nullish(),
+  "renewsAt": zod.string().nullish().describe('ISO date\/timestamp.')
+})
+
+export const UpdateCustomerSubscriptionResponse = zod.object({
+  "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
+  "status": zod.enum(['active', 'trialing', 'past_due', 'canceled']),
+  "notes": zod.string().nullable(),
+  "renewsAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary List a customer's uploaded contract/legal documents (metadata only)
+ */
+export const ListCustomerContractsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListCustomerContractsResponse = zod.object({
+  "contracts": zod.array(zod.object({
+  "id": zod.number(),
+  "fileName": zod.string(),
+  "fileType": zod.string(),
+  "fileSize": zod.number().describe('Bytes.'),
+  "notes": zod.string().nullable(),
+  "uploadedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Delete a contract document
+ */
+export const DeleteContractParams = zod.object({
+  "contractId": zod.coerce.number()
 })
 
 
