@@ -142,6 +142,11 @@ export default function Settings() {
   const [capitalPassword, setCapitalPassword] = useState("");
   const [t212ApiKey, setT212ApiKey] = useState("");
 
+  // True once the user picks a different Active Broker than the one actually
+  // connected — the radio buttons alone never switch anything, they just pick
+  // which credential fields to show below.
+  const isSwitchingBroker = Boolean(brokerStatus?.connected && brokerStatus.broker !== config.broker);
+
   const connectBroker = useConnectBroker({
     mutation: {
       onSuccess: () => {
@@ -228,6 +233,14 @@ export default function Settings() {
             <p className="text-sm text-amber-500">No broker connected yet — the bot can't run until you connect one below.</p>
           )}
 
+          {isSwitchingBroker && (
+            <p className="text-sm text-amber-500">
+              You're currently connected to {BROKER_LABELS[brokerStatus!.broker ?? "capitalcom"]}. Fill in your{" "}
+              {BROKER_LABELS[config.broker]} details below and click Switch to replace it — only one broker can be
+              connected at a time.
+            </p>
+          )}
+
           <form onSubmit={handleConnectBroker} className="space-y-3">
             {config.broker === "capitalcom" ? (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -276,7 +289,13 @@ export default function Settings() {
               </div>
             )}
             <Button type="submit" disabled={connectBroker.isPending} data-testid="button-connect-broker">
-              {connectBroker.isPending ? "Connecting…" : brokerStatus?.connected ? "Reconnect" : "Connect"}
+              {connectBroker.isPending
+                ? "Connecting…"
+                : isSwitchingBroker
+                  ? `Switch to ${BROKER_LABELS[config.broker]}`
+                  : brokerStatus?.connected
+                    ? "Reconnect"
+                    : "Connect"}
             </Button>
           </form>
         </CardContent>
