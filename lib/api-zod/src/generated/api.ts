@@ -567,7 +567,7 @@ export const GetBacktestResponse = zod.object({
   "results": zod.array(zod.object({
   "ticker": zod.string(),
   "name": zod.string(),
-  "strategy": zod.enum(['trend_following', 'mean_reversion']),
+  "strategy": zod.enum(['trend_following', 'mean_reversion', 'atr_momentum']).describe('atr_momentum is backtest-only — it is never emitted by the live regime router (Signal.strategy \/ ActivityItem.strategy), only by this ephemeral endpoint.\n'),
   "totalTrades": zod.number(),
   "wins": zod.number(),
   "losses": zod.number(),
