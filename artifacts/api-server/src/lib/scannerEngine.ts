@@ -117,6 +117,7 @@ interface CapitalMarket {
   instrumentType: string;
   bid: number;
   offer: number;
+  marketStatus?: string;
 }
 
 /**
@@ -163,7 +164,8 @@ export async function runScan(userId: number): Promise<{ scanned: number; hits: 
   }
 
   const botStatus = await getBotStatus(userId);
-  const { shortPeriod, longPeriod, dryRun, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled } = botStatus.config;
+  const { shortPeriod, longPeriod, dryRun, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled, barResolution } =
+    botStatus.config;
   const { autoTrade, minTrendStrength, instrumentTypes, maxInstrumentsPerScan } = state.config;
   const bars = requiredBars(longPeriod);
 
@@ -200,7 +202,7 @@ export async function runScan(userId: number): Promise<{ scanned: number; hits: 
     await Promise.allSettled(
       batch.map(async (market) => {
         try {
-          const prices = await getCapitalPriceHistory(userId, credentials.capital, market.epic, "HOUR", bars);
+          const prices = await getCapitalPriceHistory(userId, credentials.capital, market.epic, barResolution, bars);
           totalScanned++;
 
           if (prices.length < longPeriod + 1) return;
@@ -221,7 +223,16 @@ export async function runScan(userId: number): Promise<{ scanned: number; hits: 
           let autoTraded = false;
           let orderId: string | undefined;
 
-          if (autoTrade && !dryRun) {
+          // Every scanner hit that reaches here is a brand-new entry (the scanner
+          // doesn't track already-open positions the way the bot's runCycle does),
+          // so this gate always applies — never blocks closing/managing an existing
+          // position, since the scanner never does that. Read marketStatus off the
+          // market data already fetched for this scan rather than firing an extra
+          // quote request per candidate.
+          const marketClosed = !!market.marketStatus && market.marketStatus !== "TRADEABLE";
+          if (autoTrade && !dryRun && marketClosed) {
+            logger.info({ userId, ticker: market.epic, marketStatus: market.marketStatus }, "Scanner auto-trade skipped — market closed");
+          } else if (autoTrade && !dryRun) {
             try {
               const positionValue =
                 riskPerTradePercent > 0 && accountBalance !== null

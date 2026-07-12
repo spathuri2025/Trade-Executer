@@ -29,6 +29,34 @@ const STRATEGY_LABEL: Record<string, string> = {
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const signedPct = (n: number) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
 
+const RESOLUTION_LABEL: Record<string, string> = {
+  MINUTE: "1-min",
+  MINUTE_5: "5-min",
+  MINUTE_15: "15-min",
+  MINUTE_30: "30-min",
+  HOUR: "hourly",
+  HOUR_4: "4-hour",
+  DAY: "daily",
+  WEEK: "weekly",
+};
+const MINUTES_PER_BAR: Record<string, number> = {
+  MINUTE: 1,
+  MINUTE_5: 5,
+  MINUTE_15: 15,
+  MINUTE_30: 30,
+  HOUR: 60,
+  HOUR_4: 240,
+  DAY: 1440,
+  WEEK: 10080,
+};
+
+/** Human-readable span covered by N bars at a given resolution — e.g. "~25 trading hours" vs "~12.5 days". */
+function barsSpan(bars: number, resolution: string): string {
+  const totalMinutes = bars * (MINUTES_PER_BAR[resolution] ?? 60);
+  if (totalMinutes < 60 * 24) return `~${(totalMinutes / 60).toFixed(1)} hours`;
+  return `~${(totalMinutes / (60 * 24)).toFixed(1)} days`;
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, color: muted }}>
@@ -199,7 +227,7 @@ export default function Performance() {
       {data && (
         <p className="text-xs" style={{ color: muted }}>
           {data.results.length > 0
-            ? `${data.broker} · MA ${data.shortPeriod}/${data.longPeriod} · up to ${data.historyBars} bars · cost/trade ${(data.costPct * 100).toFixed(2)}% · generated ${new Date(data.generatedAt).toLocaleString()}`
+            ? `${data.broker} · MA ${data.shortPeriod}/${data.longPeriod} · up to ${data.historyBars} ${RESOLUTION_LABEL[data.barResolution] ?? data.barResolution} bars (${barsSpan(data.historyBars, data.barResolution)}) · cost/trade ${(data.costPct * 100).toFixed(2)}% · generated ${new Date(data.generatedAt).toLocaleString()}`
             : ""}
         </p>
       )}
@@ -231,9 +259,11 @@ export default function Performance() {
       <p className="text-[11px] leading-relaxed pt-2" style={{ color: muted }}>
         Expectancy is the per-trade edge: (Win Rate × Avg Win) − (Loss Rate × Avg Loss) − Cost. A
         positive value means the strategy made money net of costs on this window. Set your round-trip
-        cost in Settings → Cost Per Trade for a realistic figure. Backtests use recent hourly closes
-        and a simplified always-in-market model (no slippage or overnight financing beyond the cost
-        you set). Past performance does not guarantee future results and this is not financial advice.
+        cost in Settings → Cost Per Trade for a realistic figure. Backtests use recent closes at
+        whatever Bar Resolution is set in Settings — finer resolutions cover a much shorter real-world
+        window for the same bar count (e.g. 300 5-min bars is ~25 trading hours, not 12+ days) — and a
+        simplified always-in-market model (no slippage or overnight financing beyond the cost you set).
+        Past performance does not guarantee future results and this is not financial advice.
       </p>
     </div>
   );

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,11 +24,26 @@ import { Play, Square, Link2, Unlink } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
 type AiTradeMode = "off" | "guard" | "autonomous";
+type BarResolution = "MINUTE" | "MINUTE_5" | "MINUTE_15" | "MINUTE_30" | "HOUR" | "HOUR_4" | "DAY" | "WEEK";
 
 const BROKER_LABELS: Record<BrokerName, string> = {
   trading212: "Trading 212",
   capitalcom: "Capital.com",
 };
+
+// Same value set as charts.tsx's resolution picker — this is what the bot,
+// scanner, and backtest all fetch signal bars at (the scanner always mirrors
+// whatever's set here, it has no independent resolution of its own).
+const RESOLUTIONS: { value: BarResolution; label: string }[] = [
+  { value: "MINUTE", label: "1 min" },
+  { value: "MINUTE_5", label: "5 min" },
+  { value: "MINUTE_15", label: "15 min" },
+  { value: "MINUTE_30", label: "30 min" },
+  { value: "HOUR", label: "1 hour" },
+  { value: "HOUR_4", label: "4 hour" },
+  { value: "DAY", label: "1 day" },
+  { value: "WEEK", label: "1 week" },
+];
 
 const AI_MODES: { value: AiTradeMode; title: string; desc: string }[] = [
   {
@@ -72,6 +88,7 @@ export default function Settings() {
     aiTradeMode: "off" as AiTradeMode,
     regimeFilterEnabled: true,
     costPerTradePercent: 0,
+    barResolution: "MINUTE_5" as BarResolution,
   });
 
   useEffect(() => {
@@ -92,6 +109,7 @@ export default function Settings() {
         aiTradeMode: (botStatus.config.aiTradeMode as AiTradeMode) ?? "off",
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         costPerTradePercent: botStatus.config.costPerTradePercent ?? 0,
+        barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
     }
   }, [botStatus]);
@@ -501,6 +519,31 @@ export default function Settings() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Bar resolution — what the bot, scanner, and backtest all fetch signal bars at */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Bar Resolution</label>
+              <Select
+                value={config.barResolution}
+                onValueChange={(v) => setConfig({ ...config, barResolution: v as BarResolution })}
+              >
+                <SelectTrigger data-testid="select-bar-resolution">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESOLUTIONS.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Candle size for signal calculation. The Scanner always uses this same resolution — there's no
+                separate setting for it. Finer resolutions (1-5 min) suit day trading; hourly or longer suits
+                swing trading.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

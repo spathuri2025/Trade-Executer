@@ -29,6 +29,12 @@ export const botConfigTable = pgTable("bot_config", {
   aiTradeMode: text("ai_trade_mode", { enum: ["off", "guard", "autonomous"] }).notNull().default("off"),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
+  /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */
+  barResolution: text("bar_resolution", {
+    enum: ["MINUTE", "MINUTE_5", "MINUTE_15", "MINUTE_30", "HOUR", "HOUR_4", "DAY", "WEEK"],
+  })
+    .notNull()
+    .default("MINUTE_5"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

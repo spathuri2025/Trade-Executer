@@ -98,10 +98,11 @@ export async function getBrokerPriceHistory(
   userId: number,
   credentials: UserBrokerCredentials,
   ticker: string,
-  count: number
+  count: number,
+  resolution: string
 ): Promise<number[]> {
   if (credentials.broker === "capitalcom") {
-    return getCapitalPriceHistory(userId, credentials.capital, ticker, "HOUR", count);
+    return getCapitalPriceHistory(userId, credentials.capital, ticker, resolution, count);
   }
 
   try {

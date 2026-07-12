@@ -6,6 +6,7 @@ import {
   getBrokerPriceHistory,
   getBrokerAccount,
   getBrokerPositions,
+  getBrokerQuote,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import {
@@ -57,6 +58,8 @@ export interface BotConfig {
    * live order placement — brokers apply their own real costs.
    */
   costPerTradePercent: number;
+  /** Capital.com candle resolution fetched for signals — the scanner mirrors this. */
+  barResolution: "MINUTE" | "MINUTE_5" | "MINUTE_15" | "MINUTE_30" | "HOUR" | "HOUR_4" | "DAY" | "WEEK";
 }
 
 const DEFAULT_CONFIG: BotConfig = {
@@ -75,6 +78,7 @@ const DEFAULT_CONFIG: BotConfig = {
   aiTradeMode: "off",
   regimeFilterEnabled: true,
   costPerTradePercent: 0,
+  barResolution: "MINUTE_5",
 };
 
 /**
@@ -124,6 +128,7 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     aiTradeMode: row.aiTradeMode,
     regimeFilterEnabled: row.regimeFilterEnabled,
     costPerTradePercent: row.costPerTradePercent,
+    barResolution: row.barResolution,
   };
 }
 
@@ -163,6 +168,29 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
 /** UTC calendar-day key (YYYY-MM-DD) used to reset the daily-loss baseline. */
 function utcDayKey(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * True when a NEW position should be blocked because the market is known to
+ * be closed for this instrument right now. Only ever gates opening exposure —
+ * callers must never use this to block a SELL that closes/reduces an existing
+ * position. Fails open (returns false, i.e. "allow the trade") on a
+ * quote-fetch error — this is a safety filter layered on top of the existing
+ * risk gates, not itself a risk control, so a transient lookup failure should
+ * not block trading entirely.
+ */
+async function isMarketClosedForEntry(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  ticker: string
+): Promise<boolean> {
+  try {
+    const quote = await getBrokerQuote(userId, credentials, ticker);
+    return quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE";
+  } catch (err) {
+    logger.warn({ userId, ticker, err }, "Could not check market status — allowing trade (fail-open)");
+    return false;
+  }
 }
 
 export class BrokerNotConnectedError extends Error {}
@@ -376,7 +404,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
   const contexts: InstrumentContext[] = [];
   for (const instrument of instruments) {
     try {
-      const prices = await getBrokerPriceHistory(userId, credentials, instrument.ticker, bars);
+      const prices = await getBrokerPriceHistory(userId, credentials, instrument.ticker, bars, cfg.barResolution);
       if (prices.length < longPeriod + 1) {
         logger.warn({ userId, ticker: instrument.ticker, broker: credentials.broker }, "Not enough price data for signal computation");
         continue;
@@ -453,6 +481,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
           cfg.maxConcurrentPositions > 0 &&
           opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
+        const marketClosed = opensNewPosition && (await isMarketClosedForEntry(userId, credentials, c.ticker));
         if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = `Skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety. ${decision.reason}`;
           logger.warn(
@@ -465,6 +494,9 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             { userId, ticker: c.ticker, side: decision.action, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
             "Autonomous entry skipped — max concurrent positions reached"
           );
+        } else if (marketClosed) {
+          aiReason = `Skipped: the market for ${c.ticker} isn't currently open for trading. ${decision.reason}`;
+          logger.info({ userId, ticker: c.ticker, side: decision.action }, "Autonomous entry skipped — market closed");
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = `Skipped: would exceed the account's available cash budget for this cycle. ${decision.reason}`;
           logger.warn(
@@ -568,6 +600,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
           cfg.maxConcurrentPositions > 0 &&
           opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
+        const marketClosed = opensNewPosition && (await isMarketClosedForEntry(userId, credentials, ticker));
         if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = "Trade skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety.";
           logger.warn({ userId, ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
@@ -577,6 +610,9 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             { userId, ticker, side: signal, openPositions: liveTickers.size, limit: cfg.maxConcurrentPositions },
             "Entry skipped — max concurrent positions reached"
           );
+        } else if (marketClosed) {
+          aiReason = `Trade skipped: the market for ${ticker} isn't currently open for trading.`;
+          logger.info({ userId, ticker, side: signal }, "Entry skipped — market closed");
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = "Trade skipped: it would exceed the account's available cash budget for this cycle.";
           logger.warn(
@@ -765,7 +801,7 @@ export async function executeManualTrade(userId: number, params: ManualTradePara
   }
 
   const state = await getOrCreateBotState(userId);
-  const { dryRun, stopLossPercent } = state.config;
+  const { dryRun, stopLossPercent, barResolution } = state.config;
 
   const lockKey = `${userId}:${credentials.broker}:${ticker}:${side}`;
   if (inFlightTrades.has(lockKey)) {
@@ -774,7 +810,7 @@ export async function executeManualTrade(userId: number, params: ManualTradePara
   inFlightTrades.add(lockKey);
 
   try {
-    return await placeManualTrade({ userId, credentials, ticker, side, amount, dryRun, stopLossPercent });
+    return await placeManualTrade({ userId, credentials, ticker, side, amount, dryRun, stopLossPercent, barResolution });
   } finally {
     inFlightTrades.delete(lockKey);
   }
@@ -788,10 +824,11 @@ async function placeManualTrade(args: {
   amount: number;
   dryRun: boolean;
   stopLossPercent: number;
+  barResolution: BotConfig["barResolution"];
 }) {
-  const { userId, credentials, ticker, side, amount, dryRun, stopLossPercent } = args;
+  const { userId, credentials, ticker, side, amount, dryRun, stopLossPercent, barResolution } = args;
 
-  const prices = await getBrokerPriceHistory(userId, credentials, ticker, 5);
+  const prices = await getBrokerPriceHistory(userId, credentials, ticker, 5, barResolution);
   const currentPrice = prices[prices.length - 1];
   if (!currentPrice || !(currentPrice > 0)) {
     throw new TradeExecutionError(`Could not fetch a current price for ${ticker} from ${credentials.broker}`);

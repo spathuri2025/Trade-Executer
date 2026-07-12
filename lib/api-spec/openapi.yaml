@@ -1314,7 +1314,7 @@ components:
 
     BotConfig:
       type: object
-      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, takeProfitPercent, riskPerTradePercent, maxPositionSizePercent, maxDailyLossPercent, maxConcurrentPositions, aiTradeMode, regimeFilterEnabled, costPerTradePercent]
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, takeProfitPercent, riskPerTradePercent, maxPositionSizePercent, maxDailyLossPercent, maxConcurrentPositions, aiTradeMode, regimeFilterEnabled, costPerTradePercent, barResolution]
       properties:
         shortPeriod:
           type: integer
@@ -1363,6 +1363,10 @@ components:
         costPerTradePercent:
           type: number
           description: Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.
+        barResolution:
+          type: string
+          enum: [MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK]
+          description: Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.
 
     BotConfigInput:
       type: object
@@ -1408,6 +1412,10 @@ components:
         costPerTradePercent:
           type: number
           description: Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders.
+        barResolution:
+          type: string
+          enum: [MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK]
+          description: Capital.com candle resolution the bot fetches signals at.
 
     BrokerConnectInput:
       type: object
@@ -1789,7 +1797,7 @@ components:
 
     BacktestReport:
       type: object
-      required: [broker, shortPeriod, longPeriod, historyBars, costPct, generatedAt, results]
+      required: [broker, shortPeriod, longPeriod, historyBars, barResolution, costPct, generatedAt, results]
       properties:
         broker:
           type: string
@@ -1799,6 +1807,10 @@ components:
           type: integer
         historyBars:
           type: integer
+        barResolution:
+          type: string
+          enum: [MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK]
+          description: Which candle resolution historyBars were fetched at — e.g. 300 bars is ~25 trading hours at MINUTE_5 but ~12.5 days at HOUR. Use this to caption results honestly rather than implying a longer history than was actually tested.
         costPct:
           type: number
           description: Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent / 100).

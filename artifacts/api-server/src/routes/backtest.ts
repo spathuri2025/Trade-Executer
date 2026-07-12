@@ -21,7 +21,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
   }
 
   const { config } = await getBotStatus(userId);
-  const { broker, shortPeriod, longPeriod } = config;
+  const { broker, shortPeriod, longPeriod, barResolution } = config;
   // Clamp to non-negative so the reported cost matches what the backtester
   // actually applies (it ignores negative costs).
   const rawCostPct = (config.costPerTradePercent ?? 0) / 100;
@@ -56,7 +56,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
   for (const inst of enabled) {
     let prices: number[];
     try {
-      prices = await getBrokerPriceHistory(userId, credentials, inst.ticker, HISTORY_BARS);
+      prices = await getBrokerPriceHistory(userId, credentials, inst.ticker, HISTORY_BARS, barResolution);
     } catch (err) {
       req.log.warn({ err, ticker: inst.ticker }, "Backtest: price history fetch failed");
       continue;
@@ -92,6 +92,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
     shortPeriod,
     longPeriod,
     historyBars: HISTORY_BARS,
+    barResolution,
     costPct,
     generatedAt: new Date().toISOString(),
     results,

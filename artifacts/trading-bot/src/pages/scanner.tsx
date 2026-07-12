@@ -218,7 +218,7 @@ export default function Scanner() {
                     value={config.scanIntervalMinutes}
                     onChange={(e) => setConfig({ ...config, scanIntervalMinutes: Number(e.target.value) })}
                     className="font-mono"
-                    min={15}
+                    min={1}
                   />
                 </div>
               </div>

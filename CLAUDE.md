@@ -78,6 +78,17 @@ admin-authored, not Stripe-driven. Contracts are base64 in Postgres (`contracts.
 10MB cap via `multer`), not object storage; upload/download are deliberately **not** in
 the OpenAPI spec (same exception as SSE endpoints). See `.agents/memory/admin-centre.md`.
 
+### Bar resolution & session gating (day-trading Phase 1)
+`bot_config.barResolution` (default `MINUTE_5`) controls the Capital.com candle resolution the bot, scanner,
+and backtest all fetch — the scanner always mirrors the bot's setting, there is no separate scanner
+resolution. `broker.ts`'s `getBrokerPriceHistory()` takes `resolution` as a **required** parameter
+(deliberately not defaulted, so a future hardcode regression fails to compile). New trade entries are
+blocked when Capital.com's `marketStatus` isn't `"TRADEABLE"` — **existing positions can always be closed**
+regardless of market status; this gate only ever blocks opening new exposure, and fails open (allows the
+trade) if the status lookup itself errors. Flatten-by-close and further day-trading work (strategy ensemble,
+cost/slippage realism, ATR stops, validation gate) are explicitly future phases, not done yet. See
+`.agents/memory/intraday-bar-resolution.md`.
+
 ### Trade execution & risk (read before touching `botEngine.ts`, `broker.ts`, or any execute route)
 - Manual trades and the automated bot **must** place orders through the same path — both read broker/dryRun/stopLossPercent from that user's bot config and write the same `trades` row shape (`FILLED`/`FAILED`/`DRY_RUN`, with `userId`).
 - **Dry Run is the primary money-safety switch.** Stopped bot state forces dry-run (`dryRun = cfg.dryRun || !state.running`) — a manual `/signals/run` while Stopped can never place a real order.
