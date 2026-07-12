@@ -32,8 +32,6 @@ export interface BotConfigInput {
   aiTradeMode?: BotConfigInputAiTradeMode;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
-  /** Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders. */
-  costPerTradePercent?: number;
   /** Capital.com candle resolution the bot fetches signals at. */
   barResolution?: BotConfigInputBarResolution;
 }

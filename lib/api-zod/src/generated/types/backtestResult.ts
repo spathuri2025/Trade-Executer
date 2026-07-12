@@ -29,6 +29,9 @@ export interface BacktestResult {
   expectancyPct: number;
   /** Gross wins ÷ gross losses (pre-cost). null when there were no losing trades. */
   profitFactor: number | null;
+  /** Round-trip cost fraction applied to this instrument's backtest, auto-derived from its live bid/offer spread ((offer − bid) / price) at the time the backtest ran — not a manually-set value. 0 when a live quote could not be fetched (e.g. Trading 212, which has no live-quote endpoint), treated as frictionless for that instrument rather than a report failure.
+   */
+  costPct: number;
   equityCurve: BacktestPoint[];
   /** Number of price bars used. */
   bars: number;
