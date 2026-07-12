@@ -51,6 +51,23 @@ export const BotConfigAiTradeMode = {
   autonomous: 'autonomous',
 } as const;
 
+/**
+ * Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.
+ */
+export type BotConfigBarResolution = typeof BotConfigBarResolution[keyof typeof BotConfigBarResolution];
+
+
+export const BotConfigBarResolution = {
+  MINUTE: 'MINUTE',
+  MINUTE_5: 'MINUTE_5',
+  MINUTE_15: 'MINUTE_15',
+  MINUTE_30: 'MINUTE_30',
+  HOUR: 'HOUR',
+  HOUR_4: 'HOUR_4',
+  DAY: 'DAY',
+  WEEK: 'WEEK',
+} as const;
+
 export interface BotConfig {
   /** Short MA period (e.g. 9) */
   shortPeriod: number;
@@ -82,6 +99,8 @@ export interface BotConfig {
   regimeFilterEnabled: boolean;
   /** Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders. */
   costPerTradePercent: number;
+  /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */
+  barResolution: BotConfigBarResolution;
 }
 
 /**
@@ -137,6 +156,23 @@ export const BotConfigInputAiTradeMode = {
   autonomous: 'autonomous',
 } as const;
 
+/**
+ * Capital.com candle resolution the bot fetches signals at.
+ */
+export type BotConfigInputBarResolution = typeof BotConfigInputBarResolution[keyof typeof BotConfigInputBarResolution];
+
+
+export const BotConfigInputBarResolution = {
+  MINUTE: 'MINUTE',
+  MINUTE_5: 'MINUTE_5',
+  MINUTE_15: 'MINUTE_15',
+  MINUTE_30: 'MINUTE_30',
+  HOUR: 'HOUR',
+  HOUR_4: 'HOUR_4',
+  DAY: 'DAY',
+  WEEK: 'WEEK',
+} as const;
+
 export interface BotConfigInput {
   shortPeriod?: number;
   longPeriod?: number;
@@ -162,6 +198,8 @@ export interface BotConfigInput {
   regimeFilterEnabled?: boolean;
   /** Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders. */
   costPerTradePercent?: number;
+  /** Capital.com candle resolution the bot fetches signals at. */
+  barResolution?: BotConfigInputBarResolution;
 }
 
 export type BrokerConnectInputBroker = typeof BrokerConnectInputBroker[keyof typeof BrokerConnectInputBroker];
@@ -542,11 +580,30 @@ export interface BacktestResult {
   bars: number;
 }
 
+/**
+ * Which candle resolution historyBars were fetched at — e.g. 300 bars is ~25 trading hours at MINUTE_5 but ~12.5 days at HOUR. Use this to caption results honestly rather than implying a longer history than was actually tested.
+ */
+export type BacktestReportBarResolution = typeof BacktestReportBarResolution[keyof typeof BacktestReportBarResolution];
+
+
+export const BacktestReportBarResolution = {
+  MINUTE: 'MINUTE',
+  MINUTE_5: 'MINUTE_5',
+  MINUTE_15: 'MINUTE_15',
+  MINUTE_30: 'MINUTE_30',
+  HOUR: 'HOUR',
+  HOUR_4: 'HOUR_4',
+  DAY: 'DAY',
+  WEEK: 'WEEK',
+} as const;
+
 export interface BacktestReport {
   broker: string;
   shortPeriod: number;
   longPeriod: number;
   historyBars: number;
+  /** Which candle resolution historyBars were fetched at — e.g. 300 bars is ~25 trading hours at MINUTE_5 but ~12.5 days at HOUR. Use this to caption results honestly rather than implying a longer history than was actually tested. */
+  barResolution: BacktestReportBarResolution;
   /** Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent / 100). */
   costPct: number;
   generatedAt: string;

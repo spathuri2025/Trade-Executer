@@ -72,7 +72,8 @@ export const GetBotStatusResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
-  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.'),
+  "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -105,7 +106,8 @@ export const StartBotResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
-  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.'),
+  "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -138,7 +140,8 @@ export const StopBotResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
-  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.'),
+  "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -171,7 +174,8 @@ export const ResumeBotResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
-  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.'),
+  "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -200,7 +204,8 @@ export const UpdateBotConfigBody = zod.object({
   "maxConcurrentPositions": zod.number().optional().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.'),
   "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
-  "costPerTradePercent": zod.number().optional().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders.')
+  "costPerTradePercent": zod.number().optional().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders.'),
+  "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).optional().describe('Capital.com candle resolution the bot fetches signals at.')
 })
 
 export const UpdateBotConfigResponse = zod.object({
@@ -222,7 +227,8 @@ export const UpdateBotConfigResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
-  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.')
+  "costPerTradePercent": zod.number().describe('Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.'),
+  "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
   "circuitBreaker": zod.object({
   "tripped": zod.boolean().describe('True when the daily loss limit has been hit and trading is halted.'),
@@ -562,6 +568,7 @@ export const GetBacktestResponse = zod.object({
   "shortPeriod": zod.number(),
   "longPeriod": zod.number(),
   "historyBars": zod.number(),
+  "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Which candle resolution historyBars were fetched at — e.g. 300 bars is ~25 trading hours at MINUTE_5 but ~12.5 days at HOUR. Use this to caption results honestly rather than implying a longer history than was actually tested.'),
   "costPct": zod.number().describe('Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent \/ 100).'),
   "generatedAt": zod.string(),
   "results": zod.array(zod.object({

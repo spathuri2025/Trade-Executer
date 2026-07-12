@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BotConfigInputAiTradeMode } from './botConfigInputAiTradeMode';
+import type { BotConfigInputBarResolution } from './botConfigInputBarResolution';
 import type { BotConfigInputBroker } from './botConfigInputBroker';
 
 export interface BotConfigInput {
@@ -33,4 +34,6 @@ export interface BotConfigInput {
   regimeFilterEnabled?: boolean;
   /** Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders. */
   costPerTradePercent?: number;
+  /** Capital.com candle resolution the bot fetches signals at. */
+  barResolution?: BotConfigInputBarResolution;
 }
