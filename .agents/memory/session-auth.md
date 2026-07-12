@@ -26,9 +26,22 @@ own connected broker credentials. `conversations`/`messages` (Assistant + Signal
 chat) are now also scoped by `userId` — see `.agents/memory/conversation-kind-isolation.md`.
 
 **Still shared/global, not per-user** (deliberate, documented, not an oversight):
-- `userAiBriefs`, `marketBrainSnapshots`, `dailyMarketBriefs`, `marketNews`,
-  `aiMarketAnalysis` — these are intentionally app-wide "market intelligence" content,
-  not per-account data, so staying global is consistent with their design, not a gap.
+- `marketBrainSnapshots`, `dailyMarketBriefs`, `marketNews`, `aiMarketAnalysis` — these
+  are intentionally app-wide "market intelligence" content, not per-account data, so
+  staying global is consistent with their design, not a gap.
+
+**Correction — `userAiBriefs` was previously (wrongly) listed here as intentionally
+shared. It is NOT market content — it's the Assistant's personalized daily briefing,
+grounded in the requesting user's own account/watchlist/positions via
+`buildTradingContext(userId)`. A tester caught it showing "account not connected" /
+"watchlist empty" on an account that had both — root cause was that the table had no
+`userId` column at all, so the whole platform shared one row generated from whichever
+customer happened to trigger it first each day. Fixed in the QA-fixes round: `userId`
+added to `userAiBriefsTable`, and `routes/assistantBrief.ts`'s generation-cooldown state
+moved from module-level globals to per-user `Map`/`Set`, matching the pattern already
+used by `botEngine.ts`/`scannerEngine.ts`. Do not re-add a feature like this as a shared
+row again — anything grounded in `buildTradingContext` or similar per-account data must
+be scoped by `userId` from the start.
 
 **How to apply:** when adding a new feature, check whether it's about *the user's own
 trading data* (instruments/trades/signals/bot/broker/chat — scope by `req.user.id`, mirror

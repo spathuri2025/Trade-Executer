@@ -358,13 +358,18 @@ export async function getCapitalQuote(userId: number, credentials: CapitalCreden
     snapshot?: { bid?: number; offer?: number; marketStatus?: string; updateTime?: string };
   };
   const snap = data?.snapshot;
-  if (!snap || typeof snap.bid !== "number" || typeof snap.offer !== "number") {
+  // A missing snapshot means the epic itself is bad or the market lookup failed —
+  // that's a real error. Missing bid/offer with a snapshot present just means the
+  // market has no live price right now (e.g. a share outside exchange hours) —
+  // marketStatus still tells the caller why, so preserve it instead of discarding
+  // it behind a generic error.
+  if (!snap) {
     throw new Error(`No live quote available for ${epic}`);
   }
   return {
     epic,
-    bid: snap.bid,
-    offer: snap.offer,
+    bid: typeof snap.bid === "number" ? snap.bid : 0,
+    offer: typeof snap.offer === "number" ? snap.offer : 0,
     marketStatus: snap.marketStatus ?? "UNKNOWN",
     currency: data.instrument?.currency ?? null,
     updateTime: snap.updateTime ?? null,

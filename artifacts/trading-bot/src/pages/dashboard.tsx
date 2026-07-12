@@ -218,7 +218,7 @@ export default function Dashboard() {
             style: {},
           },
           {
-            label: "Invested",
+            label: "Deposited Funds",
             value: accountLoading ? null : `${account?.invested.toFixed(2)} ${account?.currency || "GBP"}`,
             style: {},
           },

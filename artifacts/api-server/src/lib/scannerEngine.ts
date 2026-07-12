@@ -119,24 +119,23 @@ interface CapitalMarket {
   offer: number;
 }
 
-async function fetchMarkets(
-  userId: number,
-  credentials: UserBrokerCredentials,
-  instrumentType: string,
-  limit: number,
-): Promise<CapitalMarket[]> {
-  // The scanner only knows how to query Capital.com's market-search endpoint today.
+/**
+ * Capital.com's /markets endpoint only documents `searchTerm`/`epics` filters —
+ * there is no `instrumentTypes` or `limit` query param. Passing an explicitly
+ * empty `searchTerm=` (as this used to) gets treated as "match nothing", not
+ * "no filter", which silently returned zero markets for every instrument type.
+ * Per the docs, omitting all query params returns the full market list — so
+ * fetch everything once and filter/cap client-side using the `instrumentType`
+ * field each market already carries.
+ */
+async function fetchAllMarkets(userId: number, credentials: UserBrokerCredentials): Promise<CapitalMarket[]> {
   if (credentials.broker !== "capitalcom") return [];
 
   try {
-    const data = (await capitalAuthFetch(
-      userId,
-      credentials.capital,
-      `/markets?searchTerm=&instrumentTypes=${instrumentType}&limit=${limit}`,
-    )) as { markets?: CapitalMarket[] };
+    const data = (await capitalAuthFetch(userId, credentials.capital, "/markets")) as { markets?: CapitalMarket[] };
     return data?.markets ?? [];
   } catch (err) {
-    logger.warn({ userId, instrumentType, err }, "Failed to fetch markets for scanning");
+    logger.warn({ userId, err }, "Failed to fetch markets for scanning");
     return [];
   }
 }
@@ -182,17 +181,16 @@ export async function runScan(userId: number): Promise<{ scanned: number; hits: 
     }
   }
 
-  // Gather instruments across requested types
-  const perType = Math.ceil(maxInstrumentsPerScan / instrumentTypes.length);
-  const allMarkets: CapitalMarket[] = [];
+  // Fetch the full market list once, then filter to the requested instrument
+  // types and cap at maxInstrumentsPerScan client-side (see fetchAllMarkets).
+  const wantedTypes = new Set(instrumentTypes);
+  const fetched = await fetchAllMarkets(userId, credentials);
+  const allMarkets = fetched.filter((m) => wantedTypes.has(m.instrumentType)).slice(0, maxInstrumentsPerScan);
 
-  for (const iType of instrumentTypes) {
-    const markets = await fetchMarkets(userId, credentials, iType, perType);
-    allMarkets.push(...markets);
-    await sleep(500);
-  }
-
-  logger.info({ userId, total: allMarkets.length, instrumentTypes }, "Scanner fetched market universe");
+  logger.info(
+    { userId, fetched: fetched.length, matched: allMarkets.length, instrumentTypes },
+    "Scanner fetched market universe"
+  );
 
   // Process in batches of 5 with a 1.5s pause between batches to respect rate limits
   const BATCH_SIZE = 5;

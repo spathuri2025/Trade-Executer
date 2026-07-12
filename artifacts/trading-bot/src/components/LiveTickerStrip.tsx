@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useListInstruments, getListInstrumentsQueryKey } from "@workspace/api-client-react";
+import {
+  useListInstruments,
+  getListInstrumentsQueryKey,
+  useGetQuote,
+  getGetQuoteQueryKey,
+} from "@workspace/api-client-react";
 import { useLivePrices, type LiveQuote } from "@/hooks/use-live-prices";
 
 const card = "hsl(var(--card))";
@@ -38,6 +43,25 @@ function TickerTile({ ticker, name, quote }: { ticker: string; name: string; quo
   const flashColor = flash === "up" ? emerald : flash === "down" ? red : "transparent";
   const hasData = !!quote;
 
+  // The WebSocket stream simply never pushes updates for an epic the broker
+  // has no live quote for (e.g. a share outside exchange hours) — there's no
+  // "closed" signal on the wire, just silence. Fall back to the REST quote
+  // endpoint (which does carry marketStatus) so a genuinely-closed market
+  // shows as "Market closed" instead of an unexplained blank dash forever.
+  const { data: fallbackQuote, isError: fallbackErrored } = useGetQuote(
+    { ticker },
+    {
+      query: {
+        queryKey: getGetQuoteQueryKey({ ticker }),
+        enabled: !hasData,
+        refetchInterval: 30000,
+        retry: false,
+      },
+    }
+  );
+  const marketClosed = !hasData && !!fallbackQuote?.marketStatus && fallbackQuote.marketStatus !== "TRADEABLE";
+  const statusText = marketClosed ? "Market closed" : fallbackErrored ? "No live quote" : name;
+
   return (
     <div
       className="shrink-0 rounded-lg px-4 py-3 transition-colors"
@@ -59,17 +83,21 @@ function TickerTile({ ticker, name, quote }: { ticker: string; name: string; quo
             {flash === "down" ? "▼" : "▲"}
           </span>
         ) : (
-          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: muted }} title="Waiting for data" />
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: muted }}
+            title={marketClosed ? "Market closed" : "Waiting for data"}
+          />
         )}
       </div>
       <div
         className="mt-1 font-mono text-lg tabular-nums transition-colors"
         style={{ color: flash ? flashColor : "hsl(var(--foreground))" }}
       >
-        {hasData ? formatPrice(quote!.mid) : "—"}
+        {hasData ? formatPrice(quote!.mid) : marketClosed ? "Closed" : "—"}
       </div>
-      <div className="mt-0.5 truncate text-[10px]" style={{ color: muted }} title={name}>
-        {hasData ? `bid ${formatPrice(quote!.bid)} · ask ${formatPrice(quote!.offer)}` : name}
+      <div className="mt-0.5 truncate text-[10px]" style={{ color: muted }} title={statusText}>
+        {hasData ? `bid ${formatPrice(quote!.bid)} · ask ${formatPrice(quote!.offer)}` : statusText}
       </div>
     </div>
   );

@@ -60,9 +60,14 @@ export async function buildTradingContext(userId: number): Promise<string> {
       lines.push("");
       lines.push("## Account");
       lines.push(`- Total balance: ${fmtMoney(account.total, account.currency)}`);
-      lines.push(`- Cash available: ${fmtMoney(account.cash, account.currency)}`);
-      lines.push(`- Invested: ${fmtMoney(account.invested, account.currency)}`);
+      lines.push(`- Deposited funds: ${fmtMoney(account.invested, account.currency)}`);
       lines.push(`- Open P/L: ${fmtMoney(account.result, account.currency)}`);
+      lines.push(
+        `- Available margin for new trades: ${fmtMoney(account.cash, account.currency)} (can go negative if open positions are using more margin than the account currently supports)`
+      );
+      lines.push(
+        `- These figures ARE consistent: Total balance = Deposited funds + Open P/L (${fmtMoney(account.invested, account.currency)} + ${fmtMoney(account.result, account.currency)} = ${fmtMoney(account.total, account.currency)}). "Available margin" is a separate figure and is NOT meant to add up with the others — never describe these numbers as not reconciling.`
+      );
     } catch (err) {
       logger.warn({ userId, broker, err }, "Assistant context: could not fetch account");
       lines.push("");

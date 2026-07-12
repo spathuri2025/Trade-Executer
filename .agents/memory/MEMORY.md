@@ -6,3 +6,4 @@
 - [Multi-tenant broker accounts](multi-tenant-broker.md) — each user connects their own encrypted broker credentials; botEngine/scannerEngine/capitalStream are all per-user Maps; conversations are per-user too.
 - [Conversation kind isolation](conversation-kind-isolation.md) — Assistant/Signal Analyst chats share conversations/messages tables, discriminated by kind AND now userId.
 - [Admin Centre](admin-centre.md) — role/suspendedAt on users, no self-serve admin promotion, suspend force-stops bot+stream immediately, contracts are base64-in-Postgres not object storage.
+- [QA round 1 fixes](qa-round-1-fixes.md) — Scanner's /markets call had no real filter params (empty searchTerm = zero results); userAiBriefs was a cross-account shared row, now per-user; Capital.com marketStatus must be preserved not discarded; total = invested + result, cash is unrelated.
