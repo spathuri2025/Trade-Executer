@@ -3,7 +3,8 @@
 - [Trade Intelligence (Claude layer)](trade-intelligence-claude.md) — no real multi-factor scoring engine exists; the Signals-page bridge honestly marks unscored factors as "not yet computed" instead of fabricating data.
 - [Session authentication](session-auth.md) — login required app-wide; most data is now per-tenant (see multi-tenant-broker.md), except market-wide AI content which stays shared.
 - [Live price SSE store](live-price-store.md) — shared-SSE re-render fix (stable per-epic references); briefly replaced with polling mid-round, now restored per-user.
-- [Multi-tenant broker accounts](multi-tenant-broker.md) — each user connects their own encrypted broker credentials; botEngine/scannerEngine/capitalStream are all per-user Maps; conversations are per-user too.
+- [Multi-tenant broker accounts](multi-tenant-broker.md) — each user connects their own encrypted broker credentials; botEngine/scannerEngine/capitalStream are all per-user Maps; T212 keys are live/demo-specific, connect auto-detects the host.
+- [drizzle push quirk](drizzle-push-quirk.md) — db push always dies on a false-diff TTY prompt; apply dev DDL manually via SQL, never --force; prod schema syncs on republish.
 - [Conversation kind isolation](conversation-kind-isolation.md) — Assistant/Signal Analyst chats share conversations/messages tables, discriminated by kind AND now userId.
 - [Admin Centre](admin-centre.md) — role/suspendedAt on users, no self-serve admin promotion, suspend force-stops bot+stream immediately, contracts are base64-in-Postgres not object storage.
 - [QA round 1 fixes](qa-round-1-fixes.md) — Scanner's /markets call had no real filter params (empty searchTerm = zero results); userAiBriefs was a cross-account shared row, now per-user; Capital.com marketStatus must be preserved not discarded; total = invested + result, cash is unrelated.

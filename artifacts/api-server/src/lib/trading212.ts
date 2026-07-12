@@ -1,10 +1,15 @@
 import { logger } from "./logger";
 import type { Trading212Credentials } from "./brokerCredentialsService";
 
-const BASE_URL = "https://live.trading212.com/api/v0";
+const BASE_URLS = {
+  live: "https://live.trading212.com/api/v0",
+  demo: "https://demo.trading212.com/api/v0",
+} as const;
 
 async function t212Fetch(credentials: Trading212Credentials, path: string, options: RequestInit = {}): Promise<unknown> {
-  const url = `${BASE_URL}${path}`;
+  // Keys generated on a practice account only work against the demo host.
+  // The environment is auto-detected at connect time and stored with the credentials.
+  const url = `${BASE_URLS[credentials.environment ?? "live"]}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: {

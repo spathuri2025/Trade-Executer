@@ -8,8 +8,12 @@ export interface CapitalCredentials {
   password: string;
 }
 
+export type Trading212Environment = "live" | "demo";
+
 export interface Trading212Credentials {
   apiKey: string;
+  /** Auto-detected at connect time; older rows without it default to "live". */
+  environment?: Trading212Environment;
 }
 
 export type UserBrokerCredentials =
@@ -45,7 +49,13 @@ function decodeRow(row: BrokerCredentialsRow): UserBrokerCredentials | null {
     };
   }
   if (!row.trading212ApiKeyEnc) return null;
-  return { broker: "trading212", trading212: { apiKey: decrypt(row.trading212ApiKeyEnc) } };
+  return {
+    broker: "trading212",
+    trading212: {
+      apiKey: decrypt(row.trading212ApiKeyEnc),
+      environment: row.trading212Environment ?? "live",
+    },
+  };
 }
 
 /** Broker + masked identifier for display, or null if nothing is connected. */
@@ -71,6 +81,7 @@ export async function saveUserBrokerCredentials(userId: number, input: SaveBroke
           capitalIdentifierEnc: encrypt(input.capital.identifier),
           capitalPasswordEnc: encrypt(input.capital.password),
           trading212ApiKeyEnc: null,
+          trading212Environment: null,
         }
       : {
           userId,
@@ -79,6 +90,7 @@ export async function saveUserBrokerCredentials(userId: number, input: SaveBroke
           capitalIdentifierEnc: null,
           capitalPasswordEnc: null,
           trading212ApiKeyEnc: encrypt(input.trading212.apiKey),
+          trading212Environment: input.trading212.environment ?? "live",
         };
 
   await db
