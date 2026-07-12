@@ -5,6 +5,7 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { BacktestReportBarResolution } from './backtestReportBarResolution';
 import type { BacktestResult } from './backtestResult';
 
 export interface BacktestReport {
@@ -12,6 +13,8 @@ export interface BacktestReport {
   shortPeriod: number;
   longPeriod: number;
   historyBars: number;
+  /** Which candle resolution historyBars were fetched at — e.g. 300 bars is ~25 trading hours at MINUTE_5 but ~12.5 days at HOUR. Use this to caption results honestly rather than implying a longer history than was actually tested. */
+  barResolution: BacktestReportBarResolution;
   /** Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent / 100). */
   costPct: number;
   generatedAt: string;
