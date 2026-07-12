@@ -149,6 +149,21 @@ export default function Dashboard() {
   const pnl = account?.result ?? 0;
   const pnlPositive = pnl >= 0;
 
+  /**
+   * Positions whose notional (quantity × current price) exceeds the
+   * configured Max Position Size — informational only, never auto-closes
+   * anything. Catches positions opened before the cap existed or outside the
+   * bot entirely (a tester found exactly this: a single CFD position at
+   * roughly 8x account value with no warning shown anywhere).
+   */
+  const maxPositionSizePercent = botStatus?.config?.maxPositionSizePercent ?? 0;
+  const oversizedPositions =
+    account && maxPositionSizePercent > 0 && positions
+      ? positions
+          .map((pos) => ({ ...pos, notional: pos.quantity * pos.currentPrice }))
+          .filter((pos) => pos.notional > account.total * (maxPositionSizePercent / 100))
+      : [];
+
   return (
     <div className="space-y-12">
 
@@ -206,6 +221,29 @@ export default function Dashboard() {
           >
             {resumeBot.isPending ? "Resuming…" : "Resume Engine"}
           </Button>
+        </div>
+      )}
+
+      {/* ── Oversized position banner ── */}
+      {oversizedPositions.length > 0 && (
+        <div
+          className="rounded-lg p-5 space-y-2"
+          style={{ backgroundColor: "rgba(217,155,29,0.08)", border: "1px solid rgba(217,155,29,0.35)" }}
+          data-testid="banner-oversized-position"
+        >
+          <div className="text-sm font-semibold" style={{ color: "rgb(217,155,29)" }}>
+            Position size exceeds your Max Position Size setting
+          </div>
+          <div className="text-xs leading-relaxed" style={{ color: "rgba(217,155,29,0.85)" }}>
+            {oversizedPositions.map((pos) => (
+              <div key={pos.ticker}>
+                {pos.ticker}: {pos.quantity} units at {pos.currentPrice.toFixed(2)} (
+                {(pos.notional / (account?.total || 1)).toFixed(1)}× your account value) — your Max Position
+                Size is {maxPositionSizePercent}% of account. This won't be closed automatically; review it
+                with your broker.
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

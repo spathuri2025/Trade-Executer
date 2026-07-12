@@ -163,124 +163,135 @@ export async function runScan(userId: number): Promise<{ scanned: number; hits: 
     state.nextRunAt = new Date(Date.now() + ms);
   }
 
-  const botStatus = await getBotStatus(userId);
-  const { shortPeriod, longPeriod, dryRun, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled, barResolution } =
-    botStatus.config;
-  const { autoTrade, minTrendStrength, instrumentTypes, maxInstrumentsPerScan } = state.config;
-  const bars = requiredBars(longPeriod);
-
   let totalScanned = 0;
   let totalHits = 0;
 
-  // Fetch account balance once for position sizing
-  let accountBalance: number | null = null;
-  if (autoTrade && riskPerTradePercent > 0) {
-    try {
-      const account = await getBrokerAccount(userId, credentials);
-      accountBalance = account.total;
-    } catch {
-      logger.warn({ userId }, "Could not fetch account balance for scanner auto-trade sizing");
+  // Everything below can throw (DB reads, broker calls) — wrapped in
+  // try/finally so `state.scanning` is *always* released. Without this, one
+  // failed scan (e.g. a transient DB error in getBotStatus) leaves the lock
+  // stuck true forever: every future call — manual or scheduled — hits the
+  // `state.scanning` guard above and silently short-circuits to {scanned: 0,
+  // hits: 0} without ever updating lastRunAt again, which looks exactly like
+  // "scanner does nothing" with no error surfaced anywhere.
+  try {
+    const botStatus = await getBotStatus(userId);
+    const { shortPeriod, longPeriod, dryRun, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled, barResolution } =
+      botStatus.config;
+    const { autoTrade, minTrendStrength, instrumentTypes, maxInstrumentsPerScan } = state.config;
+    const bars = requiredBars(longPeriod);
+
+    // Fetch account balance once for position sizing
+    let accountBalance: number | null = null;
+    if (autoTrade && riskPerTradePercent > 0) {
+      try {
+        const account = await getBrokerAccount(userId, credentials);
+        accountBalance = account.total;
+      } catch {
+        logger.warn({ userId }, "Could not fetch account balance for scanner auto-trade sizing");
+      }
     }
-  }
 
-  // Fetch the full market list once, then filter to the requested instrument
-  // types and cap at maxInstrumentsPerScan client-side (see fetchAllMarkets).
-  const wantedTypes = new Set(instrumentTypes);
-  const fetched = await fetchAllMarkets(userId, credentials);
-  const allMarkets = fetched.filter((m) => wantedTypes.has(m.instrumentType)).slice(0, maxInstrumentsPerScan);
+    // Fetch the full market list once, then filter to the requested instrument
+    // types and cap at maxInstrumentsPerScan client-side (see fetchAllMarkets).
+    const wantedTypes = new Set(instrumentTypes);
+    const fetched = await fetchAllMarkets(userId, credentials);
+    const allMarkets = fetched.filter((m) => wantedTypes.has(m.instrumentType)).slice(0, maxInstrumentsPerScan);
 
-  logger.info(
-    { userId, fetched: fetched.length, matched: allMarkets.length, instrumentTypes },
-    "Scanner fetched market universe"
-  );
-
-  // Process in batches of 5 with a 1.5s pause between batches to respect rate limits
-  const BATCH_SIZE = 5;
-  for (let i = 0; i < allMarkets.length; i += BATCH_SIZE) {
-    const batch = allMarkets.slice(i, i + BATCH_SIZE);
-
-    await Promise.allSettled(
-      batch.map(async (market) => {
-        try {
-          const prices = await getCapitalPriceHistory(userId, credentials.capital, market.epic, barResolution, bars);
-          totalScanned++;
-
-          if (prices.length < longPeriod + 1) return;
-
-          const currentPrice = prices[prices.length - 1];
-          const routed = routeStrategy(prices, shortPeriod, longPeriod, regimeFilterEnabled);
-          if (!routed || routed.signal === "HOLD") return;
-
-          const { signal, shortMa, longMa, strategy, regime } = routed;
-          const trendStrength = Math.abs((shortMa - longMa) / longMa) * 100;
-
-          // The trend-strength floor only makes sense for trend-following hits;
-          // mean-reversion fires in low-trend ranges by design, so it is exempt.
-          if (strategy === "trend_following" && trendStrength < minTrendStrength) return;
-
-          logger.info({ userId, ticker: market.epic, signal, strategy, regime, trendStrength, price: currentPrice }, "Scanner hit");
-
-          let autoTraded = false;
-          let orderId: string | undefined;
-
-          // Every scanner hit that reaches here is a brand-new entry (the scanner
-          // doesn't track already-open positions the way the bot's runCycle does),
-          // so this gate always applies — never blocks closing/managing an existing
-          // position, since the scanner never does that. Read marketStatus off the
-          // market data already fetched for this scan rather than firing an extra
-          // quote request per candidate.
-          const marketClosed = !!market.marketStatus && market.marketStatus !== "TRADEABLE";
-          if (autoTrade && !dryRun && marketClosed) {
-            logger.info({ userId, ticker: market.epic, marketStatus: market.marketStatus }, "Scanner auto-trade skipped — market closed");
-          } else if (autoTrade && !dryRun) {
-            try {
-              const positionValue =
-                riskPerTradePercent > 0 && accountBalance !== null
-                  ? accountBalance * (riskPerTradePercent / 100)
-                  : tradeAmount;
-              const quantity = positionValue / currentPrice;
-              const stopLoss = stopLossPercent > 0
-                ? { stopLossPercent, entryPrice: currentPrice }
-                : undefined;
-
-              const order = await placeBrokerOrder(userId, credentials, market.epic, quantity, signal, stopLoss);
-              orderId = order.id;
-              autoTraded = true;
-              logger.info({ userId, ticker: market.epic, signal, orderId }, "Scanner auto-trade executed");
-            } catch (err) {
-              logger.error({ userId, ticker: market.epic, err }, "Scanner auto-trade failed");
-            }
-          }
-
-          await db.insert(scannerResultsTable).values({
-            userId,
-            ticker: market.epic,
-            name: market.instrumentName,
-            signal,
-            shortMa: String(shortMa),
-            longMa: String(longMa),
-            price: String(currentPrice),
-            trendStrength: String(trendStrength.toFixed(4)),
-            strategy,
-            regime,
-            autoTraded,
-            orderId: orderId ?? null,
-          });
-
-          totalHits++;
-        } catch (err) {
-          logger.warn({ userId, ticker: market.epic, err }, "Scanner error processing instrument");
-        }
-      })
+    logger.info(
+      { userId, fetched: fetched.length, matched: allMarkets.length, instrumentTypes },
+      "Scanner fetched market universe"
     );
 
-    // Rate-limit pause between batches
-    if (i + BATCH_SIZE < allMarkets.length) await sleep(1500);
-  }
+    // Process in batches of 5 with a 1.5s pause between batches to respect rate limits
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < allMarkets.length; i += BATCH_SIZE) {
+      const batch = allMarkets.slice(i, i + BATCH_SIZE);
 
-  state.lastScanCount = totalScanned;
-  state.lastHitCount = totalHits;
-  state.scanning = false;
+      await Promise.allSettled(
+        batch.map(async (market) => {
+          try {
+            const prices = await getCapitalPriceHistory(userId, credentials.capital, market.epic, barResolution, bars);
+            totalScanned++;
+
+            if (prices.length < longPeriod + 1) return;
+
+            const currentPrice = prices[prices.length - 1];
+            const routed = routeStrategy(prices, shortPeriod, longPeriod, regimeFilterEnabled);
+            if (!routed || routed.signal === "HOLD") return;
+
+            const { signal, shortMa, longMa, strategy, regime } = routed;
+            const trendStrength = Math.abs((shortMa - longMa) / longMa) * 100;
+
+            // The trend-strength floor only makes sense for trend-following hits;
+            // mean-reversion fires in low-trend ranges by design, so it is exempt.
+            if (strategy === "trend_following" && trendStrength < minTrendStrength) return;
+
+            logger.info({ userId, ticker: market.epic, signal, strategy, regime, trendStrength, price: currentPrice }, "Scanner hit");
+
+            let autoTraded = false;
+            let orderId: string | undefined;
+
+            // Every scanner hit that reaches here is a brand-new entry (the scanner
+            // doesn't track already-open positions the way the bot's runCycle does),
+            // so this gate always applies — never blocks closing/managing an existing
+            // position, since the scanner never does that. Read marketStatus off the
+            // market data already fetched for this scan rather than firing an extra
+            // quote request per candidate.
+            const marketClosed = !!market.marketStatus && market.marketStatus !== "TRADEABLE";
+            if (autoTrade && !dryRun && marketClosed) {
+              logger.info({ userId, ticker: market.epic, marketStatus: market.marketStatus }, "Scanner auto-trade skipped — market closed");
+            } else if (autoTrade && !dryRun) {
+              try {
+                const positionValue =
+                  riskPerTradePercent > 0 && accountBalance !== null
+                    ? accountBalance * (riskPerTradePercent / 100)
+                    : tradeAmount;
+                const quantity = positionValue / currentPrice;
+                const stopLoss = stopLossPercent > 0
+                  ? { stopLossPercent, entryPrice: currentPrice }
+                  : undefined;
+
+                const order = await placeBrokerOrder(userId, credentials, market.epic, quantity, signal, stopLoss);
+                orderId = order.id;
+                autoTraded = true;
+                logger.info({ userId, ticker: market.epic, signal, orderId }, "Scanner auto-trade executed");
+              } catch (err) {
+                logger.error({ userId, ticker: market.epic, err }, "Scanner auto-trade failed");
+              }
+            }
+
+            await db.insert(scannerResultsTable).values({
+              userId,
+              ticker: market.epic,
+              name: market.instrumentName,
+              signal,
+              shortMa: String(shortMa),
+              longMa: String(longMa),
+              price: String(currentPrice),
+              trendStrength: String(trendStrength.toFixed(4)),
+              strategy,
+              regime,
+              autoTraded,
+              orderId: orderId ?? null,
+            });
+
+            totalHits++;
+          } catch (err) {
+            logger.warn({ userId, ticker: market.epic, err }, "Scanner error processing instrument");
+          }
+        })
+      );
+
+      // Rate-limit pause between batches
+      if (i + BATCH_SIZE < allMarkets.length) await sleep(1500);
+    }
+  } catch (err) {
+    logger.error({ userId, err }, "Scanner cycle failed");
+  } finally {
+    state.lastScanCount = totalScanned;
+    state.lastHitCount = totalHits;
+    state.scanning = false;
+  }
 
   logger.info({ userId, scanned: totalScanned, hits: totalHits }, "Scanner cycle complete");
   return { scanned: totalScanned, hits: totalHits };

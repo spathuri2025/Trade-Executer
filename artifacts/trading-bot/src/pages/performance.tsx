@@ -33,8 +33,12 @@ const STRATEGY_BADGE_CLASS: Record<string, string> = {
   atr_momentum: "text-amber-400 border-amber-400/40 bg-amber-400/10",
 };
 
-const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
-const signedPct = (n: number) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
+// Guard against ever rendering "NaN%"/"Infinity%" — a defensive backstop on
+// top of the backend's own bad-data checks, so a display bug never shows raw
+// garbage even if some future code path slips a non-finite value through.
+const pct = (n: number) => (Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : "n/a");
+const signedPct = (n: number) =>
+  Number.isFinite(n) ? `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%` : "n/a";
 
 const RESOLUTION_LABEL: Record<string, string> = {
   MINUTE: "1-min",
@@ -72,7 +76,7 @@ function barsSpan(bars: number, resolution: string): string {
  * the range itself but called out separately.
  */
 function costSummary(results: { costPct: number }[]): string {
-  const costs = results.map((r) => r.costPct).filter((c) => c > 0);
+  const costs = results.map((r) => r.costPct).filter((c) => Number.isFinite(c) && c > 0);
   if (costs.length === 0) return "n/a (no live quote)";
   if (costs.length === 1) return `${(costs[0] * 100).toFixed(2)}%`;
   const min = Math.min(...costs);
@@ -135,6 +139,16 @@ function EquityCurve({ data }: { data: BacktestRow["equityCurve"] }) {
   );
 }
 
+/**
+ * Below this many closed trades, win rate / expectancy / profit factor are
+ * dominated by noise rather than a measurable edge — a tester correctly
+ * flagged a "100% win rate, infinite profit factor" result built on just 6
+ * trades as a red flag, not reassurance. This is a display-only caveat, not
+ * a gate: the numbers are still shown (they're real, honestly computed), just
+ * clearly labeled as too thin a sample to trust.
+ */
+const MIN_RELIABLE_TRADES = 20;
+
 function ResultCard({ row }: { row: BacktestRow }) {
   return (
     <div className="p-5 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
@@ -184,15 +198,29 @@ function ResultCard({ row }: { row: BacktestRow }) {
             </Badge>
           </div>
 
+          {row.totalTrades < MIN_RELIABLE_TRADES && (
+            <p
+              className="text-xs mt-2 px-1"
+              style={{ color: "rgb(217,155,29)" }}
+            >
+              Only {row.totalTrades} trade{row.totalTrades === 1 ? "" : "s"} in this window — too few to judge
+              edge reliably. Treat this as a rough first look, not a verdict.
+            </p>
+          )}
+
           <div className="grid grid-cols-3 gap-3 mt-4">
             <Stat label="Total Return" value={signedPct(row.totalReturnPct)} tone={row.totalReturnPct >= 0 ? "pos" : "neg"} />
             <Stat label="Win Rate" value={pct(row.winRate)} />
-            <Stat label="Profit Factor" value={row.profitFactor == null ? "∞" : row.profitFactor.toFixed(2)} tone={row.profitFactor != null && row.profitFactor >= 1 ? "pos" : row.profitFactor == null ? "pos" : "neg"} />
+            <Stat
+              label="Profit Factor"
+              value={row.profitFactor == null ? "∞" : Number.isFinite(row.profitFactor) ? row.profitFactor.toFixed(2) : "n/a"}
+              tone={row.profitFactor != null && row.profitFactor >= 1 ? "pos" : row.profitFactor == null ? "pos" : "neg"}
+            />
             <Stat label="Avg Win" value={signedPct(row.avgWinPct)} tone="pos" />
             <Stat label="Avg Loss" value={signedPct(row.avgLossPct)} tone="neg" />
             <Stat label="Max Drawdown" value={pct(row.maxDrawdownPct)} tone="neg" />
             <Stat label="Trades" value={String(row.totalTrades)} />
-            <Stat label="Spread Cost" value={row.costPct > 0 ? pct(row.costPct) : "n/a"} />
+            <Stat label="Spread Cost" value={Number.isFinite(row.costPct) && row.costPct > 0 ? pct(row.costPct) : "n/a"} />
           </div>
         </>
       )}
@@ -281,9 +309,12 @@ export default function Performance() {
         "n/a" cost (frictionless) rather than a real spread estimate. Fills use the NEXT bar's close,
         not the signal bar's own close, to avoid look-ahead bias — this also approximates realistic
         execution slippage. Backtests use recent closes at whatever Bar Resolution is set in Settings —
-        finer resolutions cover a much shorter real-world window for the same bar count (e.g. 300 5-min
-        bars is ~25 trading hours, not 12+ days) — and a simplified always-in-market model (no overnight
-        financing beyond the spread cost). ATR Momentum is a backtest-only strategy (not yet used by the
+        finer resolutions cover a much shorter real-world window for the same bar count (e.g. 1000 5-min
+        bars is ~83 trading hours, not months) — and a simplified always-in-market model (no overnight
+        financing beyond the spread cost). Cards with a yellow "too few trades" note are working off a
+        thin sample — win rate and expectancy on a handful of trades can look extreme in either direction
+        by chance alone, and re-running the backtest later can flip the result; don't treat one favorable
+        run as proof of an edge. ATR Momentum is a backtest-only strategy (not yet used by the
         live bot) that needs real high/low candle data — Trading 212 also has no OHLC data, so this
         strategy doesn't appear for Trading 212 instruments; you'll still see Trend-following and
         Mean-reversion results for them. Past performance does not guarantee future results and this

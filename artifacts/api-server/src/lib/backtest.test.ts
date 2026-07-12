@@ -50,6 +50,21 @@ describe("backtestStrategy — next-bar-fill (no look-ahead)", () => {
     // drag on return is the single round-trip cost deducted once in book().
     expect(withCost.totalReturnPct).toBeCloseTo(-0.01, 3);
   });
+
+  it("returns null instead of NaN/Infinity stats when a bad broker price is present", () => {
+    // A single 0 (or NaN/negative) price would make book()'s pnl division
+    // (position * (exitPrice - entryPrice)) / entryPrice produce NaN or
+    // Infinity if it ever became an entryPrice, poisoning every downstream
+    // stat. Bailing out entirely is safer than a partially-corrupted result.
+    const withZero = [...prices.slice(0, 40), 0, ...prices.slice(41)];
+    expect(backtestStrategy(withZero, 3, 5, "trend_following", 0)).toBeNull();
+
+    const withNaN = [...prices.slice(0, 40), NaN, ...prices.slice(41)];
+    expect(backtestStrategy(withNaN, 3, 5, "trend_following", 0)).toBeNull();
+
+    const withNegative = [...prices.slice(0, 40), -5, ...prices.slice(41)];
+    expect(backtestStrategy(withNegative, 3, 5, "trend_following", 0)).toBeNull();
+  });
 });
 
 describe("backtestAtrMomentum — shares the same next-bar-fill engine", () => {
@@ -98,5 +113,11 @@ describe("backtestAtrMomentum — shares the same next-bar-fill engine", () => {
   it("returns null when there are not enough candles to warm up", () => {
     const result = backtestAtrMomentum(candles.slice(0, 10), EMA_PERIOD, ATR_PERIOD, MULTIPLIER, 0);
     expect(result).toBeNull();
+  });
+
+  it("returns null instead of NaN/Infinity stats when a bad broker candle is present", () => {
+    const badCandle: Candle = { time: 5, open: 0, high: 0, low: 0, close: 0 };
+    const withBadCandle = [...candles.slice(0, 5), badCandle, ...candles.slice(6)];
+    expect(backtestAtrMomentum(withBadCandle, EMA_PERIOD, ATR_PERIOD, MULTIPLIER, 0)).toBeNull();
   });
 });

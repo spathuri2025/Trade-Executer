@@ -11,7 +11,16 @@ import { ATR_MOMENTUM_PARAMS, atrMomentumRequiredBars } from "../lib/atrMomentum
 const router: IRouter = Router();
 
 const STRATEGIES: StrategyName[] = ["trend_following", "mean_reversion"];
-const HISTORY_BARS = 300;
+// 300 bars at a 5-min resolution is only ~25 trading hours — far too thin a
+// sample to say anything about a strategy's edge (a tester correctly flagged
+// that results were flipping sign run-to-run and a 6-trade "100% win rate"
+// showing up, both classic small-sample noise). 1000 is Capital.com's
+// documented per-request cap on the /prices endpoint's `max` parameter, so
+// this is the most history a single backtest run can pull without paging.
+// getBrokerPriceHistory/getBrokerCandles already fail soft (empty array) if
+// the broker ever rejects this, so a wrong assumption here degrades to
+// today's behavior rather than breaking the page.
+const HISTORY_BARS = 1000;
 
 /**
  * Round-trip cost for this instrument, auto-derived from its LIVE bid/offer

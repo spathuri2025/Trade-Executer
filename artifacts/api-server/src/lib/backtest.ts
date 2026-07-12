@@ -251,6 +251,13 @@ export function backtestStrategy(
   const warmup = requiredBars(longPeriod);
   if (prices.length <= warmup + 1) return null;
 
+  // A single non-finite or zero/negative price (e.g. a bad broker tick) would
+  // enter book()'s pnl division and produce NaN/Infinity that then poisons
+  // every downstream stat (win rate, expectancy, the displayed cost range).
+  // Bail out with no result rather than a corrupted one — same "omit, don't
+  // fabricate" principle already used when OHLC data is unavailable.
+  if (prices.some((p) => !Number.isFinite(p) || p <= 0)) return null;
+
   const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
 
   const decideTarget = (window: number[]): 1 | -1 | 0 =>
@@ -285,6 +292,18 @@ export function backtestAtrMomentum(
 ): BacktestResult | null {
   const warmup = atrMomentumRequiredBars(emaPeriod, atrPeriod);
   if (candles.length <= warmup + 1) return null;
+
+  // Same bad-data guard as backtestStrategy — a non-finite or zero/negative
+  // high/low/close would poison the ATR/EMA maths and every downstream stat.
+  if (
+    candles.some(
+      (c) =>
+        !Number.isFinite(c.close) || c.close <= 0 ||
+        !Number.isFinite(c.high) || !Number.isFinite(c.low)
+    )
+  ) {
+    return null;
+  }
 
   const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
 
