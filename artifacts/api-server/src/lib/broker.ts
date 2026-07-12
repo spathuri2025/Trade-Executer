@@ -144,7 +144,8 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
   }
 
   // Trading 212 has no live-quote endpoint — best-effort from the latest known price.
-  const prices = await getBrokerPriceHistory(userId, credentials, ticker, 2);
+  // Resolution is a Capital.com-only concept and ignored on this branch.
+  const prices = await getBrokerPriceHistory(userId, credentials, ticker, 2, "HOUR");
   const last = prices[prices.length - 1];
   if (!last || !(last > 0)) {
     throw new Error(`No live quote available for ${ticker} on Trading 212`);

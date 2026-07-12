@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     getBrokerAccount: vi.fn(),
     getBrokerPositions: vi.fn(),
     getBrokerPriceHistory: vi.fn(),
+    getBrokerQuote: vi.fn(),
     placeBrokerOrder: vi.fn(),
   },
   ma: { computeMASignal: vi.fn() },
@@ -109,6 +110,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     aiTradeMode: "off",
     regimeFilterEnabled: false,
     costPerTradePercent: 0,
+    barResolution: "MINUTE_5",
     ...patch,
   };
 }
@@ -124,6 +126,14 @@ beforeEach(async () => {
   broker.getBrokerAccount.mockResolvedValue(defaultAccount);
   broker.getBrokerPositions.mockResolvedValue([]);
   broker.getBrokerPriceHistory.mockResolvedValue(defaultPrices);
+  broker.getBrokerQuote.mockResolvedValue({
+    ticker: "TEST",
+    bid: 100,
+    offer: 100,
+    price: 100,
+    marketStatus: "TRADEABLE",
+    currency: "GBP",
+  });
   broker.placeBrokerOrder.mockResolvedValue({ id: "order-1" });
   ma.computeMASignal.mockReturnValue({ signal: "HOLD", shortMa: 1, longMa: 1 });
   // Every test's user has a broker "connected" by default, matching the
