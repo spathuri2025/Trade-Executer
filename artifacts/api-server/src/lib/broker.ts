@@ -9,12 +9,16 @@ import {
   getCapitalPositions,
   getCapitalAccounts,
   getCapitalPriceHistory,
+  getCapitalCandles,
   getCapitalQuote,
   placeCapitalOrder,
+  type Candle,
 } from "./capitalcom";
 
 import { logger } from "./logger";
 import type { UserBrokerCredentials } from "./brokerCredentialsService";
+
+export type { Candle };
 
 export type BrokerName = "trading212" | "capitalcom";
 
@@ -125,6 +129,30 @@ export async function getBrokerPriceHistory(
     logger.warn({ ticker }, "Could not fetch price history from Trading 212");
     return [];
   }
+}
+
+/**
+ * Full OHLC candles — needed by strategies (currently only backtest-only ATR
+ * momentum) that can't work from the close-only series `getBrokerPriceHistory`
+ * provides. Capital.com's `getCapitalCandles` has no internal try/catch of its
+ * own, so callers must handle a thrown error (mirrors the defensiveness
+ * already applied around `getBrokerPriceHistory`'s Capital.com branch at each
+ * call site). Trading 212 returns an empty array, not a throw — its price
+ * history is already a fabricated series with no real OHLC to offer, so this
+ * mirrors `getBrokerPriceHistory`'s own fail-soft-to-[] contract for T212
+ * rather than introducing a new exception shape callers need to special-case.
+ */
+export async function getBrokerCandles(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  ticker: string,
+  count: number,
+  resolution: string
+): Promise<Candle[]> {
+  if (credentials.broker === "capitalcom") {
+    return getCapitalCandles(userId, credentials.capital, ticker, resolution, count);
+  }
+  return [];
 }
 
 export interface NormalizedQuote {

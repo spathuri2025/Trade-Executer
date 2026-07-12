@@ -18,7 +18,11 @@
 import { computeMASignal } from "./maStrategy";
 import { rsi, bollingerBands, adx } from "./indicators";
 
-export type StrategyName = "trend_following" | "mean_reversion";
+// "atr_momentum" is backtest-only (see atrMomentumStrategy.ts) — routeStrategy()
+// below never returns it; the live regime router only ever picks between the
+// first two. Widened here purely so backtest.ts/routes/backtest.ts can use the
+// literal, not to imply this is a third live-routed option.
+export type StrategyName = "trend_following" | "mean_reversion" | "atr_momentum";
 export type Regime = "trending" | "ranging";
 export type SignalAction = "BUY" | "SELL" | "HOLD";
 

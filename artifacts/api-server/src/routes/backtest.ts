@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db, instrumentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getBrokerPriceHistory, getBrokerQuote } from "../lib/broker";
+import { getBrokerPriceHistory, getBrokerQuote, getBrokerCandles } from "../lib/broker";
 import { getBotStatus } from "../lib/botEngine";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "../lib/brokerCredentialsService";
-import { backtestStrategy } from "../lib/backtest";
+import { backtestStrategy, backtestAtrMomentum } from "../lib/backtest";
 import { requiredBars, type StrategyName } from "../lib/strategyRouter";
+import { ATR_MOMENTUM_PARAMS, atrMomentumRequiredBars } from "../lib/atrMomentumStrategy";
 
 const router: IRouter = Router();
 
@@ -105,6 +106,57 @@ router.get("/backtest", async (req, res): Promise<void> => {
         equityCurve: r.equityCurve,
         bars: prices.length,
       });
+    }
+
+    // ATR momentum needs real OHLC, unavailable for Trading 212 (its price
+    // history is already a fabricated series with no real high/low) — omit
+    // the row rather than inventing a placeholder result, since there's no
+    // honest non-null value to report when there's nothing to backtest over.
+    // Logged (not silent) so the omission is still visible server-side.
+    let candles: Awaited<ReturnType<typeof getBrokerCandles>> = [];
+    try {
+      candles = await getBrokerCandles(userId, credentials, inst.ticker, HISTORY_BARS, barResolution);
+    } catch (err) {
+      req.log.warn({ err, ticker: inst.ticker }, "Backtest: candle fetch failed for ATR momentum");
+    }
+
+    const atrWarmup = atrMomentumRequiredBars(ATR_MOMENTUM_PARAMS.emaPeriod, ATR_MOMENTUM_PARAMS.atrPeriod);
+    if (candles.length > atrWarmup + 1) {
+      // Reuse the same live-spread cost already fetched above for this
+      // instrument — one fewer network round-trip, and a consistent cost
+      // figure across all three strategies for the same instrument.
+      const r = backtestAtrMomentum(
+        candles,
+        ATR_MOMENTUM_PARAMS.emaPeriod,
+        ATR_MOMENTUM_PARAMS.atrPeriod,
+        ATR_MOMENTUM_PARAMS.atrMultiplier,
+        costPct
+      );
+      if (r) {
+        results.push({
+          ticker: inst.ticker,
+          name: inst.name,
+          strategy: r.strategy,
+          totalTrades: r.totalTrades,
+          wins: r.wins,
+          losses: r.losses,
+          winRate: r.winRate,
+          avgWinPct: r.avgWinPct,
+          avgLossPct: r.avgLossPct,
+          maxDrawdownPct: r.maxDrawdownPct,
+          totalReturnPct: r.totalReturnPct,
+          expectancyPct: r.expectancyPct,
+          profitFactor: r.profitFactor,
+          costPct: r.costPct,
+          equityCurve: r.equityCurve,
+          bars: candles.length,
+        });
+      }
+    } else {
+      req.log.info(
+        { ticker: inst.ticker, broker: credentials.broker, candles: candles.length },
+        "Backtest: ATR momentum skipped — no OHLC candles available for this broker/instrument"
+      );
     }
   }
 

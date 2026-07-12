@@ -1752,7 +1752,10 @@ components:
           type: string
         strategy:
           type: string
-          enum: [trend_following, mean_reversion]
+          enum: [trend_following, mean_reversion, atr_momentum]
+          description: >
+            atr_momentum is backtest-only — it is never emitted by the live regime router
+            (Signal.strategy / ActivityItem.strategy), only by this ephemeral endpoint.
         totalTrades:
           type: integer
         wins:

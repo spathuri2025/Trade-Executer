@@ -24,6 +24,13 @@ const muted = "hsl(var(--muted-foreground))";
 const STRATEGY_LABEL: Record<string, string> = {
   trend_following: "Trend-following",
   mean_reversion: "Mean-reversion",
+  atr_momentum: "ATR Momentum",
+};
+
+const STRATEGY_BADGE_CLASS: Record<string, string> = {
+  trend_following: "text-sky-400 border-sky-400/40 bg-sky-400/10",
+  mean_reversion: "text-violet-400 border-violet-400/40 bg-violet-400/10",
+  atr_momentum: "text-amber-400 border-amber-400/40 bg-amber-400/10",
 };
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
@@ -136,14 +143,7 @@ function ResultCard({ row }: { row: BacktestRow }) {
           <div className="font-semibold">{row.ticker}</div>
           <div className="text-xs mt-0.5" style={{ color: muted }}>{row.name}</div>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            row.strategy === "mean_reversion"
-              ? "text-violet-400 border-violet-400/40 bg-violet-400/10"
-              : "text-sky-400 border-sky-400/40 bg-sky-400/10"
-          }
-        >
+        <Badge variant="outline" className={STRATEGY_BADGE_CLASS[row.strategy] ?? STRATEGY_BADGE_CLASS.trend_following}>
           {STRATEGY_LABEL[row.strategy] ?? row.strategy}
         </Badge>
       </div>
@@ -283,7 +283,10 @@ export default function Performance() {
         execution slippage. Backtests use recent closes at whatever Bar Resolution is set in Settings —
         finer resolutions cover a much shorter real-world window for the same bar count (e.g. 300 5-min
         bars is ~25 trading hours, not 12+ days) — and a simplified always-in-market model (no overnight
-        financing beyond the spread cost). Past performance does not guarantee future results and this
+        financing beyond the spread cost). ATR Momentum is a backtest-only strategy (not yet used by the
+        live bot) that needs real high/low candle data — Trading 212 also has no OHLC data, so this
+        strategy doesn't appear for Trading 212 instruments; you'll still see Trend-following and
+        Mean-reversion results for them. Past performance does not guarantee future results and this
         is not financial advice.
       </p>
     </div>

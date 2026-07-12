@@ -7,6 +7,12 @@
  * dry-run of the strategy on recent bars. All maths here is plain code — no LLM is
  * involved in producing any number, per the product brief.
  *
+ * `backtestAtrMomentum` is the exception to "same pipe as the live bot" — it's
+ * backtest-only (see atrMomentumStrategy.ts), not wired into the live regime
+ * router, and runs over full OHLC candles instead of the close-only series.
+ * Both share the same underlying fill-timing engine (`runBacktestEngine`
+ * below) so the correctness-critical mechanics described here apply to it too.
+ *
  * Model: a single always-in-market position after the first entry. Each strategy
  * signal sets a target side (BUY → long, SELL → short, HOLD → keep). When the
  * target side flips, the open round-trip is closed (and booked) and a new one is
@@ -24,6 +30,8 @@
  */
 import { computeMASignal } from "./maStrategy";
 import { computeMeanReversionSignal, requiredBars, type StrategyName } from "./strategyRouter";
+import { computeAtrMomentumSignal, atrMomentumRequiredBars } from "./atrMomentumStrategy";
+import type { Candle } from "./capitalcom";
 
 export interface BacktestPoint {
   /** Index into the price series (0-based bar number). */
@@ -67,21 +75,28 @@ function side(signal: "BUY" | "SELL" | "HOLD"): 1 | -1 | 0 {
   return signal === "BUY" ? 1 : signal === "SELL" ? -1 : 0;
 }
 
-/**
- * Run one strategy over a close-price series and return deterministic metrics.
- * Returns null when there are not enough bars to warm up the indicators.
- */
-export function backtestStrategy(
-  prices: number[],
-  shortPeriod: number,
-  longPeriod: number,
-  strategy: StrategyName,
-  costPct = 0,
-): BacktestResult | null {
-  const warmup = requiredBars(longPeriod);
-  if (prices.length <= warmup + 1) return null;
+interface EngineParams<B> {
+  bars: B[];
+  /** Index of the first bar with enough history to trade (already warmed up). */
+  warmup: number;
+  /** Already-clamped (>= 0) round-trip cost fraction. */
+  costPct: number;
+  /** Price used for mark-to-market and fills (e.g. a bar's close). */
+  price: (bar: B) => number;
+  /** Decide this bar's target side using bars[0..i] inclusive. */
+  decideTarget: (window: B[], i: number) => 1 | -1 | 0;
+}
 
-  const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
+/**
+ * Generic fill-timing/equity engine shared by every strategy's backtest —
+ * extracted so a new strategy (e.g. ATR momentum) inherits the same
+ * carefully-debugged fill-timing mechanics instead of a second hand-copy of
+ * them. Everything below is strategy-agnostic; the only strategy-specific
+ * inputs are `price()` (how to read a bar's close-equivalent) and
+ * `decideTarget()` (how to turn a windowed slice of bars into a signal).
+ */
+function runBacktestEngine<B>(params: EngineParams<B>): Omit<BacktestResult, "strategy"> {
+  const { bars, warmup, costPct: cost, price, decideTarget } = params;
 
   let equity = STARTING_EQUITY;
   let peak = equity;
@@ -127,12 +142,12 @@ export function backtestStrategy(
   // zero elapsed exposure yet.
   let pendingTarget: 1 | -1 | 0 | null = null;
 
-  for (let i = warmup + 1; i < prices.length; i++) {
+  for (let i = warmup + 1; i < bars.length; i++) {
     // 1) Mark the CURRENT (still pre-fill, if a flip is pending) position to
     //    market on this bar's move — correct because that position was held
     //    right up until this bar's close.
     if (position !== 0) {
-      const barReturn = (prices[i] - prices[i - 1]) / prices[i - 1];
+      const barReturn = (price(bars[i]) - price(bars[i - 1])) / price(bars[i - 1]);
       equity *= 1 + position * barReturn;
     }
 
@@ -141,22 +156,17 @@ export function backtestStrategy(
     //    via book()) and opens the new one, effective from the NEXT bar's
     //    mark-to-market onward, not this one.
     if (pendingTarget !== null && pendingTarget !== position) {
-      book(prices[i]);
+      book(price(bars[i]));
       position = pendingTarget;
-      entryPrice = prices[i];
+      entryPrice = price(bars[i]);
     }
     pendingTarget = null;
 
-    // 3) Decide this bar's signal from prices up to and including bar i —
-    //    the strategy is still allowed to know bar i's own close when
-    //    deciding, it just can't fill at that same close.
-    const window = prices.slice(0, i + 1);
-    const sig =
-      strategy === "trend_following"
-        ? computeMASignal(window, shortPeriod, longPeriod)?.signal ?? "HOLD"
-        : computeMeanReversionSignal(window).signal;
-
-    const target = side(sig);
+    // 3) Decide this bar's signal from bars up to and including bar i — the
+    //    strategy is still allowed to know bar i's own close when deciding,
+    //    it just can't fill at that same close.
+    const window = bars.slice(0, i + 1);
+    const target = decideTarget(window, i);
 
     // 4) Queue the flip for next bar's fill instead of applying it now.
     if (target !== 0 && target !== position) {
@@ -174,12 +184,13 @@ export function backtestStrategy(
   // next bar left to defer it to), then close any resulting open position at
   // that same final close so stats include it, reflecting the cost in both
   // the drawdown and the final equity curve point.
+  const lastPrice = price(bars[bars.length - 1]);
   if (pendingTarget !== null && pendingTarget !== position) {
-    book(prices[prices.length - 1]);
+    book(lastPrice);
     position = pendingTarget;
-    entryPrice = prices[prices.length - 1];
+    entryPrice = lastPrice;
   }
-  book(prices[prices.length - 1]);
+  book(lastPrice);
   trackDrawdown();
   if (equityCurve.length > 0) equityCurve[equityCurve.length - 1].equity = equity;
 
@@ -203,7 +214,6 @@ export function backtestStrategy(
   const profitFactor = grossLosses > 0 ? grossWins / grossLosses : null;
 
   return {
-    strategy,
     totalTrades,
     wins: wins.length,
     losses: losses.length,
@@ -217,4 +227,69 @@ export function backtestStrategy(
     costPct: cost,
     equityCurve,
   };
+}
+
+/**
+ * Run one strategy over a close-price series and return deterministic metrics.
+ * Returns null when there are not enough bars to warm up the indicators.
+ */
+export function backtestStrategy(
+  prices: number[],
+  shortPeriod: number,
+  longPeriod: number,
+  strategy: StrategyName,
+  costPct = 0,
+): BacktestResult | null {
+  const warmup = requiredBars(longPeriod);
+  if (prices.length <= warmup + 1) return null;
+
+  const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
+
+  const decideTarget = (window: number[]): 1 | -1 | 0 =>
+    side(
+      strategy === "trend_following"
+        ? computeMASignal(window, shortPeriod, longPeriod)?.signal ?? "HOLD"
+        : computeMeanReversionSignal(window).signal
+    );
+
+  const result = runBacktestEngine({
+    bars: prices,
+    warmup,
+    costPct: cost,
+    price: (p) => p,
+    decideTarget,
+  });
+
+  return { strategy, ...result };
+}
+
+/**
+ * Run ATR-normalized momentum over a full OHLC candle series. Backtest-only —
+ * see atrMomentumStrategy.ts. Returns null when there are not enough candles
+ * to warm up the EMA/ATR.
+ */
+export function backtestAtrMomentum(
+  candles: Candle[],
+  emaPeriod: number,
+  atrPeriod: number,
+  atrMultiplier: number,
+  costPct = 0,
+): BacktestResult | null {
+  const warmup = atrMomentumRequiredBars(emaPeriod, atrPeriod);
+  if (candles.length <= warmup + 1) return null;
+
+  const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
+
+  const decideTarget = (window: Candle[]): 1 | -1 | 0 =>
+    side(computeAtrMomentumSignal(window, emaPeriod, atrPeriod, atrMultiplier).signal);
+
+  const result = runBacktestEngine({
+    bars: candles,
+    warmup,
+    costPct: cost,
+    price: (c) => c.close,
+    decideTarget,
+  });
+
+  return { strategy: "atr_momentum", ...result };
 }

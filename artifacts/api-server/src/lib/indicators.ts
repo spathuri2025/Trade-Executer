@@ -1,10 +1,13 @@
 /**
  * Deterministic technical indicators used by the strategy router and regime
- * filter. All functions take a plain close-price series (oldest → newest), which
- * is the only price shape the broker price-history pipeline provides. Where an
- * indicator traditionally needs OHLC data (ADX/ATR), a close-based approximation
- * is used and documented — this keeps strategy routing dependency-free and never
- * reliant on an LLM call.
+ * filter. Most functions take a plain close-price series (oldest → newest),
+ * matching the close-only shape the live broker price-history pipeline
+ * provides — where an indicator traditionally needs OHLC data, `adx()` uses a
+ * close-based approximation instead, documented at its own definition. `atr()`
+ * is the exception: it's the first REAL OHLC-based indicator in this file,
+ * only callable where full candles are available (Capital.com's
+ * `getBrokerCandles`, not the close-only live pipeline) — currently used only
+ * by the backtest-only ATR-momentum strategy, not the live regime router.
  */
 
 /** Simple moving average of the last `period` values, or null if too few. */
@@ -129,4 +132,51 @@ export function adx(prices: number[], period: number): number | null {
     adxVal = (adxVal * (period - 1) + dx[i]) / period;
   }
   return adxVal;
+}
+
+/**
+ * Exponential moving average over `period`, seeded with an SMA of the first
+ * `period` values then rolled forward with the standard EMA recurrence.
+ * Returns null if there aren't enough values to seed.
+ */
+export function ema(values: number[], period: number): number | null {
+  if (period <= 0 || values.length < period) return null;
+  const k = 2 / (period + 1);
+  let value = values.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  for (let i = period; i < values.length; i++) {
+    value = values[i] * k + value * (1 - k);
+  }
+  return value;
+}
+
+/**
+ * Wilder-smoothed Average True Range over high/low/close OHLC arrays (same
+ * length, index-aligned, oldest → newest). Unlike `adx()`'s close-based
+ * approximation, this is a REAL ATR — it needs true OHLC and is only callable
+ * where full candles are available. Returns null if the arrays mismatch in
+ * length or there aren't enough bars to seed and smooth over `period`.
+ */
+export function atr(high: number[], low: number[], close: number[], period: number): number | null {
+  if (period <= 0) return null;
+  if (high.length !== low.length || high.length !== close.length) return null;
+  if (high.length < period + 1) return null;
+
+  const tr: number[] = [];
+  for (let i = 1; i < close.length; i++) {
+    const range = Math.max(
+      high[i] - low[i],
+      Math.abs(high[i] - close[i - 1]),
+      Math.abs(low[i] - close[i - 1])
+    );
+    tr.push(range);
+  }
+  if (tr.length < period) return null;
+
+  // Wilder smoothing: seed with a simple average of the first `period` true
+  // ranges, then roll forward with the standard Wilder recurrence.
+  let value = tr.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  for (let i = period; i < tr.length; i++) {
+    value = (value * (period - 1) + tr[i]) / period;
+  }
+  return value;
 }

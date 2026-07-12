@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { backtestStrategy } from "./backtest";
+import { backtestStrategy, backtestAtrMomentum } from "./backtest";
+import type { Candle } from "./capitalcom";
 
 describe("backtestStrategy — next-bar-fill (no look-ahead)", () => {
   // 36 flat bars at 100 (satisfies the 34-bar warmup with margin and keeps
@@ -48,5 +49,54 @@ describe("backtestStrategy — next-bar-fill (no look-ahead)", () => {
     // Entry and exit both land at 300 (flat after the jump), so the only
     // drag on return is the single round-trip cost deducted once in book().
     expect(withCost.totalReturnPct).toBeCloseTo(-0.01, 3);
+  });
+});
+
+describe("backtestAtrMomentum — shares the same next-bar-fill engine", () => {
+  // 20 flat candles (tight range, EMA/ATR params match atrMomentumStrategy.test.ts's
+  // verified BUY case) so a clean breakout fires exactly once, then a further
+  // jump to a DIFFERENT price on the very next candle — same technique as
+  // backtestStrategy's spike-to-200-then-300 case above, adapted to OHLC. A
+  // same-bar fill (the bug) would enter at the breakout candle's close (108)
+  // and ride the 108→130→140 move; the fix enters at the NEXT candle's close
+  // (130) instead, so the correct return is (140-130)/130 ≈ +7.69%, not the
+  // much larger (140-108)/108 ≈ +29.6% a look-ahead bug would produce.
+  const flat: Candle = { time: 0, open: 100, high: 100.5, low: 99.5, close: 100.0 };
+  const candles: Candle[] = [
+    ...Array.from({ length: 20 }, () => ({ ...flat })),
+    { time: 20, open: 108, high: 108.5, low: 107.5, close: 108.0 },
+    { time: 21, open: 130, high: 130.5, low: 129.5, close: 130.0 },
+    ...Array.from({ length: 4 }, (_, i) => ({ time: 22 + i, open: 140, high: 140.5, low: 139.5, close: 140.0 })),
+  ];
+  const EMA_PERIOD = 5;
+  const ATR_PERIOD = 10;
+  const MULTIPLIER = 1.5;
+
+  it("fills the entry at the NEXT candle's close, not the breakout candle's own close", () => {
+    const result = backtestAtrMomentum(candles, EMA_PERIOD, ATR_PERIOD, MULTIPLIER, 0);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.strategy).toBe("atr_momentum");
+    expect(result.totalTrades).toBe(1);
+    expect(result.wins).toBe(1);
+    expect(result.losses).toBe(0);
+    expect(result.avgWinPct).toBeCloseTo(0.07692307692307693, 8);
+    expect(result.totalReturnPct).toBeCloseTo(0.07692307692307693, 8);
+    expect(result.maxDrawdownPct).toBe(0);
+    expect(result.profitFactor).toBeNull();
+  });
+
+  it("applies round-trip cost on the deferred fill exactly once", () => {
+    const withCost = backtestAtrMomentum(candles, EMA_PERIOD, ATR_PERIOD, MULTIPLIER, 0.01);
+    expect(withCost).not.toBeNull();
+    if (!withCost) return;
+    expect(withCost.totalTrades).toBe(1);
+    expect(withCost.totalReturnPct).toBeCloseTo(0.06615384615384601, 8);
+  });
+
+  it("returns null when there are not enough candles to warm up", () => {
+    const result = backtestAtrMomentum(candles.slice(0, 10), EMA_PERIOD, ATR_PERIOD, MULTIPLIER, 0);
+    expect(result).toBeNull();
   });
 });
