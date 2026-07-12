@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db, instrumentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getBrokerPriceHistory } from "../lib/broker";
+import { getBrokerPriceHistory, getBrokerQuote } from "../lib/broker";
 import { getBotStatus } from "../lib/botEngine";
-import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
+import { getUserBrokerCredentials, type UserBrokerCredentials } from "../lib/brokerCredentialsService";
 import { backtestStrategy } from "../lib/backtest";
 import { requiredBars, type StrategyName } from "../lib/strategyRouter";
 
@@ -11,6 +11,27 @@ const router: IRouter = Router();
 
 const STRATEGIES: StrategyName[] = ["trend_following", "mean_reversion"];
 const HISTORY_BARS = 300;
+
+/**
+ * Round-trip cost for this instrument, auto-derived from its LIVE bid/offer
+ * spread rather than a manually-typed setting — a strategy that looks
+ * profitable frictionless and unprofitable with real costs isn't a strategy.
+ * Fails open to 0 (frictionless) on a quote-fetch error: this is informational,
+ * not a live risk control, so degrading gracefully beats dropping the
+ * instrument from the report entirely. Trading 212 has no live-quote endpoint
+ * (getBrokerQuote throws for it), so its backtests consistently show 0% here —
+ * a known broker limitation, surfaced in the frontend copy, not a bug.
+ */
+async function liveSpreadCostPct(userId: number, credentials: UserBrokerCredentials, ticker: string): Promise<number> {
+  try {
+    const quote = await getBrokerQuote(userId, credentials, ticker);
+    if (quote.price <= 0) return 0;
+    const spread = (quote.offer - quote.bid) / quote.price;
+    return Number.isFinite(spread) && spread > 0 ? spread : 0;
+  } catch {
+    return 0;
+  }
+}
 
 router.get("/backtest", async (req, res): Promise<void> => {
   const userId = req.user!.id;
@@ -22,10 +43,6 @@ router.get("/backtest", async (req, res): Promise<void> => {
 
   const { config } = await getBotStatus(userId);
   const { broker, shortPeriod, longPeriod, barResolution } = config;
-  // Clamp to non-negative so the reported cost matches what the backtester
-  // actually applies (it ignores negative costs).
-  const rawCostPct = (config.costPerTradePercent ?? 0) / 100;
-  const costPct = Number.isFinite(rawCostPct) && rawCostPct > 0 ? rawCostPct : 0;
 
   const instruments = await db
     .select()
@@ -49,6 +66,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
     totalReturnPct: number;
     expectancyPct: number;
     profitFactor: number | null;
+    costPct: number;
     equityCurve: { i: number; equity: number }[];
     bars: number;
   }> = [];
@@ -63,6 +81,8 @@ router.get("/backtest", async (req, res): Promise<void> => {
     }
 
     if (prices.length <= requiredBars(longPeriod) + 1) continue;
+
+    const costPct = await liveSpreadCostPct(userId, credentials, inst.ticker);
 
     for (const strategy of STRATEGIES) {
       const r = backtestStrategy(prices, shortPeriod, longPeriod, strategy, costPct);
@@ -81,6 +101,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
         totalReturnPct: r.totalReturnPct,
         expectancyPct: r.expectancyPct,
         profitFactor: r.profitFactor,
+        costPct: r.costPct,
         equityCurve: r.equityCurve,
         bars: prices.length,
       });
@@ -93,7 +114,6 @@ router.get("/backtest", async (req, res): Promise<void> => {
     longPeriod,
     historyBars: HISTORY_BARS,
     barResolution,
-    costPct,
     generatedAt: new Date().toISOString(),
     results,
   });

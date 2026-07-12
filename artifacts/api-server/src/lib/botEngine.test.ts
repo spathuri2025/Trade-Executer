@@ -78,7 +78,18 @@ const defaultAccount: NormalizedAccount = {
 /** A 30-point flat price series; long enough for the MA guard, currentPrice=100. */
 const defaultPrices = Array<number>(30).fill(100);
 
-function position(ticker: string, quantity: number): NormalizedPosition {
+/**
+ * Existing tests encode short vs long via a negative quantity (a test-only
+ * convenience — Capital.com's real `size` field is always a positive
+ * magnitude, direction is a separate field) — default `direction` from the
+ * quantity sign so every existing call site keeps working unchanged, while
+ * new tests that care about direction can pass it explicitly.
+ */
+function position(
+  ticker: string,
+  quantity: number,
+  direction: "BUY" | "SELL" = quantity >= 0 ? "BUY" : "SELL"
+): NormalizedPosition {
   return {
     ticker,
     quantity,
@@ -86,6 +97,7 @@ function position(ticker: string, quantity: number): NormalizedPosition {
     currentPrice: 100,
     pnl: 0,
     pnlPercent: 0,
+    direction,
   };
 }
 
@@ -109,7 +121,6 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxConcurrentPositions: 5,
     aiTradeMode: "off",
     regimeFilterEnabled: false,
-    costPerTradePercent: 0,
     barResolution: "MINUTE_5",
     ...patch,
   };
@@ -387,5 +398,127 @@ describe("daily-loss circuit breaker", () => {
     expect(status.running).toBe(true);
     // Baseline re-measured from the resume point (the 900 equity now in effect).
     expect(status.circuitBreaker.dayStartEquity).toBe(900);
+  });
+});
+
+describe("flatten-by-close", () => {
+  it("closes a held long position when its market is confirmed closed", async () => {
+    // Positions are set up before startLiveBot(), but the default
+    // getBrokerQuote mock (beforeEach) returns TRADEABLE, so startLiveBot's
+    // own implicit first cycle does not flatten anything — only the
+    // TRADEABLE→CLOSED override below, applied after, triggers the flatten
+    // on the explicit runCycle() call.
+    broker.getBrokerPositions.mockResolvedValue([position("CLOSEDMKT", 10)]); // long, direction BUY
+    await startLiveBot();
+
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "CLOSEDMKT",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "CLOSED",
+      currency: "GBP",
+    });
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+    const [, , ticker, quantity, side, stopLoss, takeProfit] = broker.placeBrokerOrder.mock.calls[0];
+    expect(ticker).toBe("CLOSEDMKT");
+    expect(quantity).toBe(10);
+    expect(side).toBe("SELL"); // opposite of the long's BUY direction — a close, not a new short
+    // A closing order never carries a new stop-loss/take-profit, even though
+    // buildConfig() sets non-zero stopLossPercent/takeProfitPercent.
+    expect(stopLoss).toBeUndefined();
+    expect(takeProfit).toBeUndefined();
+  });
+
+  it("closes a held short position with a BUY (opposite of SELL)", async () => {
+    broker.getBrokerPositions.mockResolvedValue([position("SHORTED", 4, "SELL")]);
+    await startLiveBot();
+
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "SHORTED",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "CLOSED",
+      currency: "GBP",
+    });
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    const [, , ticker, quantity, side] = broker.placeBrokerOrder.mock.calls[0];
+    expect(ticker).toBe("SHORTED");
+    expect(quantity).toBe(4);
+    expect(side).toBe("BUY");
+  });
+
+  it("never flattens a position whose market is still open (TRADEABLE)", async () => {
+    broker.getBrokerPositions.mockResolvedValue([position("OPENMKT", 10)]);
+    await startLiveBot();
+
+    // getBrokerQuote still defaults to TRADEABLE (beforeEach) — no override.
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("fails CLOSED (leaves the position open) when the market-status lookup itself errors", async () => {
+    // Opposite fail direction from isMarketClosedForEntry: an unconfirmed
+    // status must never force a close.
+    broker.getBrokerPositions.mockResolvedValue([position("UNKNOWN", 10)]);
+    await startLiveBot();
+
+    broker.getBrokerQuote.mockRejectedValue(new Error("quote fetch failed"));
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("dry-run flatten never calls the broker, even when the market is confirmed closed", async () => {
+    broker.getBrokerPositions.mockResolvedValue([position("CLOSEDMKT", 10)]);
+    await startLiveBot({ dryRun: true }); // runCycle's dryRun is true regardless (cfg.dryRun || !running)
+
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "CLOSEDMKT",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "CLOSED",
+      currency: "GBP",
+    });
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed close on the next cycle", async () => {
+    broker.getBrokerPositions.mockResolvedValue([position("CLOSEDMKT", 10)]);
+    await startLiveBot();
+
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "CLOSEDMKT",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "CLOSED",
+      currency: "GBP",
+    });
+    mocks.enabledInstruments = [];
+
+    broker.placeBrokerOrder.mockRejectedValueOnce(new Error("broker rejected the close"));
+    await engine.runCycle(TEST_USER_ID);
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+
+    // Position is still reported open by the broker (mock unchanged) — the
+    // next cycle attempts the close again, same retry behavior as any other
+    // trade failure.
+    broker.placeBrokerOrder.mockResolvedValueOnce({ id: "order-2" });
+    await engine.runCycle(TEST_USER_ID);
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(2);
   });
 });

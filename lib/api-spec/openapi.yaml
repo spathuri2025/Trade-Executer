@@ -1314,7 +1314,7 @@ components:
 
     BotConfig:
       type: object
-      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, takeProfitPercent, riskPerTradePercent, maxPositionSizePercent, maxDailyLossPercent, maxConcurrentPositions, aiTradeMode, regimeFilterEnabled, costPerTradePercent, barResolution]
+      required: [shortPeriod, longPeriod, tradeAmount, intervalMinutes, dryRun, broker, stopLossPercent, takeProfitPercent, riskPerTradePercent, maxPositionSizePercent, maxDailyLossPercent, maxConcurrentPositions, aiTradeMode, regimeFilterEnabled, barResolution]
       properties:
         shortPeriod:
           type: integer
@@ -1360,9 +1360,6 @@ components:
         regimeFilterEnabled:
           type: boolean
           description: When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.
-        costPerTradePercent:
-          type: number
-          description: Estimated round-trip trading cost (spread + commission) as a % of trade value, e.g. 0.1 = 0.1%. Used by the backtester for cost-aware expectancy. 0 assumes frictionless trades. Does not affect live orders.
         barResolution:
           type: string
           enum: [MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK]
@@ -1409,9 +1406,6 @@ components:
         regimeFilterEnabled:
           type: boolean
           description: Enable automatic trending/ranging routing between trend-following and mean-reversion.
-        costPerTradePercent:
-          type: number
-          description: Estimated round-trip trading cost (spread + commission) as a % of trade value. 0 assumes frictionless trades. Backtest-only; does not affect live orders.
         barResolution:
           type: string
           enum: [MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK]
@@ -1750,7 +1744,7 @@ components:
     BacktestResult:
       type: object
       required:
-        [ticker, name, strategy, totalTrades, wins, losses, winRate, avgWinPct, avgLossPct, maxDrawdownPct, totalReturnPct, expectancyPct, profitFactor, equityCurve, bars]
+        [ticker, name, strategy, totalTrades, wins, losses, winRate, avgWinPct, avgLossPct, maxDrawdownPct, totalReturnPct, expectancyPct, profitFactor, costPct, equityCurve, bars]
       properties:
         ticker:
           type: string
@@ -1787,6 +1781,14 @@ components:
           type: number
           nullable: true
           description: Gross wins ÷ gross losses (pre-cost). null when there were no losing trades.
+        costPct:
+          type: number
+          description: >
+            Round-trip cost fraction applied to this instrument's backtest, auto-derived from its
+            live bid/offer spread ((offer − bid) / price) at the time the backtest ran — not a
+            manually-set value. 0 when a live quote could not be fetched (e.g. Trading 212, which
+            has no live-quote endpoint), treated as frictionless for that instrument rather than a
+            report failure.
         equityCurve:
           type: array
           items:
@@ -1797,7 +1799,7 @@ components:
 
     BacktestReport:
       type: object
-      required: [broker, shortPeriod, longPeriod, historyBars, barResolution, costPct, generatedAt, results]
+      required: [broker, shortPeriod, longPeriod, historyBars, barResolution, generatedAt, results]
       properties:
         broker:
           type: string
@@ -1811,9 +1813,6 @@ components:
           type: string
           enum: [MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK]
           description: Which candle resolution historyBars were fetched at — e.g. 300 bars is ~25 trading hours at MINUTE_5 but ~12.5 days at HOUR. Use this to caption results honestly rather than implying a longer history than was actually tested.
-        costPct:
-          type: number
-          description: Round-trip cost fraction applied to each backtested trade (from BotConfig.costPerTradePercent / 100).
         generatedAt:
           type: string
         results:

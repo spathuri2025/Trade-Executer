@@ -113,14 +113,43 @@ export function backtestStrategy(
     position = 0;
   };
 
+  // A signal decided at bar i fills at bar i+1's close, not bar i's own —
+  // deciding and filling on the identical bar would let the strategy trade at
+  // a price it could only have known the instant it appeared (look-ahead
+  // bias). pendingTarget holds a flip decided last bar but not yet filled.
+  //
+  // Ordering matters here: a position queued for a flip is still the one
+  // actually held through THIS bar's move (the fill happens at the END of
+  // this bar's close, not the start of it), so mark-to-market must run
+  // BEFORE the fill using the still-old `position` — flipping `position`
+  // first and marking-to-market after would incorrectly apply this bar's
+  // return to a position that was only entered at this exact close, i.e. had
+  // zero elapsed exposure yet.
+  let pendingTarget: 1 | -1 | 0 | null = null;
+
   for (let i = warmup + 1; i < prices.length; i++) {
-    // 1) Mark the open position to market on this bar's move.
+    // 1) Mark the CURRENT (still pre-fill, if a flip is pending) position to
+    //    market on this bar's move — correct because that position was held
+    //    right up until this bar's close.
     if (position !== 0) {
       const barReturn = (prices[i] - prices[i - 1]) / prices[i - 1];
       equity *= 1 + position * barReturn;
     }
 
-    // 2) Decide this bar's signal from prices up to and including bar i.
+    // 2) If a flip was queued on a previous bar, execute the fill NOW at
+    //    this bar's close — closes the old position (cost + win/loss stats
+    //    via book()) and opens the new one, effective from the NEXT bar's
+    //    mark-to-market onward, not this one.
+    if (pendingTarget !== null && pendingTarget !== position) {
+      book(prices[i]);
+      position = pendingTarget;
+      entryPrice = prices[i];
+    }
+    pendingTarget = null;
+
+    // 3) Decide this bar's signal from prices up to and including bar i —
+    //    the strategy is still allowed to know bar i's own close when
+    //    deciding, it just can't fill at that same close.
     const window = prices.slice(0, i + 1);
     const sig =
       strategy === "trend_following"
@@ -129,23 +158,27 @@ export function backtestStrategy(
 
     const target = side(sig);
 
-    // 3) Flip the position when the target side changes (books the round-trip
-    //    cost into equity before this bar's point is recorded).
+    // 4) Queue the flip for next bar's fill instead of applying it now.
     if (target !== 0 && target !== position) {
-      book(prices[i]);
-      position = target;
-      entryPrice = prices[i];
+      pendingTarget = target;
     }
 
-    // 4) Record net equity and update drawdown once all of bar i's effects
-    //    (mark-to-market + any close cost) are applied, so the curve and
+    // 5) Record net equity and update drawdown once all of bar i's effects
+    //    (mark-to-market + any fill) are applied, so the curve and
     //    maxDrawdownPct are genuinely net of trading friction.
     trackDrawdown();
     equityCurve.push({ i, equity });
   }
 
-  // Close any open position at the final bar so stats include it, then reflect
-  // that closing cost in both the drawdown and the final equity curve point.
+  // Close-out: fill any still-pending flip at the final close (there's no
+  // next bar left to defer it to), then close any resulting open position at
+  // that same final close so stats include it, reflecting the cost in both
+  // the drawdown and the final equity curve point.
+  if (pendingTarget !== null && pendingTarget !== position) {
+    book(prices[prices.length - 1]);
+    position = pendingTarget;
+    entryPrice = prices[prices.length - 1];
+  }
   book(prices[prices.length - 1]);
   trackDrawdown();
   if (equityCurve.length > 0) equityCurve[equityCurve.length - 1].equity = equity;

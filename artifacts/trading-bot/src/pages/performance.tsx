@@ -57,6 +57,22 @@ function barsSpan(bars: number, resolution: string): string {
   return `~${(totalMinutes / (60 * 24)).toFixed(1)} days`;
 }
 
+/**
+ * Display-only cost summary across all results — a single averaged number
+ * would be misleading (a tight FX spread and a wide CFD spread blended
+ * together tells you nothing actionable), so this shows a range instead.
+ * 0-cost rows (no live quote available, e.g. Trading 212) are excluded from
+ * the range itself but called out separately.
+ */
+function costSummary(results: { costPct: number }[]): string {
+  const costs = results.map((r) => r.costPct).filter((c) => c > 0);
+  if (costs.length === 0) return "n/a (no live quote)";
+  if (costs.length === 1) return `${(costs[0] * 100).toFixed(2)}%`;
+  const min = Math.min(...costs);
+  const max = Math.max(...costs);
+  return `${(min * 100).toFixed(2)}–${(max * 100).toFixed(2)}%`;
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 600, color: muted }}>
@@ -176,6 +192,7 @@ function ResultCard({ row }: { row: BacktestRow }) {
             <Stat label="Avg Loss" value={signedPct(row.avgLossPct)} tone="neg" />
             <Stat label="Max Drawdown" value={pct(row.maxDrawdownPct)} tone="neg" />
             <Stat label="Trades" value={String(row.totalTrades)} />
+            <Stat label="Spread Cost" value={row.costPct > 0 ? pct(row.costPct) : "n/a"} />
           </div>
         </>
       )}
@@ -227,7 +244,7 @@ export default function Performance() {
       {data && (
         <p className="text-xs" style={{ color: muted }}>
           {data.results.length > 0
-            ? `${data.broker} · MA ${data.shortPeriod}/${data.longPeriod} · up to ${data.historyBars} ${RESOLUTION_LABEL[data.barResolution] ?? data.barResolution} bars (${barsSpan(data.historyBars, data.barResolution)}) · cost/trade ${(data.costPct * 100).toFixed(2)}% · generated ${new Date(data.generatedAt).toLocaleString()}`
+            ? `${data.broker} · MA ${data.shortPeriod}/${data.longPeriod} · up to ${data.historyBars} ${RESOLUTION_LABEL[data.barResolution] ?? data.barResolution} bars (${barsSpan(data.historyBars, data.barResolution)}) · spread cost ${costSummary(data.results)} · generated ${new Date(data.generatedAt).toLocaleString()}`
             : ""}
         </p>
       )}
@@ -258,12 +275,16 @@ export default function Performance() {
 
       <p className="text-[11px] leading-relaxed pt-2" style={{ color: muted }}>
         Expectancy is the per-trade edge: (Win Rate × Avg Win) − (Loss Rate × Avg Loss) − Cost. A
-        positive value means the strategy made money net of costs on this window. Set your round-trip
-        cost in Settings → Cost Per Trade for a realistic figure. Backtests use recent closes at
-        whatever Bar Resolution is set in Settings — finer resolutions cover a much shorter real-world
-        window for the same bar count (e.g. 300 5-min bars is ~25 trading hours, not 12+ days) — and a
-        simplified always-in-market model (no slippage or overnight financing beyond the cost you set).
-        Past performance does not guarantee future results and this is not financial advice.
+        positive value means the strategy made money net of costs on this window. Round-trip cost is
+        auto-derived from each instrument's live bid/offer spread at the moment the backtest runs — no
+        manual cost setting is needed. Trading 212 has no live-quote endpoint, so its backtests show
+        "n/a" cost (frictionless) rather than a real spread estimate. Fills use the NEXT bar's close,
+        not the signal bar's own close, to avoid look-ahead bias — this also approximates realistic
+        execution slippage. Backtests use recent closes at whatever Bar Resolution is set in Settings —
+        finer resolutions cover a much shorter real-world window for the same bar count (e.g. 300 5-min
+        bars is ~25 trading hours, not 12+ days) — and a simplified always-in-market model (no overnight
+        financing beyond the spread cost). Past performance does not guarantee future results and this
+        is not financial advice.
       </p>
     </div>
   );

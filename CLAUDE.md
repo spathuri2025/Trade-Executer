@@ -78,16 +78,30 @@ admin-authored, not Stripe-driven. Contracts are base64 in Postgres (`contracts.
 10MB cap via `multer`), not object storage; upload/download are deliberately **not** in
 the OpenAPI spec (same exception as SSE endpoints). See `.agents/memory/admin-centre.md`.
 
-### Bar resolution & session gating (day-trading Phase 1)
+### Bar resolution & session gating (day-trading rebuild, Phases 1-2)
 `bot_config.barResolution` (default `MINUTE_5`) controls the Capital.com candle resolution the bot, scanner,
 and backtest all fetch — the scanner always mirrors the bot's setting, there is no separate scanner
 resolution. `broker.ts`'s `getBrokerPriceHistory()` takes `resolution` as a **required** parameter
 (deliberately not defaulted, so a future hardcode regression fails to compile). New trade entries are
-blocked when Capital.com's `marketStatus` isn't `"TRADEABLE"` — **existing positions can always be closed**
-regardless of market status; this gate only ever blocks opening new exposure, and fails open (allows the
-trade) if the status lookup itself errors. Flatten-by-close and further day-trading work (strategy ensemble,
-cost/slippage realism, ATR stops, validation gate) are explicitly future phases, not done yet. See
-`.agents/memory/intraday-bar-resolution.md`.
+blocked when Capital.com's `marketStatus` isn't `"TRADEABLE"` — this gate (`isMarketClosedForEntry`) only
+ever blocks opening new exposure and fails **open** (allows the trade) on a lookup error.
+
+**Flatten-by-close** (Phase 2): open positions are force-closed once their instrument's market is confirmed
+closed, via a *separate* `isMarketClosedForFlatten` gate that fails in the **opposite** direction — closed
+(leaves the position open, retries next cycle) on a lookup error, since forcing an unconfirmed close is worse
+than delaying a confirmed one. Closes route through the normal `placeAndRecord()` with a new `isClose: true`
+flag (skips attaching a stop-loss/take-profit, which a closing order should never carry).
+
+**Backtest cost realism** (Phase 2): round-trip cost is auto-derived per-instrument from its live bid/offer
+spread (`getBrokerQuote`), not a manual setting — `costPerTradePercent` was removed from `BotConfig`/Settings
+entirely (the DB column stays, unused, per the drizzle DDL-risk note below). Backtest fills also moved to a
+next-bar-close model to remove a look-ahead bug (deciding and filling on the identical bar) — see
+`.agents/memory/day-trading-phase2-cost-flatten.md` for the fill-timing ordering, which is subtle and easy to
+get backwards.
+
+Further day-trading work (strategy ensemble, ATR stops, walk-forward validation gate) is still a future
+phase, not done yet. See `.agents/memory/intraday-bar-resolution.md` and
+`.agents/memory/day-trading-phase2-cost-flatten.md`.
 
 ### Trade execution & risk (read before touching `botEngine.ts`, `broker.ts`, or any execute route)
 - Manual trades and the automated bot **must** place orders through the same path — both read broker/dryRun/stopLossPercent from that user's bot config and write the same `trades` row shape (`FILLED`/`FAILED`/`DRY_RUN`, with `userId`).

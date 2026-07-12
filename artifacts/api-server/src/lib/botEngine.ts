@@ -7,6 +7,7 @@ import {
   getBrokerAccount,
   getBrokerPositions,
   getBrokerQuote,
+  type NormalizedPosition,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import {
@@ -51,13 +52,6 @@ export interface BotConfig {
    * false, only the trend-following MA crossover runs (pre-Phase-2 behaviour).
    */
   regimeFilterEnabled: boolean;
-  /**
-   * Estimated round-trip trading cost (spread + commission) as a % of trade
-   * value, e.g. 0.1 = 0.1%. Used by the backtester to compute a realistic,
-   * cost-aware expectancy/edge. 0 assumes frictionless trades. Does not affect
-   * live order placement — brokers apply their own real costs.
-   */
-  costPerTradePercent: number;
   /** Capital.com candle resolution fetched for signals — the scanner mirrors this. */
   barResolution: "MINUTE" | "MINUTE_5" | "MINUTE_15" | "MINUTE_30" | "HOUR" | "HOUR_4" | "DAY" | "WEEK";
 }
@@ -77,7 +71,6 @@ const DEFAULT_CONFIG: BotConfig = {
   maxConcurrentPositions: 5,
   aiTradeMode: "off",
   regimeFilterEnabled: true,
-  costPerTradePercent: 0,
   barResolution: "MINUTE_5",
 };
 
@@ -127,7 +120,6 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxConcurrentPositions: row.maxConcurrentPositions,
     aiTradeMode: row.aiTradeMode,
     regimeFilterEnabled: row.regimeFilterEnabled,
-    costPerTradePercent: row.costPerTradePercent,
     barResolution: row.barResolution,
   };
 }
@@ -189,6 +181,33 @@ async function isMarketClosedForEntry(
     return quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE";
   } catch (err) {
     logger.warn({ userId, ticker, err }, "Could not check market status — allowing trade (fail-open)");
+    return false;
+  }
+}
+
+/**
+ * True when an OPEN position's instrument market is confirmed closed and the
+ * position should be force-flattened this cycle. Deliberately the OPPOSITE
+ * fail direction from isMarketClosedForEntry: on a quote-fetch error this
+ * returns false ("leave it open, retry next cycle") rather than true, because
+ * forcing a close based on incomplete information is a worse mistake than
+ * delaying a confirmed one by one cycle — an unforced exit at a bad moment is
+ * irreversible within the cycle, unlike a skipped entry which just waits for
+ * the next signal. Same underlying quote check as isMarketClosedForEntry, but
+ * kept as a separate named function (not a shared parameterized helper) since
+ * the two gates' intent genuinely differs even though today's return values
+ * happen to coincide.
+ */
+async function isMarketClosedForFlatten(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  ticker: string
+): Promise<boolean> {
+  try {
+    const quote = await getBrokerQuote(userId, credentials, ticker);
+    return quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE";
+  } catch (err) {
+    logger.warn({ userId, ticker, err }, "Could not check market status for flatten-by-close — leaving position open (fail-closed)");
     return false;
   }
 }
@@ -355,21 +374,64 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
   }
 
   // Open positions: fetched every cycle. Used to enforce maxConcurrentPositions
-  // for all modes, and to give Claude exposure context in AI modes.
-  let positions: PositionSnapshot[] = [];
+  // for all modes, give Claude exposure context in AI modes, and — before either
+  // of those — to flatten (force-close) any position whose market has closed.
+  let rawPositions: NormalizedPosition[] = [];
   let positionsFetchOk = true;
   try {
-    positions = (await getBrokerPositions(userId, credentials)).map((p) => ({
-      ticker: p.ticker,
-      quantity: p.quantity,
-      averagePrice: p.averagePrice,
-      currentPrice: p.currentPrice,
-      pnlPercent: p.pnlPercent,
-    }));
+    rawPositions = await getBrokerPositions(userId, credentials);
   } catch (err) {
     positionsFetchOk = false;
     logger.warn({ userId, broker: credentials.broker, err }, "Could not fetch open positions");
   }
+
+  // Flatten-by-close: a risk/session-integrity control, not a trading decision,
+  // so it runs once here regardless of aiTradeMode (off/guard/autonomous) and
+  // before the signal loop derives positions/liveTickers from the (now
+  // post-flatten) position set below. Never blocks — only ever force-closes.
+  for (const pos of [...rawPositions]) {
+    const shouldFlatten = await isMarketClosedForFlatten(userId, credentials, pos.ticker);
+    if (!shouldFlatten) continue;
+
+    const closeSide: "BUY" | "SELL" = pos.direction === "BUY" ? "SELL" : "BUY";
+    logger.info(
+      { userId, ticker: pos.ticker, direction: pos.direction, quantity: pos.quantity },
+      "Flatten-by-close: market closed for an open position, closing this cycle"
+    );
+
+    const closed = await placeAndRecord({
+      userId,
+      credentials,
+      ticker: pos.ticker,
+      side: closeSide,
+      quantity: pos.quantity,
+      positionValue: pos.quantity * pos.currentPrice,
+      currentPrice: pos.currentPrice,
+      cfg,
+      dryRun,
+      aiReason: "Flatten-by-close: market closed for this instrument.",
+      isClose: true,
+    });
+
+    if (closed) {
+      // Drop it from the working set so the signal loop below (which derives
+      // positions/liveTickers from rawPositions) sees it as no longer held —
+      // a fresh signal on the same ticker this cycle is then correctly
+      // evaluated as opening a NEW position, not adding to one just closed.
+      rawPositions = rawPositions.filter((p) => p.ticker !== pos.ticker);
+    }
+    // If the close failed, the position stays in rawPositions and this same
+    // check will retry it next cycle — identical retry behavior to any other
+    // trade failure, no bespoke handling needed.
+  }
+
+  const positions: PositionSnapshot[] = rawPositions.map((p) => ({
+    ticker: p.ticker,
+    quantity: p.quantity,
+    averagePrice: p.averagePrice,
+    currentPrice: p.currentPrice,
+    pnlPercent: p.pnlPercent,
+  }));
 
   // Fail-closed: if we can't read the data a limit depends on, block any
   // exposure-INCREASING order this cycle rather than trade blind. This covers
@@ -698,8 +760,12 @@ async function placeAndRecord(args: {
   dryRun: boolean;
   aiReason?: string;
   aiConfidence?: string;
+  /** True when this order is closing an existing position (e.g. flatten-by-close)
+   * rather than opening/adding to one — a closing order never carries a new
+   * stop-loss/take-profit, since there's no resulting position left to protect. */
+  isClose?: boolean;
 }): Promise<boolean> {
-  const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence } = args;
+  const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence, isClose } = args;
   const { stopLossPercent, takeProfitPercent } = cfg;
 
   if (dryRun) {
@@ -725,8 +791,8 @@ async function placeAndRecord(args: {
       ticker,
       quantity,
       side,
-      stopLossPercent > 0 ? { stopLossPercent, entryPrice: currentPrice } : undefined,
-      takeProfitPercent > 0 ? { takeProfitPercent, entryPrice: currentPrice } : undefined
+      !isClose && stopLossPercent > 0 ? { stopLossPercent, entryPrice: currentPrice } : undefined,
+      !isClose && takeProfitPercent > 0 ? { takeProfitPercent, entryPrice: currentPrice } : undefined
     );
     await db.insert(tradesTable).values({
       userId,

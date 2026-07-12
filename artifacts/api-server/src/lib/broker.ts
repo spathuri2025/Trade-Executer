@@ -25,6 +25,8 @@ export interface NormalizedPosition {
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
+  /** BUY = long, SELL = short. Closing a position means placing the opposite side. */
+  direction: "BUY" | "SELL";
 }
 
 export interface NormalizedAccount {
@@ -54,6 +56,7 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
         currentPrice,
         pnl,
         pnlPercent,
+        direction: p.position.direction,
       };
     });
   }
@@ -66,6 +69,9 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
     currentPrice: p.currentPrice,
     pnl: p.ppl,
     pnlPercent: p.averagePrice > 0 ? ((p.currentPrice - p.averagePrice) / p.averagePrice) * 100 : 0,
+    // Trading 212's Invest/ISA API has no short-selling and no direction field
+    // of its own — every position returned here is structurally long.
+    direction: "BUY" as const,
   }));
 }
 

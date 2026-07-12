@@ -87,7 +87,6 @@ export default function Settings() {
     maxConcurrentPositions: 5,
     aiTradeMode: "off" as AiTradeMode,
     regimeFilterEnabled: true,
-    costPerTradePercent: 0,
     barResolution: "MINUTE_5" as BarResolution,
   });
 
@@ -108,7 +107,6 @@ export default function Settings() {
         maxConcurrentPositions: botStatus.config.maxConcurrentPositions,
         aiTradeMode: (botStatus.config.aiTradeMode as AiTradeMode) ?? "off",
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
-        costPerTradePercent: botStatus.config.costPerTradePercent ?? 0,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
     }
@@ -602,25 +600,6 @@ export default function Settings() {
                   {config.stopLossPercent > 0
                     ? `Stop ${config.stopLossPercent}% from entry. Set 0 to disable.`
                     : "No stop-loss (not recommended for live trading)."}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Cost Per Trade (%)</label>
-                <Input
-                  type="number"
-                  value={config.costPerTradePercent}
-                  onChange={(e) => setConfig({ ...config, costPerTradePercent: Number(e.target.value) })}
-                  className="font-mono"
-                  min={0} max={5} step={0.01}
-                  data-testid="input-cost-per-trade"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {config.costPerTradePercent > 0
-                    ? `Round-trip spread + commission of ${config.costPerTradePercent}% is subtracted per trade in the Performance backtest to compute a realistic edge (expectancy). Does not affect live orders.`
-                    : "Frictionless backtest — no spread or commission. Set a realistic value (e.g. 0.1%) for a truer expectancy."}
                 </p>
               </div>
             </div>
