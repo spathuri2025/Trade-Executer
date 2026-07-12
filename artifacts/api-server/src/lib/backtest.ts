@@ -39,8 +39,16 @@ export interface BacktestPoint {
   equity: number;
 }
 
+/**
+ * Wider than the live-routed StrategyName — this ephemeral report (no DB
+ * table backs it) can show "atr_momentum" even though the live regime router
+ * never produces it. Keeping this separate from StrategyName is what lets
+ * botEngine.ts/scannerEngine.ts's DB writes stay narrowly typed.
+ */
+export type BacktestStrategyName = StrategyName | "atr_momentum";
+
 export interface BacktestResult {
-  strategy: StrategyName;
+  strategy: BacktestStrategyName;
   totalTrades: number;
   wins: number;
   losses: number;

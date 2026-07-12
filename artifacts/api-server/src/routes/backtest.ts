@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { getBrokerPriceHistory, getBrokerQuote, getBrokerCandles } from "../lib/broker";
 import { getBotStatus } from "../lib/botEngine";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "../lib/brokerCredentialsService";
-import { backtestStrategy, backtestAtrMomentum } from "../lib/backtest";
+import { backtestStrategy, backtestAtrMomentum, type BacktestStrategyName } from "../lib/backtest";
 import { requiredBars, type StrategyName } from "../lib/strategyRouter";
 import { ATR_MOMENTUM_PARAMS, atrMomentumRequiredBars } from "../lib/atrMomentumStrategy";
 
@@ -56,7 +56,7 @@ router.get("/backtest", async (req, res): Promise<void> => {
   const results: Array<{
     ticker: string;
     name: string;
-    strategy: StrategyName;
+    strategy: BacktestStrategyName;
     totalTrades: number;
     wins: number;
     losses: number;
