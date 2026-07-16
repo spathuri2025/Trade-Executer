@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -347,12 +348,26 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, errorMessage }: { status: string; errorMessage?: string | null }) {
   const cls =
     status === "FILLED" ? "text-primary border-primary bg-primary/10" :
     status === "FAILED" ? "text-destructive border-destructive bg-destructive/10" :
     "text-amber-500 border-amber-500 bg-amber-500/10";
-  return <Badge variant="outline" className={cls}>{status}</Badge>;
+  const badge = <Badge variant="outline" className={cls}>{status}</Badge>;
+
+  // Only FAILED trades carry a broker-rejection errorMessage — show it on
+  // hover instead of leaving the user to guess why an order didn't go
+  // through (previously the only place this was visible was a one-time toast
+  // for manually-placed trades; bot-placed failures had no way to see it).
+  if (status !== "FAILED" || !errorMessage) return badge;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help">{badge}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{errorMessage}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 type TradeFilter = "all" | "live" | "dry";
@@ -443,7 +458,7 @@ export default function Trades() {
                         {new Date(trade.executedAt).toLocaleString()}
                       </div>
                     </div>
-                    <StatusBadge status={trade.status} />
+                    <StatusBadge status={trade.status} errorMessage={trade.errorMessage} />
                   </div>
                   <div className="grid grid-cols-3 gap-3 pt-3" style={{ borderTop: divider }}>
                     <div>
@@ -511,7 +526,7 @@ export default function Trades() {
                       <td className="px-5 py-4">{trade.quantity}</td>
                       <td className="px-5 py-4">{trade.price.toFixed(2)}</td>
                       <td className="px-5 py-4">{trade.total ? trade.total.toFixed(2) : "—"}</td>
-                      <td className="px-5 py-4"><StatusBadge status={trade.status} /></td>
+                      <td className="px-5 py-4"><StatusBadge status={trade.status} errorMessage={trade.errorMessage} /></td>
                       <td className="px-5 py-4 font-sans text-xs max-w-xs whitespace-normal" style={{ color: muted }}>
                         {trade.aiReason
                           ? <>{trade.aiConfidence && <span className="uppercase tracking-wider mr-1 opacity-70">[{trade.aiConfidence}]</span>}{trade.aiReason}</>

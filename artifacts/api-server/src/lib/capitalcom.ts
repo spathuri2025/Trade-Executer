@@ -350,12 +350,18 @@ export interface CapitalQuote {
   marketStatus: string;
   currency: string | null;
   updateTime: string | null;
+  /** Smallest order size Capital.com will accept for this instrument, in the
+   * same units as an order's `size` (e.g. shares for equity CFDs) — from the
+   * same /markets/{epic} response, no extra request needed. null when the
+   * response doesn't include a minimum (treat as "no minimum known"). */
+  minDealSize: number | null;
 }
 
 export async function getCapitalQuote(userId: number, credentials: CapitalCredentials, epic: string): Promise<CapitalQuote> {
   const data = await capitalFetch(userId, credentials, `/markets/${encodeURIComponent(epic)}`) as {
     instrument?: { currency?: string };
     snapshot?: { bid?: number; offer?: number; marketStatus?: string; updateTime?: string };
+    dealingRules?: { minDealSize?: { value?: number } };
   };
   const snap = data?.snapshot;
   // A missing snapshot means the epic itself is bad or the market lookup failed —
@@ -373,5 +379,6 @@ export async function getCapitalQuote(userId: number, credentials: CapitalCreden
     marketStatus: snap.marketStatus ?? "UNKNOWN",
     currency: data.instrument?.currency ?? null,
     updateTime: snap.updateTime ?? null,
+    minDealSize: typeof data.dealingRules?.minDealSize?.value === "number" ? data.dealingRules.minDealSize.value : null,
   };
 }
