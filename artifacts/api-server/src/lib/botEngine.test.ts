@@ -144,6 +144,7 @@ beforeEach(async () => {
     price: 100,
     marketStatus: "TRADEABLE",
     currency: "GBP",
+    minDealSize: null,
   });
   broker.placeBrokerOrder.mockResolvedValue({ id: "order-1" });
   ma.computeMASignal.mockReturnValue({ signal: "HOLD", shortMa: 1, longMa: 1 });
@@ -278,6 +279,126 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
 
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
     expect(results.find((r) => r.ticker === "NEWSHORT")?.tradeExecuted).toBe(false);
+  });
+});
+
+// Default config: riskPerTradePercent 1% of defaultAccount.total (100,000) =
+// positionValue 1000, over defaultPrices' flat currentPrice of 100 = quantity 10.
+describe("minimum deal size — orders below the broker's minimum are skipped, not attempted", () => {
+  it("skips a BUY (off mode) whose calculated quantity is below the broker's minimum deal size", async () => {
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "TINY",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "TRADEABLE",
+      currency: "GBP",
+      minDealSize: 20, // computed quantity (10) is below this
+    });
+
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "TINY", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results.find((r) => r.ticker === "TINY")?.tradeExecuted).toBe(false);
+  });
+
+  it("skips a BUY (autonomous mode) whose calculated quantity is below the broker's minimum deal size", async () => {
+    broker.getBrokerPositions.mockResolvedValue([]);
+    mocks.ai.decideTrades.mockResolvedValue([
+      { ticker: "TINY", action: "BUY", confidence: 0.9, reason: "looks good" },
+    ]);
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "TINY",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "TRADEABLE",
+      currency: "GBP",
+      minDealSize: 20,
+    });
+
+    await startLiveBot({ aiTradeMode: "autonomous" });
+    mocks.enabledInstruments = [{ ticker: "TINY", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results.find((r) => r.ticker === "TINY")?.tradeExecuted).toBe(false);
+  });
+
+  it("still places the order when the calculated quantity meets or exceeds the minimum", async () => {
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "OK",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "TRADEABLE",
+      currency: "GBP",
+      minDealSize: 5, // computed quantity (10) is at/above this
+    });
+
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "OK", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+    expect(results.find((r) => r.ticker === "OK")?.tradeExecuted).toBe(true);
+  });
+
+  it("blocks a BUY that ADDS to an already-held position when the calculated quantity is below the minimum", async () => {
+    // Regression: the min-size check is bundled with the market-status check
+    // (checkEntryQuote), which used to be skipped entirely when adding to an
+    // existing position (opensNewPosition === false) — it now always runs,
+    // since a minimum-size order requirement applies to every new order, not
+    // just ones opening a brand-new position.
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "HELD",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "TRADEABLE",
+      currency: "GBP",
+      minDealSize: 20,
+    });
+
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(false);
+  });
+
+  it("never blocks a SELL that closes an existing position, regardless of the broker's minimum deal size", async () => {
+    // Flatten-by-close (a full-quantity close) is a completely separate code
+    // path from this entry-side gate and must never be affected by it.
+    broker.getBrokerPositions.mockResolvedValue([position("CLOSEDMKT", 10)]);
+    await startLiveBot();
+
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "CLOSEDMKT",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "CLOSED",
+      currency: "GBP",
+      minDealSize: 9999, // far above the held quantity (10) — must not block the close
+    });
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+    const [, , ticker, quantity, side] = broker.placeBrokerOrder.mock.calls[0];
+    expect(ticker).toBe("CLOSEDMKT");
+    expect(quantity).toBe(10);
+    expect(side).toBe("SELL");
   });
 });
 
@@ -418,6 +539,7 @@ describe("flatten-by-close", () => {
       price: 100,
       marketStatus: "CLOSED",
       currency: "GBP",
+      minDealSize: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -444,6 +566,7 @@ describe("flatten-by-close", () => {
       price: 100,
       marketStatus: "CLOSED",
       currency: "GBP",
+      minDealSize: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -466,7 +589,7 @@ describe("flatten-by-close", () => {
   });
 
   it("fails CLOSED (leaves the position open) when the market-status lookup itself errors", async () => {
-    // Opposite fail direction from isMarketClosedForEntry: an unconfirmed
+    // Opposite fail direction from checkEntryQuote: an unconfirmed
     // status must never force a close.
     broker.getBrokerPositions.mockResolvedValue([position("UNKNOWN", 10)]);
     await startLiveBot();
@@ -489,6 +612,7 @@ describe("flatten-by-close", () => {
       price: 100,
       marketStatus: "CLOSED",
       currency: "GBP",
+      minDealSize: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -507,6 +631,7 @@ describe("flatten-by-close", () => {
       price: 100,
       marketStatus: "CLOSED",
       currency: "GBP",
+      minDealSize: null,
     });
     mocks.enabledInstruments = [];
 

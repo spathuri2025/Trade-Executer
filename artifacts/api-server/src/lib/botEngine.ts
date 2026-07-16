@@ -163,40 +163,53 @@ function utcDayKey(d: Date): string {
 }
 
 /**
- * True when a NEW position should be blocked because the market is known to
- * be closed for this instrument right now. Only ever gates opening exposure —
- * callers must never use this to block a SELL that closes/reduces an existing
- * position. Fails open (returns false, i.e. "allow the trade") on a
- * quote-fetch error — this is a safety filter layered on top of the existing
- * risk gates, not itself a risk control, so a transient lookup failure should
- * not block trading entirely.
+ * Combined entry-side quote check: whether a NEW position should be blocked
+ * because the market is known to be closed, and the broker's minimum
+ * tradeable size for this instrument (if known). One quote fetch serves both,
+ * since they're both read off the same underlying broker quote.
+ *
+ * `marketClosed` only ever gates opening exposure — callers must never use it
+ * to block a SELL that closes/reduces an existing position. `minDealSize` is
+ * relevant to every NEW order (including adding to an existing position, not
+ * just opening a brand-new one), so callers should check it unconditionally
+ * rather than gating it the same way as `marketClosed`.
+ *
+ * Fails open on a quote-fetch error (`{ marketClosed: false, minDealSize:
+ * null }`, i.e. "allow the trade" / "no minimum known") — this is a safety
+ * filter layered on top of the existing risk gates, not itself a risk
+ * control, so a transient lookup failure should not block trading entirely.
  */
-async function isMarketClosedForEntry(
+async function checkEntryQuote(
   userId: number,
   credentials: UserBrokerCredentials,
   ticker: string
-): Promise<boolean> {
+): Promise<{ marketClosed: boolean; minDealSize: number | null }> {
   try {
     const quote = await getBrokerQuote(userId, credentials, ticker);
-    return quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE";
+    return {
+      marketClosed: quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE",
+      minDealSize: quote.minDealSize,
+    };
   } catch (err) {
-    logger.warn({ userId, ticker, err }, "Could not check market status — allowing trade (fail-open)");
-    return false;
+    logger.warn({ userId, ticker, err }, "Could not check market status/min size — allowing trade (fail-open)");
+    return { marketClosed: false, minDealSize: null };
   }
 }
 
 /**
  * True when an OPEN position's instrument market is confirmed closed and the
  * position should be force-flattened this cycle. Deliberately the OPPOSITE
- * fail direction from isMarketClosedForEntry: on a quote-fetch error this
- * returns false ("leave it open, retry next cycle") rather than true, because
- * forcing a close based on incomplete information is a worse mistake than
- * delaying a confirmed one by one cycle — an unforced exit at a bad moment is
+ * fail direction from checkEntryQuote: on a quote-fetch error this returns
+ * false ("leave it open, retry next cycle") rather than true, because forcing
+ * a close based on incomplete information is a worse mistake than delaying a
+ * confirmed one by one cycle — an unforced exit at a bad moment is
  * irreversible within the cycle, unlike a skipped entry which just waits for
- * the next signal. Same underlying quote check as isMarketClosedForEntry, but
- * kept as a separate named function (not a shared parameterized helper) since
- * the two gates' intent genuinely differs even though today's return values
- * happen to coincide.
+ * the next signal. Same underlying quote check as checkEntryQuote's
+ * marketClosed field, but kept as a separate named function (not a shared
+ * parameterized helper) since the two gates' intent genuinely differs even
+ * though today's return values happen to coincide. (checkEntryQuote itself
+ * used to be named isMarketClosedForEntry — renamed when it grew a second
+ * field, minDealSize, that this flatten-side function has no equivalent of.)
  */
 async function isMarketClosedForFlatten(
   userId: number,
@@ -543,7 +556,16 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
           cfg.maxConcurrentPositions > 0 &&
           opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
-        const marketClosed = opensNewPosition && (await isMarketClosedForEntry(userId, credentials, c.ticker));
+        // Checked unconditionally (not gated by opensNewPosition) since
+        // minDealSize matters for every new order, including one that adds to
+        // an already-open position — unlike marketClosed, which stays scoped
+        // to brand-new entries only, per checkEntryQuote's own docs.
+        const entryCheck = await checkEntryQuote(userId, credentials, c.ticker);
+        const marketClosed = opensNewPosition && entryCheck.marketClosed;
+        // null minDealSize (unknown) falls back to 0 — "no minimum known,
+        // allow the trade" — consistent with checkEntryQuote's own fail-open
+        // behavior on a lookup error, not a gap to later tighten into a block.
+        const belowMinDealSize = quantity < (entryCheck.minDealSize ?? 0);
         if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = `Skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety. ${decision.reason}`;
           logger.warn(
@@ -559,6 +581,12 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         } else if (marketClosed) {
           aiReason = `Skipped: the market for ${c.ticker} isn't currently open for trading. ${decision.reason}`;
           logger.info({ userId, ticker: c.ticker, side: decision.action }, "Autonomous entry skipped — market closed");
+        } else if (belowMinDealSize) {
+          aiReason = `Skipped: calculated size (${quantity} units) is below ${credentials.broker}'s minimum tradeable size (${entryCheck.minDealSize} units) for ${c.ticker}. ${decision.reason}`;
+          logger.info(
+            { userId, ticker: c.ticker, side: decision.action, quantity, minDealSize: entryCheck.minDealSize },
+            "Autonomous entry skipped — below broker's minimum deal size"
+          );
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = `Skipped: would exceed the account's available cash budget for this cycle. ${decision.reason}`;
           logger.warn(
@@ -662,7 +690,16 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
           cfg.maxConcurrentPositions > 0 &&
           opensNewPosition &&
           liveTickers.size >= cfg.maxConcurrentPositions;
-        const marketClosed = opensNewPosition && (await isMarketClosedForEntry(userId, credentials, ticker));
+        // Checked unconditionally (not gated by opensNewPosition) since
+        // minDealSize matters for every new order, including one that adds to
+        // an already-open position — unlike marketClosed, which stays scoped
+        // to brand-new entries only, per checkEntryQuote's own docs.
+        const entryCheck = await checkEntryQuote(userId, credentials, ticker);
+        const marketClosed = opensNewPosition && entryCheck.marketClosed;
+        // null minDealSize (unknown) falls back to 0 — "no minimum known,
+        // allow the trade" — consistent with checkEntryQuote's own fail-open
+        // behavior on a lookup error, not a gap to later tighten into a block.
+        const belowMinDealSize = quantity < (entryCheck.minDealSize ?? 0);
         if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = "Trade skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety.";
           logger.warn({ userId, ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
@@ -675,6 +712,12 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         } else if (marketClosed) {
           aiReason = `Trade skipped: the market for ${ticker} isn't currently open for trading.`;
           logger.info({ userId, ticker, side: signal }, "Entry skipped — market closed");
+        } else if (belowMinDealSize) {
+          aiReason = `Trade skipped: calculated size (${quantity} units) is below ${credentials.broker}'s minimum tradeable size (${entryCheck.minDealSize} units) for ${ticker}.`;
+          logger.info(
+            { userId, ticker, side: signal, quantity, minDealSize: entryCheck.minDealSize },
+            "Entry skipped — below broker's minimum deal size"
+          );
         } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = "Trade skipped: it would exceed the account's available cash budget for this cycle.";
           logger.warn(

@@ -162,6 +162,10 @@ export interface NormalizedQuote {
   price: number;
   marketStatus: string | null;
   currency: string | null;
+  /** Smallest order size the broker will accept for this ticker, in the same
+   * units as an order's quantity. null when unknown/not applicable — callers
+   * treat null as "no minimum known", i.e. fail open. */
+  minDealSize: number | null;
 }
 
 export async function getBrokerQuote(userId: number, credentials: UserBrokerCredentials, ticker: string): Promise<NormalizedQuote> {
@@ -174,17 +178,21 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
       price: (q.bid + q.offer) / 2,
       marketStatus: q.marketStatus,
       currency: q.currency,
+      minDealSize: q.minDealSize,
     };
   }
 
   // Trading 212 has no live-quote endpoint — best-effort from the latest known price.
-  // Resolution is a Capital.com-only concept and ignored on this branch.
+  // Resolution is a Capital.com-only concept and ignored on this branch. It also
+  // has no equivalent minDealSize concept exposed here, so this always reports
+  // "unknown" (null) rather than inventing a number — mirrors getBrokerCandles's
+  // own T212 fail-soft contract.
   const prices = await getBrokerPriceHistory(userId, credentials, ticker, 2, "HOUR");
   const last = prices[prices.length - 1];
   if (!last || !(last > 0)) {
     throw new Error(`No live quote available for ${ticker} on Trading 212`);
   }
-  return { ticker, bid: last, offer: last, price: last, marketStatus: null, currency: null };
+  return { ticker, bid: last, offer: last, price: last, marketStatus: null, currency: null, minDealSize: null };
 }
 
 export interface StopLossParams {

@@ -30,8 +30,24 @@ const strategyLabel = (s?: string | null) =>
 const actionColor = (a?: string | null) =>
   a === "Consider" ? "text-emerald-400" : a === "Avoid" ? "text-destructive" : a === "Review" ? "text-amber-400" : muted;
 
-function SignalExplanation({ sig }: { sig: { signalReason?: string | null; technicalReason?: string | null; newsReason?: string | null; suggestedAction?: string | null } }) {
-  const primary = sig.signalReason ?? sig.technicalReason;
+function SignalExplanation({
+  sig,
+}: {
+  sig: {
+    signalReason?: string | null;
+    technicalReason?: string | null;
+    newsReason?: string | null;
+    suggestedAction?: string | null;
+    /** Set by the bot's own risk gates when a trade was skipped this cycle
+     * (e.g. market closed, position limit, below the broker's minimum deal
+     * size) — falls back here when the AI trade-intelligence enrichment
+     * (signalReason/technicalReason) never ran, which is the case for every
+     * skip reason today. Without this fallback a skipped trade's reason is
+     * invisible everywhere in the UI. */
+    aiReason?: string | null;
+  };
+}) {
+  const primary = sig.signalReason ?? sig.technicalReason ?? sig.aiReason;
   if (!primary && !sig.newsReason && !sig.suggestedAction) return <span style={{ color: muted }}>—</span>;
   return (
     <div className="space-y-1">
