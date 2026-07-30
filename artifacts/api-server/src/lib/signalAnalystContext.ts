@@ -29,7 +29,9 @@ export async function buildSignalAnalystSystemPrompt(userId: number): Promise<st
   return [
     SYSTEM_PROMPT,
     "",
-    "Below is a live snapshot of the user's TradeBuzz account and activity. Base your answer on this real data and mention specific tickers, trades, or signals when it helps. If something the user asks about is not in this data, say so plainly rather than inventing numbers.",
+    "Below is a live snapshot of the user's TradeBuzz account and activity, fetched fresh right now — right before this reply. Base your answer on THIS real data and mention specific tickers, trades, or signals when it helps. If something the user asks about is not in this data, say so plainly rather than inventing numbers.",
+    "",
+    "LIVE DATA ALWAYS WINS: account balances and open positions change over time (deposits, withdrawals, closed trades). If anything said earlier in this conversation — by you or the user — conflicts with the snapshot below (e.g. an old balance, a position that no longer appears), the snapshot below is the current truth. Never restate or rely on an older figure from earlier in this thread once it's contradicted by the fresh snapshot.",
     "",
     context,
   ].join("\n");
