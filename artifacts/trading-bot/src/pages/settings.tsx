@@ -49,17 +49,17 @@ const AI_MODES: { value: AiTradeMode; title: string; desc: string }[] = [
   {
     value: "off",
     title: "Strategy only",
-    desc: "The moving-average strategy decides trades on its own. Claude is not involved.",
+    desc: "The moving-average strategy decides trades on its own. AI is not involved.",
   },
   {
     value: "guard",
-    title: "Claude safety check",
-    desc: "The strategy finds a signal, then Claude reviews it and approves or blocks it before any order is placed.",
+    title: "AI safety check",
+    desc: "The strategy finds a signal, then AI reviews it and approves or blocks it before any order is placed.",
   },
   {
     value: "autonomous",
-    title: "Claude decides",
-    desc: "Claude itself decides what to buy or sell from your live data, then places the order.",
+    title: "AI decides",
+    desc: "AI itself decides what to buy or sell from your live data, then places the order.",
   },
 ];
 
@@ -415,7 +415,7 @@ export default function Settings() {
         <CardHeader>
           <CardTitle>AI Trade Mode</CardTitle>
           <CardDescription>
-            Choose how Claude (AI) takes part in placing trades. Changes save with the button below.
+            Choose how AI takes part in placing trades. Changes save with the button below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -449,8 +449,8 @@ export default function Settings() {
           {config.aiTradeMode !== "off" && (
             <div className="text-xs rounded-md p-3 border border-amber-500/40 bg-amber-500/10 text-amber-500">
               {config.dryRun
-                ? "Dry Run is ON, so Claude's decisions are simulated only — no real orders are sent. Watch them here before going live."
-                : "Dry Run is OFF — Claude's decisions will place REAL orders with real money. Turn Dry Run back on to test safely first."}
+                ? "Dry Run is ON, so the AI's decisions are simulated only — no real orders are sent. Watch them here before going live."
+                : "Dry Run is OFF — the AI's decisions will place REAL orders with real money. Turn Dry Run back on to test safely first."}
             </div>
           )}
         </CardContent>
