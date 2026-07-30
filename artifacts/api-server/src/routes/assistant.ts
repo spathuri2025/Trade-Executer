@@ -18,6 +18,9 @@ import { buildSystemPrompt } from "../lib/assistantContext";
 
 const router: IRouter = Router();
 
+/** Most recent messages replayed to the model per reply — see usage below. */
+const MAX_HISTORY_MESSAGES = 20;
+
 const DISCLAIMER_LINE =
   "_Reminder: Trading involves substantial risk and nothing here constitutes financial advice._";
 
@@ -188,9 +191,14 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
 
   const systemPrompt = await buildSystemPrompt(req.user!.id);
 
+  // Only the most recent turns are replayed to the model — see the matching
+  // comment in signalAnalyst.ts for why (a fresh account snapshot competing
+  // against old, now-outdated figures from earlier in a long-lived thread).
+  const recentHistory = history.slice(-MAX_HISTORY_MESSAGES);
+
   const chatMessages = [
     { role: "system" as const, content: systemPrompt },
-    ...history.map((m) => ({
+    ...recentHistory.map((m) => ({
       role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
       content: m.content,
     })),

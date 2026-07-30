@@ -20,6 +20,9 @@ const router: IRouter = Router();
 
 const KIND = "signal_analyst";
 
+/** Most recent messages replayed to the model per reply — see usage below. */
+const MAX_HISTORY_MESSAGES = 20;
+
 const DISCLAIMER_LINE =
   "_Reminder: This is analytical assistance only, not regulated financial advice. Trading involves substantial risk._";
 
@@ -191,9 +194,18 @@ router.post("/signal-analyst/conversations/:id/messages", async (req, res): Prom
 
   const systemPrompt = await buildSignalAnalystSystemPrompt(req.user!.id);
 
+  // Only the most recent turns are replayed to the model. An account's
+  // balance/positions can look completely different from what an older
+  // reply in a long-lived conversation stated (deposits, withdrawals, closed
+  // trades) — the fresh snapshot in systemPrompt is a defense against that,
+  // but capping history too is a second layer: it shrinks how much stale,
+  // previously-true-but-now-outdated data the model has to reconcile against
+  // the live snapshot, and keeps token cost/latency bounded for old threads.
+  const recentHistory = history.slice(-MAX_HISTORY_MESSAGES);
+
   // Anthropic takes the system prompt as a top-level field; messages must be
   // user/assistant turns only.
-  const chatMessages = history.map((m) => ({
+  const chatMessages = recentHistory.map((m) => ({
     role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
     content: m.content,
   }));

@@ -173,7 +173,9 @@ export async function buildSystemPrompt(userId: number): Promise<string> {
     "",
     DISCLAIMER,
     "",
-    "Below is a live snapshot of the user's TradeBuzz account and activity. Ground your analysis in this data and refer to specific tickers, trades, and signals when relevant. If something the user asks about is not covered by this data, say so rather than inventing numbers.",
+    "Below is a live snapshot of the user's TradeBuzz account and activity, fetched fresh right now — right before this reply. Ground your analysis in THIS data and refer to specific tickers, trades, and signals when relevant. If something the user asks about is not covered by this data, say so rather than inventing numbers.",
+    "",
+    "LIVE DATA ALWAYS WINS: account balances and open positions change over time (deposits, withdrawals, closed trades). If anything said earlier in this conversation — by you or the user — conflicts with the snapshot below (e.g. an old balance, a position that no longer appears), the snapshot below is the current truth. Never restate or rely on an older figure from earlier in this thread once it's contradicted by the fresh snapshot.",
     "",
     context,
   ].join("\n");
