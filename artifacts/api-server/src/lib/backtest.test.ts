@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { backtestStrategy, backtestAtrMomentum } from "./backtest";
+import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion } from "./backtest";
 import type { Candle } from "./capitalcom";
 
 describe("backtestStrategy — next-bar-fill (no look-ahead)", () => {
@@ -119,5 +119,64 @@ describe("backtestAtrMomentum — shares the same next-bar-fill engine", () => {
     const badCandle: Candle = { time: 5, open: 0, high: 0, low: 0, close: 0 };
     const withBadCandle = [...candles.slice(0, 5), badCandle, ...candles.slice(6)];
     expect(backtestAtrMomentum(withBadCandle, EMA_PERIOD, ATR_PERIOD, MULTIPLIER, 0)).toBeNull();
+  });
+});
+
+describe("backtestVwapReversion — shares the same next-bar-fill engine", () => {
+  // Same flat-then-move-then-different-price technique as the two cases above,
+  // adapted for mean-reversion (which enters on a DIP, not a breakout) and
+  // carrying the volume this strategy requires. All values hand-verified in
+  // Python. The dip to 92 fires BUY at bar 20; bar 21 drops further to 80 — a
+  // deliberately DIFFERENT price — then settles at 88.
+  //
+  // This makes the two behaviours maximally distinguishable: filling at the
+  // next bar (80, correct) rides 80→88 for a +10% WIN, whereas filling on the
+  // signal bar itself (92, the look-ahead bug) would ride 92→88 for a −4.3%
+  // LOSS. Win-vs-loss, not just a different magnitude.
+  const V = 1000;
+  const flat: Candle = { time: 0, open: 100, high: 100.5, low: 99.5, close: 100.0, volume: V };
+  const candles: Candle[] = [
+    ...Array.from({ length: 20 }, () => ({ ...flat })),
+    { time: 20, open: 92, high: 92.5, low: 91.5, close: 92.0, volume: V },
+    { time: 21, open: 80, high: 80.5, low: 79.5, close: 80.0, volume: V },
+    ...Array.from({ length: 4 }, (_, i) => ({ time: 22 + i, open: 88, high: 88.5, low: 87.5, close: 88.0, volume: V })),
+  ];
+  const VWAP_PERIOD = 5;
+  const ATR_PERIOD = 10;
+  const MULTIPLIER = 1.5;
+
+  it("fills the entry at the NEXT candle's close, not the signal candle's own close", () => {
+    const result = backtestVwapReversion(candles, VWAP_PERIOD, ATR_PERIOD, MULTIPLIER, 0);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.strategy).toBe("vwap_reversion");
+    expect(result.totalTrades).toBe(1);
+    expect(result.wins).toBe(1);
+    expect(result.losses).toBe(0);
+    expect(result.avgWinPct).toBeCloseTo(0.1, 8);
+    expect(result.totalReturnPct).toBeCloseTo(0.1, 8);
+    expect(result.maxDrawdownPct).toBe(0);
+    expect(result.profitFactor).toBeNull();
+  });
+
+  it("applies round-trip cost on the deferred fill exactly once", () => {
+    const withCost = backtestVwapReversion(candles, VWAP_PERIOD, ATR_PERIOD, MULTIPLIER, 0.01);
+    expect(withCost).not.toBeNull();
+    if (!withCost) return;
+    expect(withCost.totalTrades).toBe(1);
+    expect(withCost.totalReturnPct).toBeCloseTo(0.089, 8);
+  });
+
+  it("returns null when there are not enough candles to warm up", () => {
+    expect(backtestVwapReversion(candles.slice(0, 10), VWAP_PERIOD, ATR_PERIOD, MULTIPLIER, 0)).toBeNull();
+  });
+
+  it("returns null when any candle lacks volume (broker doesn't report it)", () => {
+    // The whole-series volume requirement is what makes this strategy
+    // Capital.com-only; a candle series without volume must produce no result
+    // rather than a silently mis-weighted one.
+    const withoutVolume = candles.map(({ volume: _volume, ...rest }) => rest);
+    expect(backtestVwapReversion(withoutVolume, VWAP_PERIOD, ATR_PERIOD, MULTIPLIER, 0)).toBeNull();
   });
 });

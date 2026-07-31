@@ -268,6 +268,15 @@ export interface Candle {
   high: number;
   low: number;
   close: number;
+  /**
+   * Bar volume, when the broker reports it. Optional because only Capital.com
+   * supplies it (Trading 212's price history is a fabricated series with no
+   * real OHLC or volume at all), and because strategies that don't need it —
+   * ATR momentum, and every close-only strategy — must keep working on
+   * candles that lack it. Consumers treat a missing/non-finite volume as
+   * "unavailable" and omit their result rather than guessing a value.
+   */
+  volume?: number;
 }
 
 /**
@@ -298,6 +307,11 @@ export async function getCapitalCandles(
         high: mid(p.highPrice),
         low: mid(p.lowPrice),
         close: mid(p.closePrice),
+        // Kept rather than discarded so volume-weighted strategies (VWAP
+        // reversion) have real data to work from. Left undefined when absent
+        // or non-finite, so a consumer can tell "no volume data" apart from a
+        // genuine zero-volume bar.
+        volume: Number.isFinite(p.lastTradedVolume) ? p.lastTradedVolume : undefined,
       };
     })
     .filter(
