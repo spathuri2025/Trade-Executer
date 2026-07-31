@@ -25,12 +25,14 @@ const STRATEGY_LABEL: Record<string, string> = {
   trend_following: "Trend-following",
   mean_reversion: "Mean-reversion",
   atr_momentum: "ATR Momentum",
+  vwap_reversion: "VWAP Reversion",
 };
 
 const STRATEGY_BADGE_CLASS: Record<string, string> = {
   trend_following: "text-sky-400 border-sky-400/40 bg-sky-400/10",
   mean_reversion: "text-violet-400 border-violet-400/40 bg-violet-400/10",
   atr_momentum: "text-amber-400 border-amber-400/40 bg-amber-400/10",
+  vwap_reversion: "text-teal-400 border-teal-400/40 bg-teal-400/10",
 };
 
 // Guard against ever rendering "NaN%"/"Infinity%" — a defensive backstop on
@@ -317,7 +319,11 @@ export default function Performance() {
         run as proof of an edge. ATR Momentum is a backtest-only strategy (not yet used by the
         live bot) that needs real high/low candle data — Trading 212 also has no OHLC data, so this
         strategy doesn't appear for Trading 212 instruments; you'll still see Trend-following and
-        Mean-reversion results for them. Past performance does not guarantee future results and this
+        Mean-reversion results for them. VWAP Reversion is also backtest-only and needs per-bar
+        trading volume on top of candle data, so it too is Capital.com-only — and note it uses a
+        rolling-window volume-weighted average price, not the session-anchored VWAP that resets at
+        each market open, so treat it as an approximation of the classic VWAP setup rather than an
+        exact implementation of it. Past performance does not guarantee future results and this
         is not financial advice.
       </p>
     </div>

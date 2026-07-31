@@ -20,8 +20,9 @@ import { rsi, bollingerBands, adx } from "./indicators";
 
 // This is the LIVE strategy type — it flows into StrategyResult.strategy below,
 // which botEngine.ts/scannerEngine.ts write straight into signalsTable /
-// scannerResultsTable columns that only accept these two values. "atr_momentum"
-// is backtest-only (see atrMomentumStrategy.ts) and deliberately NOT a member
+// scannerResultsTable columns that only accept these two values. The
+// backtest-only strategies ("atr_momentum" in atrMomentumStrategy.ts,
+// "vwap_reversion" in vwapReversionStrategy.ts) are deliberately NOT members
 // here; BacktestStrategyName in backtest.ts is the separate, wider type used
 // by the ephemeral (non-DB-persisted) backtest report instead.
 export type StrategyName = "trend_following" | "mean_reversion";

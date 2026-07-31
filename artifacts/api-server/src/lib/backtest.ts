@@ -31,6 +31,7 @@
 import { computeMASignal } from "./maStrategy";
 import { computeMeanReversionSignal, requiredBars, type StrategyName } from "./strategyRouter";
 import { computeAtrMomentumSignal, atrMomentumRequiredBars } from "./atrMomentumStrategy";
+import { computeVwapReversionSignal, vwapReversionRequiredBars } from "./vwapReversionStrategy";
 import type { Candle } from "./capitalcom";
 
 export interface BacktestPoint {
@@ -41,11 +42,12 @@ export interface BacktestPoint {
 
 /**
  * Wider than the live-routed StrategyName — this ephemeral report (no DB
- * table backs it) can show "atr_momentum" even though the live regime router
- * never produces it. Keeping this separate from StrategyName is what lets
+ * table backs it) can show backtest-only strategies ("atr_momentum",
+ * "vwap_reversion") even though the live regime router never produces them.
+ * Keeping this separate from StrategyName is what lets
  * botEngine.ts/scannerEngine.ts's DB writes stay narrowly typed.
  */
-export type BacktestStrategyName = StrategyName | "atr_momentum";
+export type BacktestStrategyName = StrategyName | "atr_momentum" | "vwap_reversion";
 
 export interface BacktestResult {
   strategy: BacktestStrategyName;
@@ -319,4 +321,52 @@ export function backtestAtrMomentum(
   });
 
   return { strategy: "atr_momentum", ...result };
+}
+
+/**
+ * Run VWAP reversion over a full OHLC+volume candle series. Backtest-only —
+ * see vwapReversionStrategy.ts (and note it uses a ROLLING volume-weighted
+ * price, not session-anchored VWAP). Returns null when there aren't enough
+ * candles to warm up, or when the series lacks the volume this strategy
+ * fundamentally needs.
+ */
+export function backtestVwapReversion(
+  candles: Candle[],
+  vwapPeriod: number,
+  atrPeriod: number,
+  atrMultiplier: number,
+  costPct = 0,
+): BacktestResult | null {
+  const warmup = vwapReversionRequiredBars(vwapPeriod, atrPeriod);
+  if (candles.length <= warmup + 1) return null;
+
+  // Same bad-data guard as the other two, plus volume — a missing or negative
+  // volume makes the weighted average meaningless, and unlike price fields it
+  // is legitimately absent for brokers that don't report it, so this doubles
+  // as the "this broker can't run VWAP at all" check.
+  if (
+    candles.some(
+      (c) =>
+        !Number.isFinite(c.close) || c.close <= 0 ||
+        !Number.isFinite(c.high) || !Number.isFinite(c.low) ||
+        c.volume == null || !Number.isFinite(c.volume) || c.volume < 0
+    )
+  ) {
+    return null;
+  }
+
+  const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
+
+  const decideTarget = (window: Candle[]): 1 | -1 | 0 =>
+    side(computeVwapReversionSignal(window, vwapPeriod, atrPeriod, atrMultiplier).signal);
+
+  const result = runBacktestEngine({
+    bars: candles,
+    warmup,
+    costPct: cost,
+    price: (c) => c.close,
+    decideTarget,
+  });
+
+  return { strategy: "vwap_reversion", ...result };
 }

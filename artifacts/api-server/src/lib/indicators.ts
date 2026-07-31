@@ -180,3 +180,50 @@ export function atr(high: number[], low: number[], close: number[], period: numb
   }
   return value;
 }
+
+/**
+ * Volume-weighted average price over a ROLLING window of the last `period`
+ * bars: each bar's typical price (high+low+close)/3 weighted by that bar's
+ * volume.
+ *
+ * NOTE: this is deliberately NOT the textbook session-anchored VWAP, which
+ * accumulates from each trading session's open and resets daily. The codebase
+ * has no session-open detection (market status is only ever read as an
+ * instantaneous tradeable/not gate), so a true session VWAP isn't computable
+ * here. A rolling window captures the same "where has volume actually traded
+ * recently" idea without needing a session anchor — callers must surface this
+ * distinction to users rather than labelling it plain "VWAP".
+ *
+ * `volume` is `(number | undefined)[]` because Candle.volume is optional (only
+ * Capital.com reports it). Returns null on mismatched lengths, too few bars,
+ * any missing/non-finite/negative volume in the window, or zero total volume —
+ * matching the null-on-bad-input contract of atr()/ema()/sma() above, so a
+ * caller never has to pre-validate.
+ */
+export function vwap(
+  high: number[],
+  low: number[],
+  close: number[],
+  volume: (number | undefined)[],
+  period: number
+): number | null {
+  if (period <= 0) return null;
+  const n = high.length;
+  if (low.length !== n || close.length !== n || volume.length !== n) return null;
+  if (n < period) return null;
+
+  let weighted = 0;
+  let totalVolume = 0;
+  for (let i = n - period; i < n; i++) {
+    const v = volume[i];
+    if (v == null || !Number.isFinite(v) || v < 0) return null;
+    const typicalPrice = (high[i] + low[i] + close[i]) / 3;
+    weighted += typicalPrice * v;
+    totalVolume += v;
+  }
+
+  // An all-zero-volume window has no volume-weighted price to report; dividing
+  // would be 0/0. Null ("unavailable") is honest, 0 would be a fabricated number.
+  if (totalVolume <= 0) return null;
+  return weighted / totalVolume;
+}

@@ -4,9 +4,10 @@ import { eq } from "drizzle-orm";
 import { getBrokerPriceHistory, getBrokerQuote, getBrokerCandles } from "../lib/broker";
 import { getBotStatus } from "../lib/botEngine";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "../lib/brokerCredentialsService";
-import { backtestStrategy, backtestAtrMomentum, type BacktestStrategyName } from "../lib/backtest";
+import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion, type BacktestStrategyName } from "../lib/backtest";
 import { requiredBars, type StrategyName } from "../lib/strategyRouter";
 import { ATR_MOMENTUM_PARAMS, atrMomentumRequiredBars } from "../lib/atrMomentumStrategy";
+import { VWAP_REVERSION_PARAMS, vwapReversionRequiredBars } from "../lib/vwapReversionStrategy";
 
 const router: IRouter = Router();
 
@@ -165,6 +166,49 @@ router.get("/backtest", async (req, res): Promise<void> => {
       req.log.info(
         { ticker: inst.ticker, broker: credentials.broker, candles: candles.length },
         "Backtest: ATR momentum skipped — no OHLC candles available for this broker/instrument"
+      );
+    }
+
+    // VWAP reversion additionally needs per-bar VOLUME, which ATR momentum
+    // doesn't — so it gets its own check and its own omission, rather than
+    // riding on the block above. An instrument can legitimately produce an
+    // ATR momentum row while omitting this one (candles present, volume
+    // absent). Reuses the same `candles` already fetched above — no second
+    // network round-trip.
+    const vwapWarmup = vwapReversionRequiredBars(VWAP_REVERSION_PARAMS.vwapPeriod, VWAP_REVERSION_PARAMS.atrPeriod);
+    const hasVolume = candles.length > 0 && candles.every((c) => c.volume != null && Number.isFinite(c.volume));
+    if (candles.length > vwapWarmup + 1 && hasVolume) {
+      const r = backtestVwapReversion(
+        candles,
+        VWAP_REVERSION_PARAMS.vwapPeriod,
+        VWAP_REVERSION_PARAMS.atrPeriod,
+        VWAP_REVERSION_PARAMS.atrMultiplier,
+        costPct
+      );
+      if (r) {
+        results.push({
+          ticker: inst.ticker,
+          name: inst.name,
+          strategy: r.strategy,
+          totalTrades: r.totalTrades,
+          wins: r.wins,
+          losses: r.losses,
+          winRate: r.winRate,
+          avgWinPct: r.avgWinPct,
+          avgLossPct: r.avgLossPct,
+          maxDrawdownPct: r.maxDrawdownPct,
+          totalReturnPct: r.totalReturnPct,
+          expectancyPct: r.expectancyPct,
+          profitFactor: r.profitFactor,
+          costPct: r.costPct,
+          equityCurve: r.equityCurve,
+          bars: candles.length,
+        });
+      }
+    } else {
+      req.log.info(
+        { ticker: inst.ticker, broker: credentials.broker, candles: candles.length, hasVolume },
+        "Backtest: VWAP reversion skipped — no OHLC candles or no volume data for this broker/instrument"
       );
     }
   }
