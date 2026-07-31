@@ -11,7 +11,7 @@ import type { BacktestResultStrategy } from './backtestResultStrategy';
 export interface BacktestResult {
   ticker: string;
   name: string;
-  /** atr_momentum is backtest-only — it is never emitted by the live regime router (Signal.strategy / ActivityItem.strategy), only by this ephemeral endpoint.
+  /** atr_momentum and vwap_reversion are backtest-only — they are never emitted by the live regime router (Signal.strategy / ActivityItem.strategy), only by this ephemeral endpoint.
    */
   strategy: BacktestResultStrategy;
   totalTrades: number;
