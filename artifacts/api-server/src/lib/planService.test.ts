@@ -94,27 +94,32 @@ describe("getEffectivePlan — entitlement is not simply subscriptions.plan", ()
   });
 });
 
-describe("grandfathering — accounts that predate enforcement", () => {
-  it("gives a pre-launch account with no subscription row 'pro'", async () => {
-    // Without this, shipping enforcement would have silently dropped every
-    // existing user — including live bots trading real money — to dry-run.
+describe("no grandfathering — signup date never grants entitlements", () => {
+  // A migration-era rule once granted 'pro' to accounts created before
+  // enforcement shipped. TradeBuzz now runs on a fresh database with no legacy
+  // users, so that rule was removed — these guard against it creeping back and
+  // silently handing out free Pro accounts.
+  it("gives an old account with no subscription row 'free', not 'pro'", async () => {
     mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: null, status: null }];
-    expect(await getEffectivePlan(USER_ID)).toBe("pro");
+    expect(await getEffectivePlan(USER_ID)).toBe("free");
   });
 
-  it("does NOT grandfather accounts created after the cutoff", async () => {
+  it("treats old and new accounts identically when neither has a subscription", async () => {
+    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: null, status: null }];
+    const oldAccount = await getEffectivePlan(USER_ID);
     mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: null, status: null }];
-    expect(await getEffectivePlan(USER_ID)).toBe("free");
+    const newAccount = await getEffectivePlan(USER_ID);
+    expect(oldAccount).toBe(newAccount);
+    expect(newAccount).toBe("free");
   });
 
-  it("lets an explicit admin decision override grandfathering", async () => {
-    // The important one: cancelling a legacy user must actually stick rather
-    // than being silently re-granted 'pro' on the next request.
-    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: "pro", status: "canceled" }];
-    expect(await getEffectivePlan(USER_ID)).toBe("free");
+  it("still honours an explicitly granted plan on an old account", async () => {
+    // Removing grandfathering must not stop a real, admin-set subscription
+    // from working.
+    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: "pro", status: "active" }];
+    expect(await getEffectivePlan(USER_ID)).toBe("pro");
 
-    // ...and a deliberate downgrade to free is likewise respected.
-    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: "free", status: "active" }];
+    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: "pro", status: "canceled" }];
     expect(await getEffectivePlan(USER_ID)).toBe("free");
   });
 });
