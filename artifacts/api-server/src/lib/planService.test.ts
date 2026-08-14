@@ -6,9 +6,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * ai_usage lookup behind getAiQuotaUsage.
  */
 const mocks = vi.hoisted(() => ({
-  joinRows: [] as Array<{ role: string; plan: string | null; status: string | null }>,
+  joinRows: [] as Array<{
+    role: string;
+    createdAt: Date;
+    plan: string | null;
+    status: string | null;
+  }>,
   usageRows: [] as Array<{ count: number }>,
 }));
+
+/** Before the grandfathering cutoff — an account that predates enforcement. */
+const LEGACY = new Date("2026-01-01T00:00:00Z");
+/** After the cutoff — a signup since enforcement launched. */
+const NEW_SIGNUP = new Date("2026-09-01T00:00:00Z");
 
 vi.mock("@workspace/db", () => ({
   db: {
@@ -21,7 +31,7 @@ vi.mock("@workspace/db", () => ({
       }),
     }),
   },
-  usersTable: { id: "id", role: "role" },
+  usersTable: { id: "id", role: "role", createdAt: "created_at" },
   subscriptionsTable: { userId: "user_id", plan: "plan", status: "status" },
   aiUsageTable: { userId: "user_id", day: "day", count: "count" },
 }));
@@ -48,38 +58,63 @@ describe("getEffectivePlan — entitlement is not simply subscriptions.plan", ()
   it("gives admins the top tier regardless of their subscription row", async () => {
     // The operator must never be able to lock themselves out of their own
     // product by mis-setting (or never setting) their own row.
-    mocks.joinRows = [{ role: "admin", plan: null, status: null }];
+    mocks.joinRows = [{ role: "admin", createdAt: NEW_SIGNUP, plan: null, status: null }];
     expect(await getEffectivePlan(USER_ID)).toBe("enterprise");
 
-    mocks.joinRows = [{ role: "admin", plan: "free", status: "canceled" }];
+    mocks.joinRows = [{ role: "admin", createdAt: NEW_SIGNUP, plan: "free", status: "canceled" }];
     expect(await getEffectivePlan(USER_ID)).toBe("enterprise");
   });
 
-  it("treats a user with no subscription row as free (new signups)", async () => {
-    mocks.joinRows = [{ role: "customer", plan: null, status: null }];
+  it("treats a post-launch signup with no subscription row as free", async () => {
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: null, status: null }];
     expect(await getEffectivePlan(USER_ID)).toBe("free");
   });
 
   it("honours an entitling status", async () => {
-    mocks.joinRows = [{ role: "customer", plan: "pro", status: "active" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "pro", status: "active" }];
     expect(await getEffectivePlan(USER_ID)).toBe("pro");
 
-    mocks.joinRows = [{ role: "customer", plan: "starter", status: "trialing" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "starter", status: "trialing" }];
     expect(await getEffectivePlan(USER_ID)).toBe("starter");
   });
 
   it("downgrades a lapsed subscription to free even though the row still says 'pro'", async () => {
     // This is what finally gives past_due/canceled teeth — before enforcement
     // they were decorative labels in the Admin Centre.
-    mocks.joinRows = [{ role: "customer", plan: "pro", status: "past_due" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "pro", status: "past_due" }];
     expect(await getEffectivePlan(USER_ID)).toBe("free");
 
-    mocks.joinRows = [{ role: "customer", plan: "enterprise", status: "canceled" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "enterprise", status: "canceled" }];
     expect(await getEffectivePlan(USER_ID)).toBe("free");
   });
 
   it("fails closed to free for an unknown user id", async () => {
     mocks.joinRows = [];
+    expect(await getEffectivePlan(USER_ID)).toBe("free");
+  });
+});
+
+describe("grandfathering — accounts that predate enforcement", () => {
+  it("gives a pre-launch account with no subscription row 'pro'", async () => {
+    // Without this, shipping enforcement would have silently dropped every
+    // existing user — including live bots trading real money — to dry-run.
+    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: null, status: null }];
+    expect(await getEffectivePlan(USER_ID)).toBe("pro");
+  });
+
+  it("does NOT grandfather accounts created after the cutoff", async () => {
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: null, status: null }];
+    expect(await getEffectivePlan(USER_ID)).toBe("free");
+  });
+
+  it("lets an explicit admin decision override grandfathering", async () => {
+    // The important one: cancelling a legacy user must actually stick rather
+    // than being silently re-granted 'pro' on the next request.
+    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: "pro", status: "canceled" }];
+    expect(await getEffectivePlan(USER_ID)).toBe("free");
+
+    // ...and a deliberate downgrade to free is likewise respected.
+    mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: "free", status: "active" }];
     expect(await getEffectivePlan(USER_ID)).toBe("free");
   });
 });
@@ -95,7 +130,7 @@ describe("PLAN_LIMITS", () => {
   });
 
   it("resolves limits through the same effective-plan rules", async () => {
-    mocks.joinRows = [{ role: "customer", plan: "pro", status: "past_due" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "pro", status: "past_due" }];
     // Lapsed pro gets FREE limits, not pro limits.
     expect(await getPlanLimits(USER_ID)).toEqual(PLAN_LIMITS.free);
   });
@@ -103,7 +138,7 @@ describe("PLAN_LIMITS", () => {
 
 describe("AI quota", () => {
   it("reports usage against the plan's daily allowance", async () => {
-    mocks.joinRows = [{ role: "customer", plan: "free", status: "active" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "free", status: "active" }];
     mocks.usageRows = [{ count: 4 }];
 
     const quota = await getAiQuotaUsage(USER_ID);
@@ -113,14 +148,14 @@ describe("AI quota", () => {
   });
 
   it("reports not-allowed once usage reaches the limit", async () => {
-    mocks.joinRows = [{ role: "customer", plan: "free", status: "active" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "free", status: "active" }];
     mocks.usageRows = [{ count: PLAN_LIMITS.free.aiQueriesPerDay }];
 
     expect((await getAiQuotaUsage(USER_ID)).allowed).toBe(false);
   });
 
   it("treats a day with no row as zero used", async () => {
-    mocks.joinRows = [{ role: "customer", plan: "free", status: "active" }];
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "free", status: "active" }];
     mocks.usageRows = [];
 
     const quota = await getAiQuotaUsage(USER_ID);

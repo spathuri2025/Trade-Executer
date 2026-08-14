@@ -46,6 +46,23 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
 const ENTITLING_STATUSES = new Set(["active", "trialing"]);
 
 /**
+ * Accounts that existed before plan enforcement launched are grandfathered
+ * onto `pro`, so nobody who was already running a live bot with real money
+ * silently dropped to dry-run the moment this shipped.
+ *
+ * Doing this in code rather than as a data backfill is deliberate: it ships
+ * atomically with enforcement (no window where live users are downgraded),
+ * needs no production DB access, and can't be applied to the wrong database.
+ *
+ * Only applies to users with NO subscription row — see getEffectivePlan. Any
+ * row an admin has actually set always wins, so a deliberate downgrade or
+ * cancellation sticks instead of being re-grandfathered on the next request.
+ *
+ * Do not move this date forward. Signups after it correctly start on `free`.
+ */
+const GRANDFATHER_CUTOFF = new Date("2026-08-15T00:00:00Z");
+
+/**
  * Resolve a user's effective plan, which is not simply `subscriptions.plan`:
  *  - admins always get the top tier, so the operator can never lock themselves
  *    out of their own product by mis-setting a row;
@@ -57,6 +74,7 @@ export async function getEffectivePlan(userId: number): Promise<PlanName> {
   const [row] = await db
     .select({
       role: usersTable.role,
+      createdAt: usersTable.createdAt,
       plan: subscriptionsTable.plan,
       status: subscriptionsTable.status,
     })
@@ -67,9 +85,17 @@ export async function getEffectivePlan(userId: number): Promise<PlanName> {
   // Unknown user id — fail closed to the least-privileged plan.
   if (!row) return "free";
   if (row.role === "admin") return "enterprise";
-  if (!row.plan || !row.status) return "free";
-  if (!ENTITLING_STATUSES.has(row.status)) return "free";
-  return row.plan;
+
+  // A subscription row that actually exists always wins, so an admin's
+  // explicit decision (including a cancellation) is never overridden by the
+  // grandfathering below.
+  if (row.plan && row.status) {
+    return ENTITLING_STATUSES.has(row.status) ? row.plan : "free";
+  }
+
+  // No row: grandfather pre-launch accounts, everyone since starts on free.
+  if (row.createdAt && row.createdAt < GRANDFATHER_CUTOFF) return "pro";
+  return "free";
 }
 
 export async function getPlanLimits(userId: number): Promise<PlanLimits> {
