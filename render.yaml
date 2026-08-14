@@ -23,7 +23,16 @@ services:
     # own copy of every user's bot and place DUPLICATE live orders.
     numInstances: 1
 
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+    # Builds ONLY the two packages that ship. `pnpm run build` would also build
+    # artifacts/mockup-sandbox — a design scratchpad the app never imports —
+    # whose vite config still requires Replit-injected PORT/BASE_PATH and so
+    # fails here. Scoping the build keeps deploys fast and stops an unrelated
+    # sandbox from being able to break production.
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm run typecheck:libs &&
+      pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build
     startCommand: pnpm --filter @workspace/api-server run start
     healthCheckPath: /api/healthz
 

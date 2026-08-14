@@ -69,7 +69,7 @@ manually with:
 | Setting | Value |
 |---|---|
 | Runtime | Node |
-| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm run build` |
+| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm run typecheck:libs && pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build` |
 | Start command | `pnpm --filter @workspace/api-server run start` |
 | Health check path | `/api/healthz` |
 | Instances | **1** |
@@ -133,6 +133,13 @@ follow Render's DNS instructions. Render provisions TLS automatically.
 6. Start the bot in **Dry Run** and confirm a cycle runs before going live
 
 ## Notes
+
+- **`artifacts/mockup-sandbox` is excluded from the deploy build.** It's a
+  design scratchpad the app never imports, and its vite config still requires
+  the `PORT`/`BASE_PATH` variables Replit used to inject — so `pnpm run build`
+  (which builds every package) fails outside Replit. Only `api-server` and
+  `trading-bot` are built for production. If you ever need the sandbox to build
+  elsewhere, give its vite config the same defaults `trading-bot`'s now has.
 
 - **Deploys restart the process**, which clears in-memory bot state. Running
   bots resume from persisted config on the next cycle, but a deploy mid-session
