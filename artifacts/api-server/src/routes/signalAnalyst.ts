@@ -15,6 +15,7 @@ import {
   ListMessagesResponse,
 } from "@workspace/api-zod";
 import { buildSignalAnalystSystemPrompt } from "../lib/signalAnalystContext";
+import { consumeAiQuota, aiQuotaExceededBody } from "../lib/planService";
 
 const router: IRouter = Router();
 
@@ -175,6 +176,15 @@ router.post("/signal-analyst/conversations/:id/messages", async (req, res): Prom
     );
   if (!conversation) {
     res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+
+  // Consume the daily AI allowance BEFORE persisting the user's message, so a
+  // rejected request doesn't leave an orphaned message with no reply — and
+  // before any streaming headers go out, since we still need to send JSON.
+  const quota = await consumeAiQuota(req.user!.id);
+  if (!quota.allowed) {
+    res.status(402).json(aiQuotaExceededBody(quota));
     return;
   }
 

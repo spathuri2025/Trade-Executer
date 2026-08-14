@@ -4,7 +4,8 @@ import {
   useListInstruments,
   getListInstrumentsQueryKey,
   useAddInstrument,
-  useDeleteInstrument
+  useDeleteInstrument,
+  getGetPlanQueryKey
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -31,10 +32,21 @@ export default function Instruments() {
         setTicker("");
         setName("");
         queryClient.invalidateQueries({ queryKey: getListInstrumentsQueryKey() });
+        // Keep the plan's "instruments used" counter in step with the new total.
+        queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey() });
         toast({ title: "Instrument added successfully" });
       },
       onError: (err: any) => {
-        toast({ title: "Failed to add instrument", description: err.message, variant: "destructive" });
+        // A plan-cap rejection (402) carries its explanation in the response
+        // body, which isn't always surfaced as err.message — check the usual
+        // shapes so the user sees the real reason rather than a bare "failed".
+        const serverMessage =
+          err?.response?.data?.error ?? err?.data?.error ?? err?.error ?? err?.message;
+        toast({
+          title: "Failed to add instrument",
+          description: serverMessage,
+          variant: "destructive",
+        });
       }
     }
   });
@@ -43,6 +55,8 @@ export default function Instruments() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListInstrumentsQueryKey() });
+        // Frees a slot against the plan cap — refresh the counter.
+        queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey() });
         toast({ title: "Instrument deleted" });
       }
     }

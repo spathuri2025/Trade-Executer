@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   ma: { computeMASignal: vi.fn() },
   ai: { reviewSignal: vi.fn(), decideTrades: vi.fn() },
   credentials: { getUserBrokerCredentials: vi.fn() },
+  plan: { getPlanLimits: vi.fn() },
 }));
 
 /** A Promise that also exposes the extra Drizzle chain methods botEngine calls. */
@@ -59,6 +60,7 @@ vi.mock("drizzle-orm", async (orig) => ({
 
 vi.mock("./broker", () => mocks.broker);
 vi.mock("./brokerCredentialsService", () => mocks.credentials);
+vi.mock("./planService", () => mocks.plan);
 vi.mock("./maStrategy", () => mocks.ma);
 vi.mock("./aiTrader", () => mocks.ai);
 vi.mock("./logger", () => ({
@@ -147,6 +149,15 @@ beforeEach(async () => {
     minDealSize: null,
   });
   broker.placeBrokerOrder.mockResolvedValue({ id: "order-1" });
+  // Full entitlements by default so every pre-existing test — all written
+  // before plans existed — keeps exercising the same paths unchanged. Tests
+  // that care about the paywall override this explicitly.
+  mocks.plan.getPlanLimits.mockResolvedValue({
+    liveTrading: true,
+    aiTradeModes: true,
+    maxInstruments: Infinity,
+    aiQueriesPerDay: Infinity,
+  });
   ma.computeMASignal.mockReturnValue({ signal: "HOLD", shortMa: 1, longMa: 1 });
   // Every test's user has a broker "connected" by default, matching the
   // pre-multi-tenant assumption that the single global account was always configured.
@@ -399,6 +410,72 @@ describe("minimum deal size — orders below the broker's minimum are skipped, n
     expect(ticker).toBe("CLOSEDMKT");
     expect(quantity).toBe(10);
     expect(side).toBe("SELL");
+  });
+});
+
+describe("plan enforcement — the paywall is a server-side boundary", () => {
+  const freePlan = {
+    liveTrading: false,
+    aiTradeModes: false,
+    maxInstruments: 3,
+    aiQueriesPerDay: 10,
+  };
+
+  it("never places a real order for a plan without live trading, even when the user has switched Dry Run OFF", async () => {
+    // The security-critical case. `dryRun` is a user-editable setting, so a
+    // free user can simply turn it off — the route that writes it also
+    // rejects this, but THIS is the gate that actually guarantees no real
+    // order reaches the broker.
+    mocks.plan.getPlanLimits.mockResolvedValue(freePlan);
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ dryRun: false }); // explicitly opted into live trading
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    // The signal is still produced and logged — the strategy runs normally,
+    // it just simulates the fill. Free users still get a working dry-run bot.
+    expect(results.find((r) => r.ticker === "AAA")?.signal).toBe("BUY");
+  });
+
+  it("still places real orders once the plan includes live trading", async () => {
+    // Same setup as above with only the entitlement flipped, proving the
+    // block above is caused by the plan and nothing else.
+    mocks.plan.getPlanLimits.mockResolvedValue({ ...freePlan, liveTrading: true });
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ dryRun: false });
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the plain strategy when the plan excludes AI trade modes", async () => {
+    // aiTradeMode 'autonomous' would normally hand the decision to decideTrades.
+    mocks.plan.getPlanLimits.mockResolvedValue(freePlan);
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "HOLD", shortMa: 1, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "autonomous" });
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(mocks.ai.decideTrades).not.toHaveBeenCalled();
+  });
+
+  it("simulates a manual trade for a plan without live trading", async () => {
+    // The manual-trade panel is a third path to a real order, separate from
+    // the bot cycle and the scanner — it needs the same gate.
+    mocks.plan.getPlanLimits.mockResolvedValue(freePlan);
+    await startLiveBot({ dryRun: false });
+
+    await engine.executeManualTrade(TEST_USER_ID, { ticker: "AAA", side: "BUY", amount: 100 });
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
   });
 });
 

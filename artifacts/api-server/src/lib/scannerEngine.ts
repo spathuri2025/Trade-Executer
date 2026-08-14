@@ -6,6 +6,7 @@ import { capitalAuthFetch, getCapitalPriceHistory } from "./capitalcom";
 import { routeStrategy, requiredBars } from "./strategyRouter";
 import { getBotStatus } from "./botEngine";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
+import { getPlanLimits } from "./planService";
 
 export interface ScannerConfig {
   scanEnabled: boolean;
@@ -175,9 +176,17 @@ export async function runScan(userId: number): Promise<{ scanned: number; hits: 
   // "scanner does nothing" with no error surfaced anywhere.
   try {
     const botStatus = await getBotStatus(userId);
-    const { shortPeriod, longPeriod, dryRun, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled, barResolution } =
+    const { shortPeriod, longPeriod, stopLossPercent, riskPerTradePercent, tradeAmount, regimeFilterEnabled, barResolution } =
       botStatus.config;
     const { autoTrade, minTrendStrength, instrumentTypes, maxInstrumentsPerScan } = state.config;
+
+    // Scanner auto-trade places real orders, so it sits behind the same
+    // live-trading entitlement as the bot's own cycle (see botEngine.runCycle).
+    const limits = await getPlanLimits(userId);
+    const dryRun = botStatus.config.dryRun || !limits.liveTrading;
+    if (botStatus.config.dryRun === false && !limits.liveTrading) {
+      logger.warn({ userId }, "Plan does not include live trading — scanner auto-trade forced to dry-run");
+    }
     const bars = requiredBars(longPeriod);
 
     // Fetch account balance once for position sizing

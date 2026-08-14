@@ -1026,6 +1026,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/PerformanceCoach"
 
+  /plan:
+    get:
+      operationId: getPlan
+      tags: [plan]
+      summary: The caller's subscription entitlements and current usage
+      responses:
+        "200":
+          description: Plan, limits and usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanStatus"
+
   /assistant/daily-brief:
     get:
       operationId: getAssistantDailyBrief
@@ -2356,6 +2369,38 @@ components:
           type: number
         trades:
           type: integer
+
+    PlanStatus:
+      type: object
+      required: [plan, limits, usage]
+      properties:
+        plan:
+          type: string
+          enum: [free, starter, pro, enterprise]
+        limits:
+          type: object
+          required: [liveTrading, aiTradeModes, maxInstruments, aiQueriesPerDay]
+          properties:
+            liveTrading:
+              type: boolean
+              description: Whether this plan may place real (non-dry-run) orders.
+            aiTradeModes:
+              type: boolean
+              description: Whether the AI guard / autonomous trade modes are available.
+            maxInstruments:
+              type: ["integer", "null"]
+              description: Max tracked instruments; null means unlimited.
+            aiQueriesPerDay:
+              type: ["integer", "null"]
+              description: Max user-initiated AI requests per UTC day; null means unlimited.
+        usage:
+          type: object
+          required: [instruments, aiQueriesToday]
+          properties:
+            instruments:
+              type: integer
+            aiQueriesToday:
+              type: integer
 
     PerformanceCoach:
       type: object

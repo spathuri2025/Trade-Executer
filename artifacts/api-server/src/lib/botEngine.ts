@@ -10,6 +10,7 @@ import {
   type NormalizedPosition,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
+import { getPlanLimits } from "./planService";
 import {
   routeStrategy,
   requiredBars,
@@ -336,14 +337,35 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
     .where(and(eq(instrumentsTable.userId, userId), eq(instrumentsTable.enabled, true)));
 
   const cfg = state.config;
-  const { shortPeriod, longPeriod, aiTradeMode } = cfg;
+  const { shortPeriod, longPeriod } = cfg;
+
+  // Subscription entitlements, re-read every cycle (never cached) so an
+  // upgrade takes effect on the next cycle — and, more importantly, so a
+  // lapsed or downgraded plan stops placing real orders on the next cycle
+  // even if the bot is already running.
+  const limits = await getPlanLimits(userId);
 
   // Safety gate: real orders are only ever placed while the bot is actually
   // running (scheduled). A manual trigger (e.g. POST /signals/run) while the
   // bot is Stopped is forced to simulate, so it can never move real money.
-  const dryRun = cfg.dryRun || !state.running;
+  //
+  // The plan check is the SECURITY boundary for the paywall: `cfg.dryRun` is a
+  // user-editable setting, so a free user could simply switch it off. The
+  // route that writes it rejects that too, but this is the gate that actually
+  // guarantees no real order is ever placed without a live-trading plan.
+  const dryRun = cfg.dryRun || !state.running || !limits.liveTrading;
   if (cfg.dryRun === false && !state.running) {
     logger.warn({ userId }, "Bot is stopped — forcing dry-run for this manual cycle (no real orders)");
+  }
+  if (cfg.dryRun === false && state.running && !limits.liveTrading) {
+    logger.warn({ userId }, "Plan does not include live trading — forcing dry-run (no real orders)");
+  }
+
+  // AI guard/autonomous modes are a paid entitlement; fall back to the plain
+  // strategy path when the plan doesn't include them.
+  const aiTradeMode: AiTradeMode = limits.aiTradeModes ? cfg.aiTradeMode : "off";
+  if (cfg.aiTradeMode !== "off" && !limits.aiTradeModes) {
+    logger.warn({ userId, requested: cfg.aiTradeMode }, "Plan does not include AI trade modes — falling back to strategy-only");
   }
 
   // Fetch account once per cycle — used for position sizing and (in AI modes) context.
@@ -910,7 +932,15 @@ export async function executeManualTrade(userId: number, params: ManualTradePara
   }
 
   const state = await getOrCreateBotState(userId);
-  const { dryRun, stopLossPercent, barResolution } = state.config;
+  const { stopLossPercent, barResolution } = state.config;
+
+  // Same paywall boundary as runCycle: a manual trade is still a real order,
+  // so a plan without live trading is forced to simulate it.
+  const limits = await getPlanLimits(userId);
+  const dryRun = state.config.dryRun || !limits.liveTrading;
+  if (state.config.dryRun === false && !limits.liveTrading) {
+    logger.warn({ userId, ticker, side }, "Plan does not include live trading — manual trade forced to dry-run");
+  }
 
   const lockKey = `${userId}:${credentials.broker}:${ticker}:${side}`;
   if (inFlightTrades.has(lockKey)) {

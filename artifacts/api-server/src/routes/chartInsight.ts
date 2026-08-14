@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { computeChartInsight } from "../lib/chartInsightService";
 import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
+import { consumeAiQuota, aiQuotaExceededBody } from "../lib/planService";
 
 const router: IRouter = Router();
 
@@ -27,6 +28,12 @@ router.get("/charts/insight", async (req, res): Promise<void> => {
   const credentials = await getUserBrokerCredentials(req.user!.id);
   if (!credentials || credentials.broker !== "capitalcom") {
     res.status(400).json({ error: "Connect a Capital.com broker account first" });
+    return;
+  }
+
+  const quota = await consumeAiQuota(req.user!.id);
+  if (!quota.allowed) {
+    res.status(402).json(aiQuotaExceededBody(quota));
     return;
   }
 

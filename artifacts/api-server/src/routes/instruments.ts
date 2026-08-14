@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, instrumentsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { AddInstrumentBody, DeleteInstrumentParams } from "@workspace/api-zod";
+import { getPlanLimits } from "../lib/planService";
 
 const router: IRouter = Router();
 
@@ -27,6 +28,23 @@ router.post("/instruments", async (req, res): Promise<void> => {
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
+  }
+
+  // Plan cap. Only guards ADDING — GET and DELETE stay open so a user who
+  // lands over their cap after a downgrade can still see and prune their list
+  // rather than hitting a dead end.
+  const { maxInstruments } = await getPlanLimits(req.user!.id);
+  if (maxInstruments !== Infinity) {
+    const existing = await db
+      .select({ id: instrumentsTable.id })
+      .from(instrumentsTable)
+      .where(eq(instrumentsTable.userId, req.user!.id));
+    if (existing.length >= maxInstruments) {
+      res.status(402).json({
+        error: `Your plan tracks up to ${maxInstruments} instruments. Remove one or upgrade to add more.`,
+      });
+      return;
+    }
   }
 
   const [instrument] = await db

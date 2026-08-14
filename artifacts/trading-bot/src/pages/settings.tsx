@@ -10,6 +10,8 @@ import {
   getGetBrokerStatusQueryKey,
   useConnectBroker,
   useDisconnectBroker,
+  useGetPlan,
+  getGetPlanQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,6 +73,13 @@ export default function Settings() {
   const { data: botStatus, isLoading } = useGetBotStatus({
     query: { queryKey: getGetBotStatusQueryKey() }
   });
+
+  const { data: planStatus } = useGetPlan({ query: { queryKey: getGetPlanQueryKey() } });
+  // Default to UNLOCKED while the plan is still loading, so the controls don't
+  // flicker from disabled to enabled for paying users. The server enforces the
+  // real boundary regardless — this is presentation only.
+  const liveTradingLocked = planStatus ? !planStatus.limits.liveTrading : false;
+  const aiModesLocked = planStatus ? !planStatus.limits.aiTradeModes : false;
 
   const [config, setConfig] = useState({
     shortPeriod: 9,
@@ -214,6 +223,49 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl md:text-4xl font-light tracking-tight">Bot Controls &amp; Settings</h1>
+
+      {/* Current plan + what it includes */}
+      {planStatus && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              Your Plan
+              <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded border border-primary/40 bg-primary/10 text-primary">
+                {planStatus.plan}
+              </span>
+            </CardTitle>
+            <CardDescription>
+              {planStatus.limits.liveTrading
+                ? "Your plan includes live trading."
+                : "Your plan is research-only — backtests, charts, the scanner and the AI assistant all work, but the bot always simulates trades."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Live trading</div>
+              <div className="mt-1 font-medium">{planStatus.limits.liveTrading ? "Included" : "Not included"}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">AI trade modes</div>
+              <div className="mt-1 font-medium">{planStatus.limits.aiTradeModes ? "Included" : "Not included"}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Instruments</div>
+              <div className="mt-1 font-medium font-mono">
+                {planStatus.usage.instruments}
+                {planStatus.limits.maxInstruments == null ? " / ∞" : ` / ${planStatus.limits.maxInstruments}`}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">AI requests today</div>
+              <div className="mt-1 font-medium font-mono">
+                {planStatus.usage.aiQueriesToday}
+                {planStatus.limits.aiQueriesPerDay == null ? " / ∞" : ` / ${planStatus.limits.aiQueriesPerDay}`}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Broker connection — required before the bot or any live data can work */}
       <Card className={brokerStatus?.connected ? undefined : "border-amber-500/40"}>
@@ -419,14 +471,26 @@ export default function Settings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {AI_MODES.map((mode) => (
+          {aiModesLocked && (
+            <div className="text-xs rounded-md p-3 border border-border bg-muted/30 text-muted-foreground">
+              AI trade modes aren't included in your plan — the bot uses the moving-average
+              strategy on its own. Upgrade to Pro to let AI review or make trade decisions.
+            </div>
+          )}
+          {AI_MODES.map((mode) => {
+            // "off" stays available on every plan: it's the plain-strategy
+            // default, not a paid feature.
+            const modeLocked = aiModesLocked && mode.value !== "off";
+            return (
             <button
               key={mode.value}
               type="button"
+              disabled={modeLocked}
               data-testid={`button-ai-mode-${mode.value}`}
               onClick={() => setConfig({ ...config, aiTradeMode: mode.value })}
               className={[
                 "w-full rounded-lg border px-4 py-3 text-left transition-all",
+                modeLocked ? "opacity-50 cursor-not-allowed border-border bg-muted/10" :
                 config.aiTradeMode === mode.value
                   ? "border-primary bg-primary/10"
                   : "border-border bg-muted/20 hover:border-primary/40",
@@ -445,7 +509,8 @@ export default function Settings() {
               </div>
               <div className="text-xs mt-1 pl-5.5 text-muted-foreground">{mode.desc}</div>
             </button>
-          ))}
+            );
+          })}
           {config.aiTradeMode !== "off" && (
             <div className="text-xs rounded-md p-3 border border-amber-500/40 bg-amber-500/10 text-amber-500">
               {config.dryRun
@@ -716,11 +781,14 @@ export default function Settings() {
               <div className="space-y-0.5 pr-4">
                 <label className="text-sm font-medium">Dry Run Mode</label>
                 <div className="text-xs text-muted-foreground">
-                  Log signals without executing real trades on {BROKER_LABELS[config.broker]}
+                  {liveTradingLocked
+                    ? "Your plan is research-only, so the bot always simulates trades. Upgrade to place real orders."
+                    : `Log signals without executing real trades on ${BROKER_LABELS[config.broker]}`}
                 </div>
               </div>
               <Switch
-                checked={config.dryRun}
+                checked={liveTradingLocked ? true : config.dryRun}
+                disabled={liveTradingLocked}
                 onCheckedChange={(checked) => setConfig({ ...config, dryRun: checked })}
                 data-testid="switch-dry-run"
               />

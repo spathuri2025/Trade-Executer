@@ -4,6 +4,7 @@ import {
   type TradeFactorScoreInput,
   type TradeIntelligenceEvaluateInput,
 } from "../lib/tradeIntelligenceService";
+import { consumeAiQuota, aiQuotaExceededBody } from "../lib/planService";
 
 const router: IRouter = Router();
 
@@ -49,6 +50,12 @@ router.post("/trade-intelligence/evaluate-with-claude", async (req, res): Promis
   const rawFactorScores = body["factorScores"];
   if (typeof rawFactorScores !== "object" || rawFactorScores === null) {
     res.status(400).json({ error: "factorScores is required" });
+    return;
+  }
+
+  const quota = await consumeAiQuota(req.user!.id);
+  if (!quota.allowed) {
+    res.status(402).json(aiQuotaExceededBody(quota));
     return;
   }
   const factorScoresInput = rawFactorScores as Record<string, unknown>;
