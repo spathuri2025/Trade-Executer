@@ -1,0 +1,60 @@
+# Render Blueprint for TradeBuzz.
+#
+# ONE web service serves both the API and the built frontend. That is a
+# requirement, not a preference: the generated API client calls `/api/...` as a
+# relative path and sessions are cookie-based, so the UI and API must share an
+# origin. See the static-serving block in artifacts/api-server/src/app.ts.
+#
+# Database is Supabase (external) — set DATABASE_URL manually in the dashboard.
+services:
+  - type: web
+    name: tradebuzz
+    runtime: node
+    # Frankfurt matches the other ClinAITech services; keeps latency to the
+    # Supabase instance low if that's also EU-hosted.
+    region: frankfurt
+
+    # MUST be a paid plan. Free instances sleep when idle, and the trading bot
+    # runs on in-process timers — a sleeping instance silently stops trading.
+    plan: starter
+
+    # MUST stay at 1. Per-user bot state (botEngine.ts / scannerEngine.ts) lives
+    # in memory on the instance that owns it. A second instance would run its
+    # own copy of every user's bot and place DUPLICATE live orders.
+    numInstances: 1
+
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+    startCommand: pnpm --filter @workspace/api-server run start
+    healthCheckPath: /api/healthz
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+
+      # Supabase connection string (Settings -> Database -> Connection string).
+      # Use the POOLED connection (port 6543) — this app opens a long-lived pool.
+      - key: DATABASE_URL
+        sync: false
+
+      # Signs session cookies. Rotating it logs everyone out; nothing worse.
+      - key: SESSION_SECRET
+        generateValue: true
+
+      # Encrypts each user's broker credentials at rest. MUST be exactly 64 hex
+      # characters (32 bytes). Generate with:
+      #   openssl rand -hex 32
+      # CRITICAL: if this value is ever lost or changed, every stored broker
+      # credential becomes permanently undecryptable and all users must
+      # reconnect their broker. Back it up somewhere safe.
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false
+
+      # Anthropic powers every AI feature (Assistant, Signal Analyst, Market
+      # Brain, briefs, trade intelligence, AI trade modes). The base URL is
+      # configurable because this used to run through Replit's AI gateway.
+      - key: AI_INTEGRATIONS_ANTHROPIC_BASE_URL
+        value: https://api.anthropic.com
+      - key: AI_INTEGRATIONS_ANTHROPIC_API_KEY
+        sync: false

@@ -4,35 +4,30 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+// PORT/BASE_PATH were previously required, because Replit's workflow always
+// injected them. That made `vite build` impossible anywhere else — including a
+// CI/CD build step on Render — so both now fall back to sensible defaults.
+// PORT only affects the local dev/preview server, never the build output.
 const rawPort = process.env.PORT;
+const parsedPort = rawPort ? Number(rawPort) : NaN;
+const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 5173;
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+// "/" is correct when the app is served from the root of its own domain, which
+// is how it's deployed outside Replit. Override BASE_PATH only if the app is
+// ever hosted under a sub-path.
+const basePath = process.env.BASE_PATH || "/";
 
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+const isProduction = process.env.NODE_ENV === "production";
 
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
+    // Replit's dev-only error overlay — kept for local use but excluded from
+    // production bundles so a Replit tool isn't shipped to end users.
+    ...(isProduction ? [] : [runtimeErrorOverlay()]),
+    ...(!isProduction &&
     process.env.REPL_ID !== undefined
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>

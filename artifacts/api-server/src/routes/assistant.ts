@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { db, conversations, messages } from "@workspace/db";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   CreateConversationBody,
   GetConversationParams,
@@ -206,13 +206,12 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
   // against old, now-outdated figures from earlier in a long-lived thread).
   const recentHistory = history.slice(-MAX_HISTORY_MESSAGES);
 
-  const chatMessages = [
-    { role: "system" as const, content: systemPrompt },
-    ...recentHistory.map((m) => ({
-      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: m.content,
-    })),
-  ];
+  // Anthropic takes the system prompt as a top-level field; messages must be
+  // user/assistant turns only.
+  const chatMessages = recentHistory.map((m) => ({
+    role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+    content: m.content,
+  }));
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -220,34 +219,36 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
 
   let fullResponse = "";
   let clientGone = false;
-  let stream: Awaited<ReturnType<typeof openai.chat.completions.create>> | undefined;
 
-  // Abort the upstream OpenAI stream if the client disconnects, to avoid
+  // Abort the upstream Claude stream if the client disconnects, to avoid
   // spending tokens on a response nobody is reading.
+  const ac = new AbortController();
   const onClose = () => {
     clientGone = true;
-    try {
-      (stream as { controller?: AbortController } | undefined)?.controller?.abort();
-    } catch {
-      // ignore
-    }
+    ac.abort();
   };
   req.on("close", onClose);
 
   try {
-    stream = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 8192,
-      messages: chatMessages,
-      stream: true,
-    });
+    const stream = await anthropic.messages.create(
+      {
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages: chatMessages,
+        stream: true,
+      },
+      { signal: ac.signal },
+    );
 
-    for await (const chunk of stream) {
+    for await (const event of stream) {
       if (clientGone) break;
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        fullResponse += content;
-        res.write(`data: ${JSON.stringify({ content })}\n\n`);
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        const content = event.delta.text;
+        if (content) {
+          fullResponse += content;
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+        }
       }
     }
   } catch (err) {
