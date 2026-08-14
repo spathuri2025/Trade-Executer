@@ -1018,6 +1018,44 @@ export interface InstrumentPnl {
   trades: number;
 }
 
+export type PlanStatusPlan = typeof PlanStatusPlan[keyof typeof PlanStatusPlan];
+
+
+export const PlanStatusPlan = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+  enterprise: 'enterprise',
+} as const;
+
+export type PlanStatusLimits = {
+  /** Whether this plan may place real (non-dry-run) orders. */
+  liveTrading: boolean;
+  /** Whether the AI guard / autonomous trade modes are available. */
+  aiTradeModes: boolean;
+  /**
+     * Max tracked instruments; null means unlimited.
+     * @nullable
+     */
+  maxInstruments: number | null;
+  /**
+     * Max user-initiated AI requests per UTC day; null means unlimited.
+     * @nullable
+     */
+  aiQueriesPerDay: number | null;
+};
+
+export type PlanStatusUsage = {
+  instruments: number;
+  aiQueriesToday: number;
+};
+
+export interface PlanStatus {
+  plan: PlanStatusPlan;
+  limits: PlanStatusLimits;
+  usage: PlanStatusUsage;
+}
+
 export interface PerformanceCoach {
   totalTrades: number;
   closedTrades: number;

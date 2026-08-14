@@ -928,6 +928,24 @@ export const GetPerformanceCoachResponse = zod.object({
 
 
 /**
+ * @summary The caller's subscription entitlements and current usage
+ */
+export const GetPlanResponse = zod.object({
+  "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
+  "limits": zod.object({
+  "liveTrading": zod.boolean().describe('Whether this plan may place real (non-dry-run) orders.'),
+  "aiTradeModes": zod.boolean().describe('Whether the AI guard \/ autonomous trade modes are available.'),
+  "maxInstruments": zod.number().nullable().describe('Max tracked instruments; null means unlimited.'),
+  "aiQueriesPerDay": zod.number().nullable().describe('Max user-initiated AI requests per UTC day; null means unlimited.')
+}),
+  "usage": zod.object({
+  "instruments": zod.number(),
+  "aiQueriesToday": zod.number()
+})
+})
+
+
+/**
  * @summary Proactive daily assistant briefing (self-populating, one per day)
  */
 export const GetAssistantDailyBriefResponse = zod.object({
