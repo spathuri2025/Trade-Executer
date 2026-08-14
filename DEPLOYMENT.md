@@ -23,10 +23,20 @@ Two constraints on that service:
 
 ## 1. Supabase
 
-1. Create a project (choose a region near your Render region).
-2. **Settings → Database → Connection string → URI**. Take the **pooled**
-   connection (port `6543`) — this app holds a long-lived connection pool.
-3. Keep that string for `DATABASE_URL` below.
+1. Create a project (choose a region near your Render region — Frankfurt/EU
+   keeps latency low if Render is also in Frankfurt).
+2. **Settings → Database → Connection string**, and pick the **Session pooler**.
+
+   Supabase offers three connection modes and the choice matters here:
+
+   | Mode | Use it? | Why |
+   |---|---|---|
+   | **Session pooler** | ✅ **Use this** | IPv4-compatible and behaves like a direct connection — supports prepared statements. |
+   | Direct (`5432`) | ⚠️ Only with IPv4 add-on | Fine technically, but IPv6-only on new projects, which Render may not reach. |
+   | Transaction pooler (`6543`) | ❌ Avoid | Built for serverless. Does **not** support prepared statements, which Drizzle and `node-postgres` rely on — causes intermittent "prepared statement already exists" errors under load. |
+
+3. Keep that string for `DATABASE_URL` below. Replace `[YOUR-PASSWORD]` in the
+   template with your actual database password.
 
 ## 2. Generate secrets
 

@@ -34,7 +34,10 @@ services:
         value: production
 
       # Supabase connection string (Settings -> Database -> Connection string).
-      # Use the POOLED connection (port 6543) — this app opens a long-lived pool.
+      # Use the SESSION POOLER — it's IPv4-compatible and supports prepared
+      # statements, which Drizzle/node-postgres need. Do NOT use the transaction
+      # pooler (port 6543): it's built for serverless and breaks prepared
+      # statements. See DEPLOYMENT.md for the full comparison.
       - key: DATABASE_URL
         sync: false
 
