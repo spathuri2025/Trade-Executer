@@ -7,7 +7,7 @@
  */
 
 /**
- * atr_momentum is backtest-only — it is never emitted by the live regime router (Signal.strategy / ActivityItem.strategy), only by this ephemeral endpoint.
+ * atr_momentum and vwap_reversion are backtest-only — they are never emitted by the live regime router (Signal.strategy / ActivityItem.strategy), only by this ephemeral endpoint.
 
  */
 export type BacktestResultStrategy = typeof BacktestResultStrategy[keyof typeof BacktestResultStrategy];
@@ -17,4 +17,5 @@ export const BacktestResultStrategy = {
   trend_following: 'trend_following',
   mean_reversion: 'mean_reversion',
   atr_momentum: 'atr_momentum',
+  vwap_reversion: 'vwap_reversion',
 } as const;
