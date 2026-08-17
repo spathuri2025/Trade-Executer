@@ -11,21 +11,31 @@ import {
 
 const router: IRouter = Router();
 
-router.get("/scanner/status", (req, res): void => {
-  res.json(getScannerStatus(req.user!.id));
+router.get("/scanner/status", async (req, res): Promise<void> => {
+  try {
+    res.json(await getScannerStatus(req.user!.id));
+  } catch (err) {
+    req.log.error({ err }, "Failed to read scanner status");
+    res.status(500).json({ error: "Failed to read scanner status" });
+  }
 });
 
-router.post("/scanner/config", (req, res): void => {
-  const patch = req.body as Partial<ScannerConfig>;
-  const status = updateScannerConfig(req.user!.id, patch);
+router.post("/scanner/config", async (req, res): Promise<void> => {
+  try {
+    const patch = req.body as Partial<ScannerConfig>;
+    const status = await updateScannerConfig(req.user!.id, patch);
 
-  if (patch.scanEnabled === true && !status.running) {
-    startScanner(req.user!.id);
-  } else if (patch.scanEnabled === false && status.running) {
-    stopScanner(req.user!.id);
+    if (patch.scanEnabled === true && !status.running) {
+      await startScanner(req.user!.id);
+    } else if (patch.scanEnabled === false && status.running) {
+      await stopScanner(req.user!.id);
+    }
+
+    res.json(await getScannerStatus(req.user!.id));
+  } catch (err) {
+    req.log.error({ err }, "Failed to save scanner config");
+    res.status(500).json({ error: "Failed to save scanner config" });
   }
-
-  res.json(getScannerStatus(req.user!.id));
 });
 
 router.post("/scanner/run", async (req, res): Promise<void> => {

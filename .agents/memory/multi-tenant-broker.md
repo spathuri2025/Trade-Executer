@@ -39,6 +39,16 @@ the broker API. Three invariants to preserve:
 - Restoration goes through `startBot` → `runCycle`, so the plan/paywall check still forces
   dry-run for a downgraded user. Don't add a shortcut that bypasses it.
 
+**The scanner got the same treatment** in a follow-up commit, plus the config persistence
+the bot already had: `scanner_config` (new table) now stores every ScannerConfig field AND
+`running`, with `resumeRunningScanners()` called from `index.ts` beside `resumeRunningBots()`.
+Before that, `scannerEngine.ts` persisted nothing but results, so a deploy silently reset
+each user's scanner settings to defaults as well as stopping the loop. Its resume stagger is
+60s (vs the bot's 20s) because one scan walks Capital.com's entire market list. Making
+`getOrCreateScannerState` async to load the row rippled through `getScannerStatus`,
+`updateScannerConfig`, `startScanner`, `stopScanner` and `runScan` — all now async, and
+`routes/scanner.ts` awaits them inside try/catch.
+
 **Trading 212 auth is HTTP Basic with a key+secret pair** (confirmed at
 docs.trading212.com, July 2026): `Authorization: Basic base64(apiKey:apiSecret)`. A bare
 key in the Authorization header gets 401 on BOTH hosts — that broke every user connect

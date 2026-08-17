@@ -165,11 +165,11 @@ follow Render's DNS instructions. Render provisions TLS automatically.
   `trading-bot` are built for production. If you ever need the sandbox to build
   elsewhere, give its vite config the same defaults `trading-bot`'s now has.
 
-- **Deploys restart the process**, which clears in-memory bot state. Bots that
-  were running are re-armed at boot from `bot_config.running`, with each one's
-  first cycle staggered 20s apart. A deploy is still worth avoiding during
-  market hours: an in-flight cycle is lost, and there's a gap of up to one
-  interval before trading resumes.
+- **Deploys restart the process**, which clears in-memory engine state. Bots and
+  scanners that were running are re-armed at boot from `bot_config.running` and
+  `scanner_config.running`, staggered 20s and 60s apart respectively. A deploy is
+  still worth avoiding during market hours: an in-flight cycle is lost, and
+  there's a gap of up to one interval before trading resumes.
 
   (An earlier version of this note claimed bots "resume from persisted config on
   the next cycle". That was wrong — only the *config* was persisted, not whether

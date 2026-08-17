@@ -1,4 +1,4 @@
-import { db, scannerResultsTable } from "@workspace/db";
+import { db, scannerResultsTable, scannerConfigTable, type ScannerConfigRow } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { placeBrokerOrder, getBrokerAccount } from "./broker";
@@ -26,6 +26,12 @@ interface ScannerState {
   lastHitCount: number;
   config: ScannerConfig;
   intervalHandle: ReturnType<typeof setInterval> | null;
+  /**
+   * Set only while a staggered first scan is pending, when restoring scanners at
+   * boot. Cleared by stopScanner alongside intervalHandle — otherwise a
+   * "stopped" scanner would still fire one scan.
+   */
+  pendingStartHandle: ReturnType<typeof setTimeout> | null;
 }
 
 function defaultScannerConfig(): ScannerConfig {
@@ -39,29 +45,72 @@ function defaultScannerConfig(): ScannerConfig {
   };
 }
 
+function rowToScannerConfig(row: ScannerConfigRow): ScannerConfig {
+  return {
+    scanEnabled: row.scanEnabled,
+    autoTrade: row.autoTrade,
+    minTrendStrength: row.minTrendStrength,
+    scanIntervalMinutes: row.scanIntervalMinutes,
+    instrumentTypes: row.instrumentTypes,
+    maxInstrumentsPerScan: row.maxInstrumentsPerScan,
+  };
+}
+
+async function persistScannerConfig(userId: number, config: ScannerConfig): Promise<void> {
+  await db
+    .insert(scannerConfigTable)
+    .values({ userId, ...config })
+    .onConflictDoUpdate({ target: scannerConfigTable.userId, set: { ...config, updatedAt: new Date() } });
+}
+
+/**
+ * Records whether the user wants the scan loop running. Kept separate from
+ * persistScannerConfig for the same reason as the bot's: `running` is state, not
+ * settings, and a plain settings save must not be able to start or stop a loop.
+ */
+async function persistScannerRunning(userId: number, running: boolean): Promise<void> {
+  await db
+    .update(scannerConfigTable)
+    .set({ running, updatedAt: new Date() })
+    .where(eq(scannerConfigTable.userId, userId));
+}
+
 /** Per-user in-memory scanner state — mirrors botEngine.ts's per-user model. */
 const scannerStates = new Map<number, ScannerState>();
 
-function getOrCreateScannerState(userId: number): ScannerState {
-  let state = scannerStates.get(userId);
-  if (!state) {
-    state = {
-      running: false,
-      scanning: false,
-      lastRunAt: null,
-      nextRunAt: null,
-      lastScanCount: 0,
-      lastHitCount: 0,
-      config: defaultScannerConfig(),
-      intervalHandle: null,
-    };
-    scannerStates.set(userId, state);
-  }
+/**
+ * Returns (creating if needed) a user's scanner state, loading persisted config
+ * from `scanner_config` on first access so settings survive a restart.
+ *
+ * As in botEngine, `running` deliberately starts false even when the row says
+ * otherwise: only resumeRunningScanners() may flip it, because it is the only
+ * path that also arms the timer.
+ */
+async function getOrCreateScannerState(userId: number): Promise<ScannerState> {
+  const existing = scannerStates.get(userId);
+  if (existing) return existing;
+
+  const [row] = await db.select().from(scannerConfigTable).where(eq(scannerConfigTable.userId, userId));
+  const config = row ? rowToScannerConfig(row) : defaultScannerConfig();
+  if (!row) await persistScannerConfig(userId, config);
+
+  const state: ScannerState = {
+    running: false,
+    scanning: false,
+    lastRunAt: null,
+    nextRunAt: null,
+    lastScanCount: 0,
+    lastHitCount: 0,
+    config,
+    intervalHandle: null,
+    pendingStartHandle: null,
+  };
+  scannerStates.set(userId, state);
   return state;
 }
 
-export function getScannerStatus(userId: number) {
-  const state = getOrCreateScannerState(userId);
+export async function getScannerStatus(userId: number) {
+  const state = await getOrCreateScannerState(userId);
   return {
     running: state.running,
     scanning: state.scanning,
@@ -73,43 +122,112 @@ export function getScannerStatus(userId: number) {
   };
 }
 
-export function updateScannerConfig(userId: number, patch: Partial<ScannerConfig>) {
-  const state = getOrCreateScannerState(userId);
+export async function updateScannerConfig(userId: number, patch: Partial<ScannerConfig>) {
+  const state = await getOrCreateScannerState(userId);
   Object.assign(state.config, patch);
+  await persistScannerConfig(userId, state.config);
 
   if (state.running) {
-    stopScanner(userId);
-    if (state.config.scanEnabled) startScanner(userId);
+    await stopScanner(userId);
+    if (state.config.scanEnabled) await startScanner(userId);
   }
 
   return getScannerStatus(userId);
 }
 
-export function startScanner(userId: number) {
-  const state = getOrCreateScannerState(userId);
+/** Arms the scan timers. `delayMs > 0` holds the first scan back when restoring at boot. */
+function armScanTimers(userId: number, state: ScannerState, delayMs: number): void {
+  const ms = state.config.scanIntervalMinutes * 60 * 1000;
+
+  if (delayMs <= 0) {
+    void runScan(userId);
+    state.intervalHandle = setInterval(() => void runScan(userId), ms);
+    state.nextRunAt = new Date(Date.now() + ms);
+    return;
+  }
+
+  state.nextRunAt = new Date(Date.now() + delayMs);
+  state.pendingStartHandle = setTimeout(() => {
+    state.pendingStartHandle = null;
+    if (!state.running) return; // stopped while waiting
+    void runScan(userId);
+    state.intervalHandle = setInterval(() => void runScan(userId), ms);
+    state.nextRunAt = new Date(Date.now() + ms);
+  }, delayMs);
+}
+
+export async function startScanner(userId: number, opts: { firstScanDelayMs?: number } = {}) {
+  const state = await getOrCreateScannerState(userId);
   if (state.running) return getScannerStatus(userId);
 
   state.running = true;
-  void runScan(userId);
-
-  const ms = state.config.scanIntervalMinutes * 60 * 1000;
-  state.intervalHandle = setInterval(() => void runScan(userId), ms);
-  state.nextRunAt = new Date(Date.now() + ms);
+  await persistScannerRunning(userId, true);
+  armScanTimers(userId, state, opts.firstScanDelayMs ?? 0);
 
   logger.info({ userId, config: state.config }, "Scanner started");
   return getScannerStatus(userId);
 }
 
-export function stopScanner(userId: number) {
-  const state = getOrCreateScannerState(userId);
+export async function stopScanner(userId: number) {
+  const state = await getOrCreateScannerState(userId);
   if (state.intervalHandle) {
     clearInterval(state.intervalHandle);
     state.intervalHandle = null;
   }
+  if (state.pendingStartHandle) {
+    clearTimeout(state.pendingStartHandle);
+    state.pendingStartHandle = null;
+  }
   state.running = false;
   state.nextRunAt = null;
+  await persistScannerRunning(userId, false).catch((err: unknown) =>
+    logger.error({ err, userId }, "Failed to persist stopped scanner state"),
+  );
   logger.info({ userId }, "Scanner stopped");
   return getScannerStatus(userId);
+}
+
+/** Spacing between restored scanners' first scans. Longer than the bot's: a scan
+ * walks the whole Capital.com market list, so it is far heavier than one cycle. */
+const RESUME_STAGGER_MS = 60_000;
+
+/**
+ * Re-arms every scanner that was running before this process started — the
+ * scanner half of `resumeRunningBots()`. Called once from index.ts, never
+ * app.ts, so importing the app in tests never starts scanning.
+ */
+export async function resumeRunningScanners(): Promise<{ resumed: number; skipped: number }> {
+  let resumed = 0;
+  let skipped = 0;
+
+  let rows: ScannerConfigRow[];
+  try {
+    rows = await db.select().from(scannerConfigTable).where(eq(scannerConfigTable.running, true));
+  } catch (err) {
+    logger.error({ err }, "Could not read scanners to resume — all scanners remain stopped");
+    return { resumed: 0, skipped: 0 };
+  }
+
+  if (rows.length === 0) {
+    logger.info("No scanners to resume");
+    return { resumed: 0, skipped: 0 };
+  }
+
+  for (const [index, row] of rows.entries()) {
+    try {
+      await startScanner(row.userId, { firstScanDelayMs: (index + 1) * RESUME_STAGGER_MS });
+      resumed += 1;
+    } catch (err) {
+      skipped += 1;
+      logger.error({ err, userId: row.userId }, "Could not resume scanner — leaving it stopped");
+      await persistScannerRunning(row.userId, false).catch((persistErr: unknown) =>
+        logger.error({ err: persistErr, userId: row.userId }, "Failed to clear scanner running flag"),
+      );
+    }
+  }
+
+  logger.info({ resumed, skipped }, "Finished resuming scanners after restart");
+  return { resumed, skipped };
 }
 
 interface CapitalMarket {
@@ -145,7 +263,7 @@ async function fetchAllMarkets(userId: number, credentials: UserBrokerCredential
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function runScan(userId: number): Promise<{ scanned: number; hits: number }> {
-  const state = getOrCreateScannerState(userId);
+  const state = await getOrCreateScannerState(userId);
   if (state.scanning) {
     logger.warn({ userId }, "Scanner already running — skipping cycle");
     return { scanned: 0, hits: 0 };

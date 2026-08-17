@@ -18,3 +18,4 @@ export * from "./contracts";
 export * from "./aiUsage";
 export * from "./upgradeRequests";
 export * from "./passwordResetTokens";
+export * from "./scannerConfig";
