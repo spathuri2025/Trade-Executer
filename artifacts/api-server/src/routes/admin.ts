@@ -96,7 +96,7 @@ router.post("/admin/customers/:id/suspend", async (req, res): Promise<void> => {
   }
 
   // Suspension must take effect immediately, not just block future logins.
-  stopBot(id);
+  await stopBot(id);
   evictCapitalStream(id);
 
   res.json({ id: updated.id, suspendedAt: updated.suspendedAt?.toISOString() ?? null });
@@ -129,7 +129,7 @@ router.delete("/admin/customers/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  stopBot(id);
+  await stopBot(id);
   evictCapitalStream(id);
 
   const [deleted] = await db.delete(usersTable).where(eq(usersTable.id, id)).returning();

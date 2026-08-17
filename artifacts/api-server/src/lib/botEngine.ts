@@ -96,6 +96,13 @@ interface BotState {
   config: BotConfig;
   circuitBreaker: CircuitBreakerState;
   intervalHandle: ReturnType<typeof setInterval> | null;
+  /**
+   * Set only while a staggered first cycle is pending — used when restoring
+   * bots at boot so they don't all hit the broker in the same instant. Must be
+   * cleared by stopBot alongside intervalHandle, or a "stopped" bot would still
+   * fire one cycle.
+   */
+  pendingStartHandle: ReturnType<typeof setTimeout> | null;
 }
 
 function freshCircuitBreaker(): CircuitBreakerState {
@@ -133,6 +140,22 @@ async function persistConfig(userId: number, config: BotConfig): Promise<void> {
 }
 
 /**
+ * Records whether the user wants the bot running, so a restart can restore it.
+ * Deliberately separate from persistConfig: `running` is state, not settings,
+ * and writing it through the config path would let a plain settings save
+ * silently start or stop a bot.
+ *
+ * getOrCreateBotState guarantees a row exists before either start or stop can
+ * be reached, so a plain UPDATE is enough.
+ */
+async function persistRunning(userId: number, running: boolean): Promise<void> {
+  await db
+    .update(botConfigTable)
+    .set({ running, updatedAt: new Date() })
+    .where(eq(botConfigTable.userId, userId));
+}
+
+/**
  * Returns (creating if needed) a user's in-memory bot state. On first access
  * this cycle, loads persisted config from `bot_config` so settings survive a
  * server restart — falls back to defaults (and persists them) if the user has
@@ -146,6 +169,10 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
   const config = row ? rowToConfig(row) : { ...DEFAULT_CONFIG };
   if (!row) await persistConfig(userId, config);
 
+  // Deliberately starts as NOT running even when the row says running: true.
+  // Only resumeRunningBots() may flip it, because that is the one path that also
+  // arms the timers. Trusting the column here would make the UI claim RUNNING
+  // while nothing was scheduled — the exact lie this column exists to prevent.
   const state: BotState = {
     running: false,
     lastRunAt: null,
@@ -153,6 +180,7 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
     config,
     circuitBreaker: freshCircuitBreaker(),
     intervalHandle: null,
+    pendingStartHandle: null,
   };
   botStates.set(userId, state);
   return state;
@@ -271,14 +299,40 @@ export async function updateConfig(userId: number, patch: Partial<BotConfig>) {
   await persistConfig(userId, state.config);
 
   if (state.running) {
-    stopBot(userId);
+    await stopBot(userId);
     await startBot(userId);
   }
 
   return getBotStatus(userId);
 }
 
-export async function startBot(userId: number) {
+/**
+ * Arms the cycle timers. `delayMs > 0` holds the first cycle back — used when
+ * restoring many bots at boot — and only starts the repeating interval once that
+ * first cycle has run, so a restored bot never fires two cycles close together.
+ */
+function armCycleTimers(userId: number, state: BotState, delayMs: number): void {
+  const ms = state.config.intervalMinutes * 60 * 1000;
+
+  if (delayMs <= 0) {
+    void runCycle(userId);
+    state.intervalHandle = setInterval(() => void runCycle(userId), ms);
+    state.nextRunAt = new Date(Date.now() + ms);
+    return;
+  }
+
+  state.nextRunAt = new Date(Date.now() + delayMs);
+  state.pendingStartHandle = setTimeout(() => {
+    state.pendingStartHandle = null;
+    // Stopped (or suspended) while we were waiting — do not trade.
+    if (!state.running) return;
+    void runCycle(userId);
+    state.intervalHandle = setInterval(() => void runCycle(userId), ms);
+    state.nextRunAt = new Date(Date.now() + ms);
+  }, delayMs);
+}
+
+export async function startBot(userId: number, opts: { firstCycleDelayMs?: number } = {}) {
   const state = await getOrCreateBotState(userId);
   if (state.running) return getBotStatus(userId);
 
@@ -288,31 +342,102 @@ export async function startBot(userId: number) {
   }
 
   state.running = true;
-  void runCycle(userId);
-
-  const ms = state.config.intervalMinutes * 60 * 1000;
-  state.intervalHandle = setInterval(() => void runCycle(userId), ms);
-  state.nextRunAt = new Date(Date.now() + ms);
+  await persistRunning(userId, true);
+  armCycleTimers(userId, state, opts.firstCycleDelayMs ?? 0);
 
   logger.info({ userId, config: state.config }, "Bot started");
   return getBotStatus(userId);
 }
 
-export function stopBot(userId: number) {
+/**
+ * Stops the bot and records that intent, so a restart doesn't bring it back.
+ * Awaiting matters: if the process dies between the in-memory stop and the
+ * write, the next boot would resurrect a bot the user (or the circuit breaker)
+ * had stopped — worse than failing to resume one.
+ */
+export async function stopBot(userId: number): Promise<void> {
   const state = botStates.get(userId);
-  if (!state) return;
+  if (!state) {
+    // No in-memory state, but the column may still say running — e.g. an admin
+    // suspending a user whose bot lives on a previous process. Clear it anyway.
+    await persistRunning(userId, false).catch((err: unknown) =>
+      logger.error({ err, userId }, "Failed to persist stopped state"),
+    );
+    return;
+  }
   if (state.intervalHandle) {
     clearInterval(state.intervalHandle);
     state.intervalHandle = null;
   }
+  if (state.pendingStartHandle) {
+    clearTimeout(state.pendingStartHandle);
+    state.pendingStartHandle = null;
+  }
   state.running = false;
   state.nextRunAt = null;
+  await persistRunning(userId, false).catch((err: unknown) =>
+    logger.error({ err, userId }, "Failed to persist stopped state"),
+  );
   logger.info({ userId }, "Bot stopped");
 }
 
 export async function stopBotAndGetStatus(userId: number) {
-  stopBot(userId);
+  await stopBot(userId);
   return getBotStatus(userId);
+}
+
+/** Spacing between restored bots' first cycles, to avoid a burst of broker calls at boot. */
+const RESUME_STAGGER_MS = 20_000;
+
+/**
+ * Re-arms every bot that was running before this process started.
+ *
+ * Bot state is in-memory (see the botStates map), so without this every deploy
+ * or restart silently stopped every customer's bot — and the UI would show
+ * STOPPED only if the user happened to look. Called once from the server entry
+ * point, never from app.ts, so importing the app in tests doesn't start trading.
+ *
+ * Restoration goes through startBot, which means the plan check in runCycle still
+ * applies: a user whose plan no longer allows live trading resumes in dry-run
+ * rather than placing real orders.
+ */
+export async function resumeRunningBots(): Promise<{ resumed: number; skipped: number }> {
+  let resumed = 0;
+  let skipped = 0;
+
+  let rows: BotConfigRow[];
+  try {
+    rows = await db.select().from(botConfigTable).where(eq(botConfigTable.running, true));
+  } catch (err) {
+    // Never take the server down over this — the app must still serve requests
+    // (and let users press Start themselves) if the lookup fails.
+    logger.error({ err }, "Could not read bots to resume — all bots remain stopped");
+    return { resumed: 0, skipped: 0 };
+  }
+
+  if (rows.length === 0) {
+    logger.info("No bots to resume");
+    return { resumed: 0, skipped: 0 };
+  }
+
+  for (const [index, row] of rows.entries()) {
+    try {
+      await startBot(row.userId, { firstCycleDelayMs: (index + 1) * RESUME_STAGGER_MS });
+      resumed += 1;
+    } catch (err) {
+      // Most likely BrokerNotConnectedError: the user disconnected their broker
+      // while this process was down. Clear the flag so the UI honestly shows
+      // STOPPED rather than claiming a bot that cannot run.
+      skipped += 1;
+      logger.error({ err, userId: row.userId }, "Could not resume bot — leaving it stopped");
+      await persistRunning(row.userId, false).catch((persistErr: unknown) =>
+        logger.error({ err: persistErr, userId: row.userId }, "Failed to clear running flag"),
+      );
+    }
+  }
+
+  logger.info({ resumed, skipped }, "Finished resuming bots after restart");
+  return { resumed, skipped };
 }
 
 export async function runCycle(userId: number): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
@@ -402,7 +527,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
           { userId, lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: account.total },
           "Daily-loss circuit breaker TRIPPED — stopping bot"
         );
-        stopBot(userId);
+        await stopBot(userId);
         return results;
       }
     }

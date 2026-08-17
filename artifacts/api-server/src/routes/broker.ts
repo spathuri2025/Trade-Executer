@@ -112,7 +112,7 @@ router.get("/broker/status", async (req, res): Promise<void> => {
 });
 
 router.delete("/broker/disconnect", async (req, res): Promise<void> => {
-  stopBot(req.user!.id);
+  await stopBot(req.user!.id);
   evictCapitalStream(req.user!.id);
   await clearUserBrokerCredentials(req.user!.id);
   res.sendStatus(204);

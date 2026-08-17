@@ -165,9 +165,16 @@ follow Render's DNS instructions. Render provisions TLS automatically.
   `trading-bot` are built for production. If you ever need the sandbox to build
   elsewhere, give its vite config the same defaults `trading-bot`'s now has.
 
-- **Deploys restart the process**, which clears in-memory bot state. Running
-  bots resume from persisted config on the next cycle, but a deploy mid-session
-  is worth avoiding during market hours.
+- **Deploys restart the process**, which clears in-memory bot state. Bots that
+  were running are re-armed at boot from `bot_config.running`, with each one's
+  first cycle staggered 20s apart. A deploy is still worth avoiding during
+  market hours: an in-flight cycle is lost, and there's a gap of up to one
+  interval before trading resumes.
+
+  (An earlier version of this note claimed bots "resume from persisted config on
+  the next cycle". That was wrong — only the *config* was persisted, not whether
+  the bot was running, so until Aug 2026 every deploy silently stopped every
+  customer's bot and the UI still had to be checked by hand.)
 - **Scaling up is unsafe** until per-user bot state moves out of memory.
 - Migrating off Replit removed its rollback/checkpoint behaviour; GitHub is now
   the only source of truth, so keep pushing after every change.

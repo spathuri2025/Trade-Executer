@@ -35,6 +35,17 @@ export const botConfigTable = pgTable("bot_config", {
   })
     .notNull()
     .default("MINUTE_5"),
+  /**
+   * Whether the user WANTS the bot running. Not a live status — the running bot
+   * itself is in-memory state on one instance (see botEngine.ts). This column
+   * exists so `resumeRunningBots()` can re-arm those timers after a restart;
+   * without it every deploy silently stopped every customer's bot.
+   *
+   * Written only by startBot/stopBot. A tripped daily-loss circuit breaker
+   * stops the bot through stopBot too, so it persists as false and stays
+   * stopped across a restart — the breaker must never auto-resume.
+   */
+  running: boolean("running").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

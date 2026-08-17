@@ -25,6 +25,20 @@ multiple concurrent tenants, config must survive a restart or every customer's s
 vanish on redeploy). `getOrCreateBotState(userId)` loads from `bot_config` on first
 access per user, falling back to the same defaults as before.
 
+**Whether the bot is RUNNING is persisted too, in `bot_config.running`** — added Aug 2026
+after realising every deploy silently stopped every customer's bot, with nothing telling
+them. `startBot`/`stopBot` are the only writers; `resumeRunningBots()` is called once from
+`index.ts` (never `app.ts` — importing the app in tests must not start trading) and
+re-arms the timers, staggering each bot's first cycle by 20s so a restart doesn't burst
+the broker API. Three invariants to preserve:
+- `getOrCreateBotState` must NOT set `running` from the row. Only `resumeRunningBots` may,
+  because it is the only path that also arms timers — otherwise the UI shows RUNNING with
+  nothing scheduled, which is the failure the column exists to prevent.
+- A tripped daily-loss circuit breaker goes through `stopBot`, so it persists `false` and
+  stays stopped across a restart. The breaker must never auto-resume.
+- Restoration goes through `startBot` → `runCycle`, so the plan/paywall check still forces
+  dry-run for a downgraded user. Don't add a shortcut that bypasses it.
+
 **Trading 212 auth is HTTP Basic with a key+secret pair** (confirmed at
 docs.trading212.com, July 2026): `Authorization: Basic base64(apiKey:apiSecret)`. A bare
 key in the Authorization header gets 401 on BOTH hosts — that broke every user connect

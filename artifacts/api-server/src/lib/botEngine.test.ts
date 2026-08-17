@@ -12,6 +12,14 @@ const TEST_USER_ID = 1;
  */
 const mocks = vi.hoisted(() => ({
   enabledInstruments: [] as Array<{ ticker: string; enabled: boolean }>,
+  /**
+   * Rows bot_config would return. Only resumeRunningBots reads them; every other
+   * select in botEngine goes through `enabledInstruments`, so the mock picks by
+   * which table was passed to `.from()`.
+   */
+  botConfigRows: [] as Array<Record<string, unknown>>,
+  /** Every `running` value written via persistRunning, in order. */
+  runningWrites: [] as boolean[],
   broker: {
     getBrokerAccount: vi.fn(),
     getBrokerPositions: vi.fn(),
@@ -39,15 +47,26 @@ function insertResult<T>(returningValue: T[] = []) {
 vi.mock("@workspace/db", () => ({
   db: {
     select: () => ({
-      from: () => ({ where: () => Promise.resolve(mocks.enabledInstruments) }),
+      from: (table: { __name?: string }) => ({
+        where: () =>
+          Promise.resolve(table?.__name === "bot_config" ? mocks.botConfigRows : mocks.enabledInstruments),
+      }),
     }),
     insert: () => ({ values: () => insertResult() }),
+    update: () => ({
+      set: (values: { running?: boolean }) => ({
+        where: () => {
+          if (typeof values.running === "boolean") mocks.runningWrites.push(values.running);
+          return Promise.resolve();
+        },
+      }),
+    }),
     delete: () => ({ where: () => Promise.resolve() }),
   },
   instrumentsTable: { __name: "instruments" },
   tradesTable: { __name: "trades" },
   signalsTable: { __name: "signals" },
-  botConfigTable: { __name: "bot_config", userId: "user_id" },
+  botConfigTable: { __name: "bot_config", userId: "user_id", running: "running" },
 }));
 
 // Keep everything from drizzle-orm except eq, which botEngine calls with a
@@ -136,6 +155,8 @@ let engine: typeof import("./botEngine");
 beforeEach(async () => {
   vi.clearAllMocks();
   mocks.enabledInstruments = [];
+  mocks.botConfigRows = [];
+  mocks.runningWrites = [];
   broker.getBrokerAccount.mockResolvedValue(defaultAccount);
   broker.getBrokerPositions.mockResolvedValue([]);
   broker.getBrokerPriceHistory.mockResolvedValue(defaultPrices);
@@ -171,10 +192,10 @@ beforeEach(async () => {
   engine = await import("./botEngine");
 });
 
-afterEach(() => {
+afterEach(async () => {
   // Clear the interval startBot may have scheduled so timers don't leak.
   try {
-    engine.stopBot(TEST_USER_ID);
+    await engine.stopBot(TEST_USER_ID);
   } catch {
     /* ignore */
   }
@@ -722,5 +743,161 @@ describe("flatten-by-close", () => {
     broker.placeBrokerOrder.mockResolvedValueOnce({ id: "order-2" });
     await engine.runCycle(TEST_USER_ID);
     expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(2);
+  });
+});
+
+/** A bot_config row as the database would return it, defaulting to running. */
+function buildConfigRow(userId: number, patch: Partial<BotConfig> & { running?: boolean } = {}) {
+  const { running = true, ...configPatch } = patch;
+  return {
+    id: userId,
+    userId,
+    running,
+    costPerTradePercent: 0,
+    updatedAt: new Date(),
+    ...buildConfig(configPatch),
+  };
+}
+
+describe("running state is persisted so a restart can restore it", () => {
+  it("records the intent on start and on stop", async () => {
+    await engine.startBot(TEST_USER_ID);
+    await flush();
+    expect(mocks.runningWrites).toContain(true);
+
+    mocks.runningWrites = [];
+    await engine.stopBot(TEST_USER_ID);
+    expect(mocks.runningWrites).toEqual([false]);
+  });
+
+  it("persists STOPPED when the daily-loss circuit breaker trips", async () => {
+    // The breaker must never auto-resume. Since the breaker itself is in-memory
+    // and resets on restart, `running: false` in the database is the only thing
+    // stopping a restart from resurrecting a bot that blew its daily loss limit.
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(1000)) // baseline
+      .mockResolvedValue(account(900)); // 10% loss ≥ 3% limit
+
+    await startLiveBot({ maxDailyLossPercent: 3 });
+    mocks.runningWrites = [];
+    await engine.runCycle(TEST_USER_ID); // observes the loss → trips → stops
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(true);
+    expect(mocks.runningWrites).toContain(false);
+  });
+
+  it("clears the flag even with no in-memory state, so an admin can stop a bot from a previous process", async () => {
+    await engine.stopBot(4242);
+    expect(mocks.runningWrites).toEqual([false]);
+  });
+});
+
+describe("resumeRunningBots — bots survive a restart", () => {
+  const RESUMED_USER = 7;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(async () => {
+    await engine.stopBot(RESUMED_USER);
+    await engine.stopBot(8);
+    vi.useRealTimers();
+  });
+
+  it("re-arms a bot whose saved state says running", async () => {
+    mocks.botConfigRows = [buildConfigRow(RESUMED_USER)];
+
+    const { resumed, skipped } = await engine.resumeRunningBots();
+
+    expect(resumed).toBe(1);
+    expect(skipped).toBe(0);
+    expect(engine.peekBotRunning(RESUMED_USER)).toBe(true);
+  });
+
+  it("reports nothing to do when no bot was running", async () => {
+    mocks.botConfigRows = [];
+    expect(await engine.resumeRunningBots()).toEqual({ resumed: 0, skipped: 0 });
+  });
+
+  it("does not trade the instant it resumes, but does once the stagger elapses", async () => {
+    // Firing every restored bot's cycle at once would burst the broker API for
+    // exactly the users being restored, so the first cycle is held back.
+    mocks.botConfigRows = [buildConfigRow(RESUMED_USER)];
+    await engine.resumeRunningBots();
+
+    expect(broker.getBrokerAccount).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(broker.getBrokerAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("spaces multiple bots out instead of starting them together", async () => {
+    mocks.botConfigRows = [buildConfigRow(RESUMED_USER), buildConfigRow(8)];
+    await engine.resumeRunningBots();
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(broker.getBrokerAccount).toHaveBeenCalledTimes(1); // only the first
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(broker.getBrokerAccount).toHaveBeenCalledTimes(2); // now the second
+  });
+
+  it("leaves a bot stopped when its broker is no longer connected, and clears the saved flag", async () => {
+    // The user disconnected their broker while this process was down. Claiming
+    // RUNNING for a bot that cannot place a single order would be a lie.
+    mocks.credentials.getUserBrokerCredentials.mockResolvedValue(null);
+    mocks.botConfigRows = [buildConfigRow(RESUMED_USER)];
+
+    const { resumed, skipped } = await engine.resumeRunningBots();
+
+    expect(resumed).toBe(0);
+    expect(skipped).toBe(1);
+    expect(engine.peekBotRunning(RESUMED_USER)).toBe(false);
+    expect(mocks.runningWrites).toContain(false);
+  });
+
+  it("never claims a bot is running just because the database says it was", async () => {
+    // Only resumeRunningBots may flip the in-memory flag, because it is the only
+    // path that also arms the timers. If a plain status read trusted the column,
+    // the UI would show RUNNING with nothing actually scheduled — the precise
+    // failure this column was added to prevent.
+    mocks.botConfigRows = [buildConfigRow(RESUMED_USER)];
+
+    expect((await engine.getBotStatus(RESUMED_USER)).running).toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(broker.getBrokerAccount).not.toHaveBeenCalled();
+  });
+
+  it("cancels the pending first cycle if the bot is stopped during the stagger", async () => {
+    mocks.botConfigRows = [buildConfigRow(RESUMED_USER)];
+    await engine.resumeRunningBots();
+
+    await engine.stopBot(RESUMED_USER);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(broker.getBrokerAccount).not.toHaveBeenCalled();
+  });
+
+  it("resumes a downgraded user into dry-run rather than live trading", async () => {
+    // Restoration goes through startBot → runCycle, so the paywall boundary
+    // still applies: a plan that lost live trading while the process was down
+    // must not have real orders placed on its behalf at boot.
+    mocks.plan.getPlanLimits.mockResolvedValue({
+      liveTrading: false,
+      aiTradeModes: false,
+      maxInstruments: 3,
+      aiQueriesPerDay: 10,
+    });
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+    mocks.botConfigRows = [buildConfigRow(RESUMED_USER, { dryRun: false })];
+
+    await engine.resumeRunningBots();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(broker.getBrokerAccount).toHaveBeenCalled(); // the cycle did run
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled(); // but placed nothing
   });
 });
