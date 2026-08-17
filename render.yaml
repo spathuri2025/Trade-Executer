@@ -79,11 +79,13 @@ services:
       # the app still runs and every other feature works — only "forgot
       # password" can't deliver, and the attempt is logged as an error.
       # EMAIL_FROM must be an address on a domain verified in Resend, otherwise
-      # Resend rejects the send.
+      # Resend rejects the send. The verified domain is the mail. SUBDOMAIN, not
+      # the root: keeping the SPF/DKIM/MX records off tradebuzz.co.uk leaves the
+      # website's DNS and any root-domain email untouched.
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
-        value: TradeBuzz <noreply@tradebuzz.co.uk>
+        value: TradeBuzz <noreply@mail.tradebuzz.co.uk>
 
       # Base URL used to build the reset link in that email. Must be the address
       # users actually visit — falling back to the request's own Host would put
