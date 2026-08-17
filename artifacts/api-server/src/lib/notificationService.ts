@@ -14,7 +14,12 @@ import { db, notificationsTable, announcementsTable, usersTable } from "@workspa
 import { sendEmail } from "./email";
 import { logger } from "./logger";
 
-export type NotificationType = "support_reply" | "announcement" | "circuit_breaker" | "upgrade_handled";
+export type NotificationType =
+  | "support_reply"
+  | "support_message"
+  | "announcement"
+  | "circuit_breaker"
+  | "upgrade_handled";
 
 export interface NotifyInput {
   type: NotificationType;
@@ -31,6 +36,7 @@ export interface NotifyInput {
  */
 const EMAILED_TYPES: Record<NotificationType, boolean> = {
   support_reply: true,
+  support_message: true,
   announcement: true,
   circuit_breaker: true,
   upgrade_handled: true,
@@ -70,6 +76,28 @@ export async function notifyUser(userId: number, input: NotifyInput): Promise<vo
     });
   } catch (err) {
     logger.error({ err, userId, type: input.type }, "Failed to email notification");
+  }
+}
+
+/**
+ * Notify every admin account — used when a CUSTOMER does something the
+ * operator must hear about (today: a new support message). Routed through the
+ * same spine, so admins get it in their own Inbox badge AND by email; without
+ * the email, a customer message only existed as a badge in the Admin Centre,
+ * which meant the operator had to already be looking at the app to know.
+ * Never throws, same contract as notifyUser.
+ */
+export async function notifyAdmins(input: NotifyInput): Promise<void> {
+  try {
+    const admins = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.role, "admin"));
+    for (const admin of admins) {
+      await notifyUser(admin.id, input);
+    }
+  } catch (err) {
+    logger.error({ err, type: input.type }, "Failed to notify admins");
   }
 }
 

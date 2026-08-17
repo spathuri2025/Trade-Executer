@@ -1155,6 +1155,7 @@ export type AppNotificationType = typeof AppNotificationType[keyof typeof AppNot
 
 export const AppNotificationType = {
   support_reply: 'support_reply',
+  support_message: 'support_message',
   announcement: 'announcement',
   circuit_breaker: 'circuit_breaker',
   upgrade_handled: 'upgrade_handled',

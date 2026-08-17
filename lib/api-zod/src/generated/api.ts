@@ -1105,7 +1105,7 @@ export const ListNotificationsResponse = zod.object({
   "unreadCount": zod.number(),
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['support_reply', 'announcement', 'circuit_breaker', 'upgrade_handled']),
+  "type": zod.enum(['support_reply', 'support_message', 'announcement', 'circuit_breaker', 'upgrade_handled']),
   "title": zod.string(),
   "body": zod.string(),
   "link": zod.string().nullable().describe('In-app path this notification points at.'),

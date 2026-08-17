@@ -2992,7 +2992,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [support_reply, announcement, circuit_breaker, upgrade_handled]
+          enum: [support_reply, support_message, announcement, circuit_breaker, upgrade_handled]
         title:
           type: string
         body:

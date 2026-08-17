@@ -16,7 +16,7 @@ export const notificationsTable = pgTable("notifications", {
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
   type: text("type", {
-    enum: ["support_reply", "announcement", "circuit_breaker", "upgrade_handled"],
+    enum: ["support_reply", "support_message", "announcement", "circuit_breaker", "upgrade_handled"],
   }).notNull(),
   title: text("title").notNull(),
   body: text("body").notNull(),

@@ -117,6 +117,32 @@ describe("notifyUser", () => {
   });
 });
 
+describe("notifyAdmins", () => {
+  it("fans out to every admin through the same spine", async () => {
+    // The select is used both for the admin list and per-notify email lookup;
+    // returning admin-shaped rows for each works for this shape.
+    mocks.userRows = [
+      { id: 1, email: "admin1@example.com" },
+      { id: 9, email: "admin2@example.com" },
+    ];
+
+    await service.notifyAdmins({ type: "support_message", title: "New message", body: "hi" });
+
+    expect(mocks.notificationInserts).toHaveLength(2);
+    expect(mocks.notificationInserts.map((n) => n["userId"])).toEqual([1, 9]);
+    expect(mocks.notificationInserts[0]).toMatchObject({ type: "support_message" });
+    expect(mocks.email.sendEmail).toHaveBeenCalled();
+  });
+
+  it("never throws — a notification failure must not fail the customer's send", async () => {
+    mocks.failNotificationInsert = true;
+    mocks.userRows = [{ id: 1, email: "admin@example.com" }];
+    await expect(
+      service.notifyAdmins({ type: "support_message", title: "t", body: "b" }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("broadcastAnnouncement", () => {
   it("creates the announcement and fans out to every recipient", async () => {
     // The users select is called once for recipients, then once per notifyUser
