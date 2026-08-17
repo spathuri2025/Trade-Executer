@@ -1168,6 +1168,270 @@ paths:
                     items:
                       $ref: "#/components/schemas/PlanCatalogEntry"
 
+  /support/threads:
+    get:
+      operationId: listSupportThreads
+      tags: [support]
+      summary: The caller's support threads, latest activity first
+      responses:
+        "200":
+          description: Threads
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [threads]
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SupportThread"
+    post:
+      operationId: createSupportThread
+      tags: [support]
+      summary: Start a new support thread with its first message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupportThreadInput"
+      responses:
+        "201":
+          description: Thread created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThread"
+        "400":
+          description: Missing or too-long subject/message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /support/threads/{id}:
+    get:
+      operationId: getSupportThread
+      tags: [support]
+      summary: One of the caller's threads with its messages (marks it read)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Thread with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThreadDetail"
+        "404":
+          description: Not found (or not the caller's thread)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /support/threads/{id}/messages:
+    post:
+      operationId: sendSupportMessage
+      tags: [support]
+      summary: Reply on one of the caller's threads (reopens a closed thread)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportMessageInput"
+      responses:
+        "204":
+          description: Sent
+        "404":
+          description: Not found (or not the caller's thread)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: The caller's latest notifications and unread count
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+
+  /notifications/read-all:
+    post:
+      operationId: markNotificationsRead
+      tags: [notifications]
+      summary: Mark all of the caller's notifications read
+      responses:
+        "204":
+          description: Done
+
+  /admin/support/threads:
+    get:
+      operationId: listAdminSupportThreads
+      tags: [admin]
+      summary: All support threads, unread first (admin)
+      responses:
+        "200":
+          description: Threads
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [threads]
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminSupportThread"
+
+  /admin/support/threads/{id}:
+    get:
+      operationId: getAdminSupportThread
+      tags: [admin]
+      summary: One thread with messages (marks it read on the admin side)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Thread with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSupportThreadDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+    patch:
+      operationId: setSupportThreadStatus
+      tags: [admin]
+      summary: Close or reopen a thread
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadStatusInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadStatusResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /admin/support/threads/{id}/messages:
+    post:
+      operationId: sendAdminSupportReply
+      tags: [admin]
+      summary: Reply to a thread — notifies and emails the user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportMessageInput"
+      responses:
+        "204":
+          description: Sent
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /admin/announcements:
+    get:
+      operationId: listAnnouncements
+      tags: [admin]
+      summary: Announcement history (admin)
+      responses:
+        "200":
+          description: Announcements, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [announcements]
+                properties:
+                  announcements:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Announcement"
+    post:
+      operationId: createAnnouncement
+      tags: [admin]
+      summary: Broadcast an announcement to every active user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementInput"
+      responses:
+        "201":
+          description: Broadcast sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [announcementId, recipients]
+                properties:
+                  announcementId:
+                    type: integer
+                  recipients:
+                    type: integer
+        "400":
+          description: Missing or too-long title/body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
   /upgrade-requests:
     post:
       operationId: createUpgradeRequest
@@ -2616,6 +2880,165 @@ components:
           type: number
         trades:
           type: integer
+
+    SupportThread:
+      type: object
+      required: [id, subject, status, unread, lastMessageAt, createdAt]
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [open, closed]
+        unread:
+          type: boolean
+          description: True while the latest activity is unseen by the caller's side.
+        lastMessageAt:
+          type: string
+        createdAt:
+          type: string
+
+    SupportMessage:
+      type: object
+      required: [id, senderRole, body, createdAt]
+      properties:
+        id:
+          type: integer
+        senderRole:
+          type: string
+          enum: [user, admin]
+        body:
+          type: string
+        createdAt:
+          type: string
+
+    SupportThreadDetail:
+      allOf:
+        - $ref: "#/components/schemas/SupportThread"
+        - type: object
+          required: [messages]
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/SupportMessage"
+
+    AdminSupportThread:
+      allOf:
+        - $ref: "#/components/schemas/SupportThread"
+        - type: object
+          required: [userId, userEmail]
+          properties:
+            userId:
+              type: integer
+            userEmail:
+              type: string
+
+    AdminSupportThreadDetail:
+      allOf:
+        - $ref: "#/components/schemas/AdminSupportThread"
+        - type: object
+          required: [messages]
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/SupportMessage"
+
+    CreateSupportThreadInput:
+      type: object
+      required: [subject, body]
+      properties:
+        subject:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 5000
+
+    SupportMessageInput:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          maxLength: 5000
+
+    ThreadStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, closed]
+
+    ThreadStatusResult:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [open, closed]
+
+    AppNotification:
+      type: object
+      required: [id, type, title, body, link, read, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [support_reply, announcement, circuit_breaker, upgrade_handled]
+        title:
+          type: string
+        body:
+          type: string
+        link:
+          type: ["string", "null"]
+          description: In-app path this notification points at.
+        read:
+          type: boolean
+        createdAt:
+          type: string
+
+    NotificationList:
+      type: object
+      required: [unreadCount, notifications]
+      properties:
+        unreadCount:
+          type: integer
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppNotification"
+
+    Announcement:
+      type: object
+      required: [id, title, body, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+        createdAt:
+          type: string
+
+    AnnouncementInput:
+      type: object
+      required: [title, body]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 5000
 
     UpgradeTrigger:
       type: string

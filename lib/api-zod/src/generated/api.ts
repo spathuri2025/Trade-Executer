@@ -1029,6 +1029,199 @@ export const ListPlansResponse = zod.object({
 
 
 /**
+ * @summary The caller's support threads, latest activity first
+ */
+export const ListSupportThreadsResponse = zod.object({
+  "threads": zod.array(zod.object({
+  "id": zod.number(),
+  "subject": zod.string(),
+  "status": zod.enum(['open', 'closed']),
+  "unread": zod.boolean().describe('True while the latest activity is unseen by the caller\'s side.'),
+  "lastMessageAt": zod.string(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Start a new support thread with its first message
+ */
+export const createSupportThreadBodySubjectMax = 200;
+
+export const createSupportThreadBodyBodyMax = 5000;
+
+
+
+export const CreateSupportThreadBody = zod.object({
+  "subject": zod.string().max(createSupportThreadBodySubjectMax),
+  "body": zod.string().max(createSupportThreadBodyBodyMax)
+})
+
+
+/**
+ * @summary One of the caller's threads with its messages (marks it read)
+ */
+export const GetSupportThreadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSupportThreadResponse = zod.object({
+  "id": zod.number(),
+  "subject": zod.string(),
+  "status": zod.enum(['open', 'closed']),
+  "unread": zod.boolean().describe('True while the latest activity is unseen by the caller\'s side.'),
+  "lastMessageAt": zod.string(),
+  "createdAt": zod.string()
+}).and(zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "senderRole": zod.enum(['user', 'admin']),
+  "body": zod.string(),
+  "createdAt": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Reply on one of the caller's threads (reopens a closed thread)
+ */
+export const SendSupportMessageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const sendSupportMessageBodyBodyMax = 5000;
+
+
+
+export const SendSupportMessageBody = zod.object({
+  "body": zod.string().max(sendSupportMessageBodyBodyMax)
+})
+
+
+/**
+ * @summary The caller's latest notifications and unread count
+ */
+export const ListNotificationsResponse = zod.object({
+  "unreadCount": zod.number(),
+  "notifications": zod.array(zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['support_reply', 'announcement', 'circuit_breaker', 'upgrade_handled']),
+  "title": zod.string(),
+  "body": zod.string(),
+  "link": zod.string().nullable().describe('In-app path this notification points at.'),
+  "read": zod.boolean(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary All support threads, unread first (admin)
+ */
+export const ListAdminSupportThreadsResponse = zod.object({
+  "threads": zod.array(zod.object({
+  "id": zod.number(),
+  "subject": zod.string(),
+  "status": zod.enum(['open', 'closed']),
+  "unread": zod.boolean().describe('True while the latest activity is unseen by the caller\'s side.'),
+  "lastMessageAt": zod.string(),
+  "createdAt": zod.string()
+}).and(zod.object({
+  "userId": zod.number(),
+  "userEmail": zod.string()
+})))
+})
+
+
+/**
+ * @summary One thread with messages (marks it read on the admin side)
+ */
+export const GetAdminSupportThreadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAdminSupportThreadResponse = zod.object({
+  "id": zod.number(),
+  "subject": zod.string(),
+  "status": zod.enum(['open', 'closed']),
+  "unread": zod.boolean().describe('True while the latest activity is unseen by the caller\'s side.'),
+  "lastMessageAt": zod.string(),
+  "createdAt": zod.string()
+}).and(zod.object({
+  "userId": zod.number(),
+  "userEmail": zod.string()
+})).and(zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "senderRole": zod.enum(['user', 'admin']),
+  "body": zod.string(),
+  "createdAt": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Close or reopen a thread
+ */
+export const SetSupportThreadStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SetSupportThreadStatusBody = zod.object({
+  "status": zod.enum(['open', 'closed'])
+})
+
+export const SetSupportThreadStatusResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['open', 'closed'])
+})
+
+
+/**
+ * @summary Reply to a thread — notifies and emails the user
+ */
+export const SendAdminSupportReplyParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const sendAdminSupportReplyBodyBodyMax = 5000;
+
+
+
+export const SendAdminSupportReplyBody = zod.object({
+  "body": zod.string().max(sendAdminSupportReplyBodyBodyMax)
+})
+
+
+/**
+ * @summary Announcement history (admin)
+ */
+export const ListAnnouncementsResponse = zod.object({
+  "announcements": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Broadcast an announcement to every active user
+ */
+export const createAnnouncementBodyTitleMax = 200;
+
+export const createAnnouncementBodyBodyMax = 5000;
+
+
+
+export const CreateAnnouncementBody = zod.object({
+  "title": zod.string().max(createAnnouncementBodyTitleMax),
+  "body": zod.string().max(createAnnouncementBodyBodyMax)
+})
+
+
+/**
  * @summary Ask to be upgraded to a paid plan
  */
 export const createUpgradeRequestBodyMessageMax = 1000;

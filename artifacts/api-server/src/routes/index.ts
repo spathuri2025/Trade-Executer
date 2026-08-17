@@ -27,6 +27,8 @@ import adminRouter from "./admin";
 import planRouter, { publicPlansRouter } from "./plan";
 import billingRouter from "./billing";
 import upgradeRequestsRouter from "./upgradeRequests";
+import supportRouter from "./support";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -65,5 +67,7 @@ router.use(tradeIntelligenceRouter);
 router.use(adminRouter);
 router.use(planRouter);
 router.use(upgradeRequestsRouter);
+router.use(supportRouter);
+router.use(notificationsRouter);
 
 export default router;

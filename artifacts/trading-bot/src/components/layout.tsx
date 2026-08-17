@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X, LogOut, ShieldCheck, CreditCard } from "lucide-react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X, LogOut, ShieldCheck, CreditCard, Bell } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useListNotifications, getListNotificationsQueryKey } from "@workspace/api-client-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -15,6 +16,7 @@ const links = [
   { href: "/assistant", label: "Assistant", icon: MessageSquare },
   { href: "/signal-analyst", label: "Signal Analyst", icon: Radar },
   { href: "/setup", label: "Setup Wizard", icon: Rocket },
+  { href: "/inbox", label: "Inbox", icon: Bell },
   { href: "/pricing", label: "Plan & Pricing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -23,6 +25,18 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
   const { user } = useAuth();
   const visibleLinks = user?.role === "admin" ? [...links, { href: "/admin", label: "Admin Centre", icon: ShieldCheck }] : links;
+
+  // Poll rather than push: 60s staleness on an unread count is imperceptible,
+  // and it reuses the same idiom as the live ticker instead of a socket.
+  const { data: notificationData } = useListNotifications({
+    query: {
+      queryKey: getListNotificationsQueryKey(),
+      refetchInterval: 60_000,
+      enabled: Boolean(user),
+    },
+  });
+  const unreadCount = notificationData?.unreadCount ?? 0;
+
   return (
     <nav className="flex-1 px-4 py-2 space-y-0.5">
       {visibleLinks.map((link) => {
@@ -41,6 +55,14 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             )}
             <link.icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-white/45"}`} />
             <span className={active ? "font-medium" : "font-normal"}>{link.label}</span>
+            {link.href === "/inbox" && unreadCount > 0 && (
+              <span
+                className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-medium flex items-center justify-center"
+                data-testid="badge-inbox-unread"
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </Link>
         );
       })}

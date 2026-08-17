@@ -11,6 +11,7 @@ import {
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import { getPlanLimits } from "./planService";
+import { notifyUser } from "./notificationService";
 import {
   routeStrategy,
   requiredBars,
@@ -520,14 +521,25 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
     } else if (cfg.maxDailyLossPercent > 0 && cb.dayStartEquity > 0) {
       const lossPct = ((cb.dayStartEquity - account.total) / cb.dayStartEquity) * 100;
       if (lossPct >= cfg.maxDailyLossPercent) {
+        const tripReason = `Daily loss of ${lossPct.toFixed(2)}% reached the ${cfg.maxDailyLossPercent}% limit. Trading is halted until you resume it.`;
         cb.tripped = true;
         cb.trippedAt = new Date();
-        cb.reason = `Daily loss of ${lossPct.toFixed(2)}% reached the ${cfg.maxDailyLossPercent}% limit. Trading is halted until you resume it.`;
+        cb.reason = tripReason;
         logger.error(
           { userId, lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: account.total },
           "Daily-loss circuit breaker TRIPPED — stopping bot"
         );
         await stopBot(userId);
+        // A halted bot the user doesn't know about is the worst silent state
+        // this product has — this is the one notification that must not be
+        // missed. notifyUser never throws, so it cannot break the halt itself;
+        // the body reuses the user-facing reason string, no internal detail.
+        await notifyUser(userId, {
+          type: "circuit_breaker",
+          title: "Your trading bot was stopped by the daily-loss limit",
+          body: tripReason,
+          link: "/settings",
+        });
         return results;
       }
     }

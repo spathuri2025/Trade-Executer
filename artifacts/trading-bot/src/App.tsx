@@ -16,6 +16,7 @@ import Assistant from "@/pages/assistant";
 import SignalAnalyst from "@/pages/signal-analyst";
 import Settings from "@/pages/settings";
 import Pricing from "@/pages/pricing";
+import Inbox from "@/pages/inbox";
 import Admin from "@/pages/admin";
 import Setup from "@/pages/setup";
 import Login from "@/pages/login";
@@ -73,6 +74,7 @@ function ProtectedRouter() {
         <Route path="/setup" component={Setup} />
         <Route path="/settings" component={Settings} />
         <Route path="/pricing" component={Pricing} />
+        <Route path="/inbox" component={Inbox} />
         <Route path="/admin" component={Admin} />
         <Route component={NotFound} />
       </Switch>

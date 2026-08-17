@@ -19,3 +19,7 @@ export * from "./aiUsage";
 export * from "./upgradeRequests";
 export * from "./passwordResetTokens";
 export * from "./scannerConfig";
+export * from "./supportThreads";
+export * from "./supportMessages";
+export * from "./notifications";
+export * from "./announcements";

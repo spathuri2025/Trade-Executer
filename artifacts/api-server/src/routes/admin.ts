@@ -9,12 +9,16 @@ import {
   tradesTable,
   signalsTable,
   upgradeRequestsTable,
+  supportThreadsTable,
+  supportMessagesTable,
+  announcementsTable,
   type SubscriptionRow,
 } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { getUserBrokerConnectionStatus } from "../lib/brokerCredentialsService";
 import { peekBotRunning, stopBot } from "../lib/botEngine";
 import { evictCapitalStream } from "../lib/capitalStream";
+import { notifyUser, broadcastAnnouncement } from "../lib/notificationService";
 
 const router: IRouter = Router();
 router.use(requireAdmin);
@@ -365,7 +369,210 @@ router.patch("/admin/upgrade-requests/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  // Close the loop with the requester: they asked from inside the app, so the
+  // outcome should arrive the same way (plus email). "Handled" nearly always
+  // means the plan was granted on the customer record moments earlier.
+  if (status === "handled") {
+    await notifyUser(row.userId, {
+      type: "upgrade_handled",
+      title: "Your upgrade request has been processed",
+      body: "Good news — your upgrade request has been handled. Check Settings to see your current plan, or reply in your Inbox if anything looks wrong.",
+      link: "/settings",
+    });
+  }
+
   res.json({ id: row.id, status: row.status });
+});
+
+// ---------------------------------------------------------------------------
+// Support inbox — the operator side of the communication centre.
+// ---------------------------------------------------------------------------
+
+/** Every thread, unread first then latest activity, joined to the user's email. */
+router.get("/admin/support/threads", async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: supportThreadsTable.id,
+      subject: supportThreadsTable.subject,
+      status: supportThreadsTable.status,
+      adminUnread: supportThreadsTable.adminUnread,
+      lastMessageAt: supportThreadsTable.lastMessageAt,
+      createdAt: supportThreadsTable.createdAt,
+      userId: supportThreadsTable.userId,
+      userEmail: usersTable.email,
+    })
+    .from(supportThreadsTable)
+    .innerJoin(usersTable, eq(supportThreadsTable.userId, usersTable.id))
+    .orderBy(desc(supportThreadsTable.adminUnread), desc(supportThreadsTable.lastMessageAt));
+
+  res.json({
+    threads: rows.map((t) => ({
+      id: t.id,
+      subject: t.subject,
+      status: t.status,
+      unread: t.adminUnread,
+      lastMessageAt: t.lastMessageAt.toISOString(),
+      createdAt: t.createdAt.toISOString(),
+      userId: t.userId,
+      userEmail: t.userEmail,
+    })),
+  });
+});
+
+/** One thread with messages; opening it marks it read on the admin side. */
+router.get("/admin/support/threads/:id", async (req, res): Promise<void> => {
+  const threadId = parseUserId(req.params.id);
+  if (!threadId) {
+    res.status(400).json({ error: "Invalid thread id" });
+    return;
+  }
+
+  const [thread] = await db
+    .select({
+      id: supportThreadsTable.id,
+      subject: supportThreadsTable.subject,
+      status: supportThreadsTable.status,
+      lastMessageAt: supportThreadsTable.lastMessageAt,
+      createdAt: supportThreadsTable.createdAt,
+      userId: supportThreadsTable.userId,
+      userEmail: usersTable.email,
+      adminUnread: supportThreadsTable.adminUnread,
+    })
+    .from(supportThreadsTable)
+    .innerJoin(usersTable, eq(supportThreadsTable.userId, usersTable.id))
+    .where(eq(supportThreadsTable.id, threadId));
+  if (!thread) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  const messages = await db
+    .select()
+    .from(supportMessagesTable)
+    .where(eq(supportMessagesTable.threadId, threadId))
+    .orderBy(supportMessagesTable.createdAt);
+
+  if (thread.adminUnread) {
+    await db.update(supportThreadsTable).set({ adminUnread: false }).where(eq(supportThreadsTable.id, threadId));
+  }
+
+  res.json({
+    id: thread.id,
+    subject: thread.subject,
+    status: thread.status,
+    unread: false,
+    lastMessageAt: thread.lastMessageAt.toISOString(),
+    createdAt: thread.createdAt.toISOString(),
+    userId: thread.userId,
+    userEmail: thread.userEmail,
+    messages: messages.map((m) => ({
+      id: m.id,
+      senderRole: m.senderRole,
+      body: m.body,
+      createdAt: m.createdAt.toISOString(),
+    })),
+  });
+});
+
+/** Reply to a thread — the user gets an in-app notification and an email. */
+router.post("/admin/support/threads/:id/messages", async (req, res): Promise<void> => {
+  const threadId = parseUserId(req.params.id);
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const message = typeof body["body"] === "string" ? body["body"].trim() : "";
+
+  if (!threadId) {
+    res.status(400).json({ error: "Invalid thread id" });
+    return;
+  }
+  if (!message || message.length > 5000) {
+    res.status(400).json({ error: message ? "Message too long" : "A message is required" });
+    return;
+  }
+
+  const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.id, threadId));
+  if (!thread) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+
+  await db.insert(supportMessagesTable).values({ threadId, senderRole: "admin", body: message });
+  await db
+    .update(supportThreadsTable)
+    .set({ userUnread: true, lastMessageAt: new Date() })
+    .where(eq(supportThreadsTable.id, threadId));
+
+  await notifyUser(thread.userId, {
+    type: "support_reply",
+    title: `Reply on "${thread.subject}"`,
+    body: message,
+    link: "/inbox",
+  });
+
+  res.sendStatus(204);
+});
+
+/** Close or reopen a thread. */
+router.patch("/admin/support/threads/:id", async (req, res): Promise<void> => {
+  const threadId = parseUserId(req.params.id);
+  const status = (req.body ?? {})["status"];
+  if (!threadId) {
+    res.status(400).json({ error: "Invalid thread id" });
+    return;
+  }
+  if (status !== "open" && status !== "closed") {
+    res.status(400).json({ error: "status must be 'open' or 'closed'" });
+    return;
+  }
+
+  const [row] = await db
+    .update(supportThreadsTable)
+    .set({ status })
+    .where(eq(supportThreadsTable.id, threadId))
+    .returning();
+  if (!row) {
+    res.status(404).json({ error: "Thread not found" });
+    return;
+  }
+  res.json({ id: row.id, status: row.status });
+});
+
+// ---------------------------------------------------------------------------
+// Announcements — one message to every active user.
+// ---------------------------------------------------------------------------
+
+router.post("/admin/announcements", async (req, res): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const title = typeof body["title"] === "string" ? body["title"].trim() : "";
+  const text = typeof body["body"] === "string" ? body["body"].trim() : "";
+
+  if (!title || !text) {
+    res.status(400).json({ error: "A title and a body are both required" });
+    return;
+  }
+  if (title.length > 200 || text.length > 5000) {
+    res.status(400).json({ error: "Announcement too long" });
+    return;
+  }
+
+  try {
+    const result = await broadcastAnnouncement(title, text, req.user!.id);
+    res.status(201).json(result);
+  } catch (err) {
+    req.log.error({ err }, "Failed to broadcast announcement");
+    res.status(500).json({ error: "Failed to send the announcement" });
+  }
+});
+
+router.get("/admin/announcements", async (_req, res): Promise<void> => {
+  const rows = await db.select().from(announcementsTable).orderBy(desc(announcementsTable.createdAt)).limit(50);
+  res.json({
+    announcements: rows.map((a) => ({
+      id: a.id,
+      title: a.title,
+      body: a.body,
+      createdAt: a.createdAt.toISOString(),
+    })),
+  });
 });
 
 export default router;

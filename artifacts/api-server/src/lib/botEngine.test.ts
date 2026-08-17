@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   ai: { reviewSignal: vi.fn(), decideTrades: vi.fn() },
   credentials: { getUserBrokerCredentials: vi.fn() },
   plan: { getPlanLimits: vi.fn() },
+  notify: { notifyUser: vi.fn() },
 }));
 
 /** A Promise that also exposes the extra Drizzle chain methods botEngine calls. */
@@ -80,6 +81,7 @@ vi.mock("drizzle-orm", async (orig) => ({
 vi.mock("./broker", () => mocks.broker);
 vi.mock("./brokerCredentialsService", () => mocks.credentials);
 vi.mock("./planService", () => mocks.plan);
+vi.mock("./notificationService", () => mocks.notify);
 vi.mock("./maStrategy", () => mocks.ma);
 vi.mock("./aiTrader", () => mocks.ai);
 vi.mock("./logger", () => ({
@@ -576,6 +578,13 @@ describe("daily-loss circuit breaker", () => {
     expect(status.circuitBreaker.tripped).toBe(true);
     expect(status.circuitBreaker.reason).toMatch(/limit/i);
     expect(status.running).toBe(false);
+
+    // The user must HEAR about the halt — a stopped bot they believe is
+    // running is the worst silent state this product has.
+    expect(mocks.notify.notifyUser).toHaveBeenCalledWith(
+      TEST_USER_ID,
+      expect.objectContaining({ type: "circuit_breaker" }),
+    );
   });
 
   it("stays halted across further cycles and is NOT cleared by starting the bot again", async () => {

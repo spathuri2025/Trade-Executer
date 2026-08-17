@@ -1067,6 +1067,132 @@ export interface InstrumentPnl {
   trades: number;
 }
 
+export type SupportThreadStatus = typeof SupportThreadStatus[keyof typeof SupportThreadStatus];
+
+
+export const SupportThreadStatus = {
+  open: 'open',
+  closed: 'closed',
+} as const;
+
+export interface SupportThread {
+  id: number;
+  subject: string;
+  status: SupportThreadStatus;
+  /** True while the latest activity is unseen by the caller's side. */
+  unread: boolean;
+  lastMessageAt: string;
+  createdAt: string;
+}
+
+export type SupportMessageSenderRole = typeof SupportMessageSenderRole[keyof typeof SupportMessageSenderRole];
+
+
+export const SupportMessageSenderRole = {
+  user: 'user',
+  admin: 'admin',
+} as const;
+
+export interface SupportMessage {
+  id: number;
+  senderRole: SupportMessageSenderRole;
+  body: string;
+  createdAt: string;
+}
+
+export type SupportThreadDetail = SupportThread & {
+  messages: SupportMessage[];
+};
+
+export type AdminSupportThread = SupportThread & {
+  userId: number;
+  userEmail: string;
+};
+
+export type AdminSupportThreadDetail = AdminSupportThread & {
+  messages: SupportMessage[];
+};
+
+export interface CreateSupportThreadInput {
+  /** @maxLength 200 */
+  subject: string;
+  /** @maxLength 5000 */
+  body: string;
+}
+
+export interface SupportMessageInput {
+  /** @maxLength 5000 */
+  body: string;
+}
+
+export type ThreadStatusInputStatus = typeof ThreadStatusInputStatus[keyof typeof ThreadStatusInputStatus];
+
+
+export const ThreadStatusInputStatus = {
+  open: 'open',
+  closed: 'closed',
+} as const;
+
+export interface ThreadStatusInput {
+  status: ThreadStatusInputStatus;
+}
+
+export type ThreadStatusResultStatus = typeof ThreadStatusResultStatus[keyof typeof ThreadStatusResultStatus];
+
+
+export const ThreadStatusResultStatus = {
+  open: 'open',
+  closed: 'closed',
+} as const;
+
+export interface ThreadStatusResult {
+  id: number;
+  status: ThreadStatusResultStatus;
+}
+
+export type AppNotificationType = typeof AppNotificationType[keyof typeof AppNotificationType];
+
+
+export const AppNotificationType = {
+  support_reply: 'support_reply',
+  announcement: 'announcement',
+  circuit_breaker: 'circuit_breaker',
+  upgrade_handled: 'upgrade_handled',
+} as const;
+
+export interface AppNotification {
+  id: number;
+  type: AppNotificationType;
+  title: string;
+  body: string;
+  /**
+     * In-app path this notification points at.
+     * @nullable
+     */
+  link: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationList {
+  unreadCount: number;
+  notifications: AppNotification[];
+}
+
+export interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface AnnouncementInput {
+  /** @maxLength 200 */
+  title: string;
+  /** @maxLength 5000 */
+  body: string;
+}
+
 /**
  * Which paywall prompted the request.
  */
@@ -1487,5 +1613,22 @@ resolution?: string;
 
 export type ListPlans200 = {
   plans: PlanCatalogEntry[];
+};
+
+export type ListSupportThreads200 = {
+  threads: SupportThread[];
+};
+
+export type ListAdminSupportThreads200 = {
+  threads: AdminSupportThread[];
+};
+
+export type ListAnnouncements200 = {
+  announcements: Announcement[];
+};
+
+export type CreateAnnouncement201 = {
+  announcementId: number;
+  recipients: number;
 };
 
