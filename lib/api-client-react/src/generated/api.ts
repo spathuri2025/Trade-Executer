@@ -35,6 +35,7 @@ import type {
   BrokerConnectInput,
   BrokerStatus,
   Candle,
+  ChangePasswordInput,
   ChartInsight,
   ContractList,
   Conversation,
@@ -42,6 +43,7 @@ import type {
   ConversationWithMessages,
   DailyMarketBrief,
   ExecuteTradeInput,
+  ForgotPasswordInput,
   GetActivityFeedParams,
   GetCandlesParams,
   GetChartInsightParams,
@@ -60,12 +62,16 @@ import type {
   MarketBrainSnapshot,
   MarketNewsList,
   MessageInput,
+  MyUpgradeRequest,
   NewsAnalysis,
   NewsItem,
   PerformanceCoach,
   PlanStatus,
   Position,
   Quote,
+  ResetPasswordInput,
+  ResolveUpgradeRequestInput,
+  ResolveUpgradeRequestResult,
   RunScan200,
   ScannerConfigInput,
   ScannerResult,
@@ -75,7 +81,10 @@ import type {
   SubscriptionInput,
   Trade,
   TradeIntelligenceInput,
-  TradeIntelligenceReport
+  TradeIntelligenceReport,
+  UpgradeRequestCreated,
+  UpgradeRequestInput,
+  UpgradeRequestQueue
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -377,6 +386,225 @@ export const useLogout = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getLogoutMutationOptions(options));
+    }
+
+export const getChangePasswordUrl = () => {
+
+
+
+
+  return `/api/auth/change-password`
+}
+
+/**
+ * Requires the current password. On success every OTHER session for this user is invalidated; the caller stays signed in.
+
+ * @summary Change your own password
+ */
+export const changePassword = async (changePasswordInput: ChangePasswordInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getChangePasswordUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      changePasswordInput,)
+  }
+);}
+
+
+
+
+export const getChangePasswordMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changePassword>>, TError,{data: BodyType<ChangePasswordInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof changePassword>>, TError,{data: BodyType<ChangePasswordInput>}, TContext> => {
+
+const mutationKey = ['changePassword'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof changePassword>>, {data: BodyType<ChangePasswordInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  changePassword(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChangePasswordMutationResult = NonNullable<Awaited<ReturnType<typeof changePassword>>>
+    export type ChangePasswordMutationBody = BodyType<ChangePasswordInput>
+    export type ChangePasswordMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Change your own password
+ */
+export const useChangePassword = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changePassword>>, TError,{data: BodyType<ChangePasswordInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof changePassword>>,
+        TError,
+        {data: BodyType<ChangePasswordInput>},
+        TContext
+      > => {
+      return useMutation(getChangePasswordMutationOptions(options));
+    }
+
+export const getForgotPasswordUrl = () => {
+
+
+
+
+  return `/api/auth/forgot-password`
+}
+
+/**
+ * Always returns 204 regardless of whether the address has an account — responding differently would let anyone enumerate registered emails.
+
+ * @summary Email a password reset link
+ */
+export const forgotPassword = async (forgotPasswordInput: ForgotPasswordInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getForgotPasswordUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      forgotPasswordInput,)
+  }
+);}
+
+
+
+
+export const getForgotPasswordMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof forgotPassword>>, TError,{data: BodyType<ForgotPasswordInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof forgotPassword>>, TError,{data: BodyType<ForgotPasswordInput>}, TContext> => {
+
+const mutationKey = ['forgotPassword'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof forgotPassword>>, {data: BodyType<ForgotPasswordInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  forgotPassword(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ForgotPasswordMutationResult = NonNullable<Awaited<ReturnType<typeof forgotPassword>>>
+    export type ForgotPasswordMutationBody = BodyType<ForgotPasswordInput>
+    export type ForgotPasswordMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Email a password reset link
+ */
+export const useForgotPassword = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof forgotPassword>>, TError,{data: BodyType<ForgotPasswordInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof forgotPassword>>,
+        TError,
+        {data: BodyType<ForgotPasswordInput>},
+        TContext
+      > => {
+      return useMutation(getForgotPasswordMutationOptions(options));
+    }
+
+export const getResetPasswordUrl = () => {
+
+
+
+
+  return `/api/auth/reset-password`
+}
+
+/**
+ * Single-use, expires one hour after being issued. On success every session for the account is invalidated.
+
+ * @summary Set a new password using an emailed reset token
+ */
+export const resetPassword = async (resetPasswordInput: ResetPasswordInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getResetPasswordUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      resetPasswordInput,)
+  }
+);}
+
+
+
+
+export const getResetPasswordMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPassword>>, TError,{data: BodyType<ResetPasswordInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetPassword>>, TError,{data: BodyType<ResetPasswordInput>}, TContext> => {
+
+const mutationKey = ['resetPassword'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetPassword>>, {data: BodyType<ResetPasswordInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resetPassword(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetPasswordMutationResult = NonNullable<Awaited<ReturnType<typeof resetPassword>>>
+    export type ResetPasswordMutationBody = BodyType<ResetPasswordInput>
+    export type ResetPasswordMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Set a new password using an emailed reset token
+ */
+export const useResetPassword = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetPassword>>, TError,{data: BodyType<ResetPasswordInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetPassword>>,
+        TError,
+        {data: BodyType<ResetPasswordInput>},
+        TContext
+      > => {
+      return useMutation(getResetPasswordMutationOptions(options));
     }
 
 export const getGetMeUrl = () => {
@@ -4008,6 +4236,303 @@ export function useGetPlan<TData = Awaited<ReturnType<typeof getPlan>>, TError =
 
 
 
+
+export const getCreateUpgradeRequestUrl = () => {
+
+
+
+
+  return `/api/upgrade-requests`
+}
+
+/**
+ * @summary Ask to be upgraded to a paid plan
+ */
+export const createUpgradeRequest = async (upgradeRequestInput: UpgradeRequestInput, options?: RequestInit): Promise<UpgradeRequestCreated> => {
+
+  return customFetch<UpgradeRequestCreated>(getCreateUpgradeRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      upgradeRequestInput,)
+  }
+);}
+
+
+
+
+export const getCreateUpgradeRequestMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createUpgradeRequest>>, TError,{data: BodyType<UpgradeRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createUpgradeRequest>>, TError,{data: BodyType<UpgradeRequestInput>}, TContext> => {
+
+const mutationKey = ['createUpgradeRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createUpgradeRequest>>, {data: BodyType<UpgradeRequestInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createUpgradeRequest(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateUpgradeRequestMutationResult = NonNullable<Awaited<ReturnType<typeof createUpgradeRequest>>>
+    export type CreateUpgradeRequestMutationBody = BodyType<UpgradeRequestInput>
+    export type CreateUpgradeRequestMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Ask to be upgraded to a paid plan
+ */
+export const useCreateUpgradeRequest = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createUpgradeRequest>>, TError,{data: BodyType<UpgradeRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createUpgradeRequest>>,
+        TError,
+        {data: BodyType<UpgradeRequestInput>},
+        TContext
+      > => {
+      return useMutation(getCreateUpgradeRequestMutationOptions(options));
+    }
+
+export const getGetMyUpgradeRequestUrl = () => {
+
+
+
+
+  return `/api/upgrade-requests/mine`
+}
+
+/**
+ * @summary The caller's own pending upgrade request, if any
+ */
+export const getMyUpgradeRequest = async ( options?: RequestInit): Promise<MyUpgradeRequest> => {
+
+  return customFetch<MyUpgradeRequest>(getGetMyUpgradeRequestUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyUpgradeRequestQueryKey = () => {
+    return [
+    `/api/upgrade-requests/mine`
+    ] as const;
+    }
+
+
+export const getGetMyUpgradeRequestQueryOptions = <TData = Awaited<ReturnType<typeof getMyUpgradeRequest>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyUpgradeRequest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyUpgradeRequestQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyUpgradeRequest>>> = ({ signal }) => getMyUpgradeRequest({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyUpgradeRequest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyUpgradeRequestQueryResult = NonNullable<Awaited<ReturnType<typeof getMyUpgradeRequest>>>
+export type GetMyUpgradeRequestQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The caller's own pending upgrade request, if any
+ */
+
+export function useGetMyUpgradeRequest<TData = Awaited<ReturnType<typeof getMyUpgradeRequest>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyUpgradeRequest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyUpgradeRequestQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListUpgradeRequestsUrl = () => {
+
+
+
+
+  return `/api/admin/upgrade-requests`
+}
+
+/**
+ * @summary Pending upgrade requests awaiting action
+ */
+export const listUpgradeRequests = async ( options?: RequestInit): Promise<UpgradeRequestQueue> => {
+
+  return customFetch<UpgradeRequestQueue>(getListUpgradeRequestsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListUpgradeRequestsQueryKey = () => {
+    return [
+    `/api/admin/upgrade-requests`
+    ] as const;
+    }
+
+
+export const getListUpgradeRequestsQueryOptions = <TData = Awaited<ReturnType<typeof listUpgradeRequests>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUpgradeRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListUpgradeRequestsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listUpgradeRequests>>> = ({ signal }) => listUpgradeRequests({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listUpgradeRequests>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListUpgradeRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof listUpgradeRequests>>>
+export type ListUpgradeRequestsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Pending upgrade requests awaiting action
+ */
+
+export function useListUpgradeRequests<TData = Awaited<ReturnType<typeof listUpgradeRequests>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUpgradeRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListUpgradeRequestsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getResolveUpgradeRequestUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/upgrade-requests/${id}`
+}
+
+/**
+ * @summary Mark an upgrade request handled or dismissed
+ */
+export const resolveUpgradeRequest = async (id: number,
+    resolveUpgradeRequestInput: ResolveUpgradeRequestInput, options?: RequestInit): Promise<ResolveUpgradeRequestResult> => {
+
+  return customFetch<ResolveUpgradeRequestResult>(getResolveUpgradeRequestUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      resolveUpgradeRequestInput,)
+  }
+);}
+
+
+
+
+export const getResolveUpgradeRequestMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveUpgradeRequest>>, TError,{id: number;data: BodyType<ResolveUpgradeRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveUpgradeRequest>>, TError,{id: number;data: BodyType<ResolveUpgradeRequestInput>}, TContext> => {
+
+const mutationKey = ['resolveUpgradeRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveUpgradeRequest>>, {id: number;data: BodyType<ResolveUpgradeRequestInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  resolveUpgradeRequest(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveUpgradeRequestMutationResult = NonNullable<Awaited<ReturnType<typeof resolveUpgradeRequest>>>
+    export type ResolveUpgradeRequestMutationBody = BodyType<ResolveUpgradeRequestInput>
+    export type ResolveUpgradeRequestMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Mark an upgrade request handled or dismissed
+ */
+export const useResolveUpgradeRequest = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveUpgradeRequest>>, TError,{id: number;data: BodyType<ResolveUpgradeRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveUpgradeRequest>>,
+        TError,
+        {id: number;data: BodyType<ResolveUpgradeRequestInput>},
+        TContext
+      > => {
+      return useMutation(getResolveUpgradeRequestMutationOptions(options));
+    }
 
 export const getGetAssistantDailyBriefUrl = () => {
 

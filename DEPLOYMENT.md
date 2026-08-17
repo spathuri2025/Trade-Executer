@@ -86,8 +86,26 @@ Environment variables:
 | `CREDENTIALS_ENCRYPTION_KEY` | your `openssl rand -hex 32` output |
 | `AI_INTEGRATIONS_ANTHROPIC_BASE_URL` | `https://api.anthropic.com` |
 | `AI_INTEGRATIONS_ANTHROPIC_API_KEY` | your Anthropic key |
+| `RESEND_API_KEY` | your Resend key — optional, see below |
+| `EMAIL_FROM` | `TradeBuzz <noreply@tradebuzz.co.uk>` |
+| `APP_BASE_URL` | `https://www.tradebuzz.co.uk` |
 
 `PORT` is injected by Render — do not set it.
+
+### Password-reset email (optional)
+
+`RESEND_API_KEY` + `EMAIL_FROM` are the only things "Forgot password?" needs.
+Leave them unset and the whole app still works — the reset request is accepted,
+no email goes out, and the server logs an error saying why. Users can't reset
+their own password until both are set; you'd have to do it for them.
+
+Set up: create a Resend account, verify `tradebuzz.co.uk` there (it gives you
+the DNS records to add), then create an API key. `EMAIL_FROM` must use the
+verified domain or Resend rejects every send.
+
+`APP_BASE_URL` is what the reset link in the email points at. If unset the
+server falls back to the request's own `Host`, which would put the raw
+`*.onrender.com` hostname in the email — it works, but looks wrong to users.
 
 ## 5. Create the database schema
 

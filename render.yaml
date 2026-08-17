@@ -74,3 +74,19 @@ services:
         value: https://api.anthropic.com
       - key: AI_INTEGRATIONS_ANTHROPIC_API_KEY
         sync: false
+
+      # Password-reset emails, sent via Resend's REST API. Without BOTH of these
+      # the app still runs and every other feature works — only "forgot
+      # password" can't deliver, and the attempt is logged as an error.
+      # EMAIL_FROM must be an address on a domain verified in Resend, otherwise
+      # Resend rejects the send.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: TradeBuzz <noreply@tradebuzz.co.uk>
+
+      # Base URL used to build the reset link in that email. Must be the address
+      # users actually visit — falling back to the request's own Host would put
+      # the raw Render hostname in the email instead of the custom domain.
+      - key: APP_BASE_URL
+        value: https://www.tradebuzz.co.uk

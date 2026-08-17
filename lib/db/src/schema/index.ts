@@ -17,3 +17,4 @@ export * from "./subscriptions";
 export * from "./contracts";
 export * from "./aiUsage";
 export * from "./upgradeRequests";
+export * from "./passwordResetTokens";

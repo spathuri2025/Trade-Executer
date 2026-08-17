@@ -108,6 +108,84 @@ paths:
         "204":
           description: Logged out
 
+  /auth/change-password:
+    post:
+      operationId: changePassword
+      tags: [auth]
+      summary: Change your own password
+      description: >
+        Requires the current password. On success every OTHER session for this
+        user is invalidated; the caller stays signed in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordInput"
+      responses:
+        "204":
+          description: Password changed
+        "400":
+          description: Current password wrong, or new password invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [auth]
+      summary: Email a password reset link
+      description: >
+        Always returns 204 regardless of whether the address has an account —
+        responding differently would let anyone enumerate registered emails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordInput"
+      responses:
+        "204":
+          description: Request accepted (an email is sent only if the account exists)
+        "400":
+          description: Not a valid email address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [auth]
+      summary: Set a new password using an emailed reset token
+      description: >
+        Single-use, expires one hour after being issued. On success every
+        session for the account is invalidated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordInput"
+      responses:
+        "204":
+          description: Password reset — the user can now log in
+        "400":
+          description: Token invalid, expired or already used, or password too short
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+
   /auth/me:
     get:
       operationId: getMe
@@ -1348,6 +1426,34 @@ components:
           type: string
         password:
           type: string
+
+    ChangePasswordInput:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+
+    ForgotPasswordInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+
+    ResetPasswordInput:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          description: The token from the emailed reset link.
+        newPassword:
+          type: string
+          minLength: 8
 
     AuthUser:
       type: object

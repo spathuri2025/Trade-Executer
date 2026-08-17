@@ -14,6 +14,23 @@ export interface AuthCredentials {
   password: string;
 }
 
+export interface ChangePasswordInput {
+  currentPassword: string;
+  /** @minLength 8 */
+  newPassword: string;
+}
+
+export interface ForgotPasswordInput {
+  email: string;
+}
+
+export interface ResetPasswordInput {
+  /** The token from the emailed reset link. */
+  token: string;
+  /** @minLength 8 */
+  newPassword: string;
+}
+
 export type AuthUserRole = typeof AuthUserRole[keyof typeof AuthUserRole];
 
 
@@ -1016,6 +1033,94 @@ export interface InstrumentPnl {
   ticker: string;
   netPnl: number;
   trades: number;
+}
+
+/**
+ * Which paywall prompted the request.
+ */
+export type UpgradeTrigger = typeof UpgradeTrigger[keyof typeof UpgradeTrigger];
+
+
+export const UpgradeTrigger = {
+  live_trading: 'live_trading',
+  ai_trade_modes: 'ai_trade_modes',
+  instrument_cap: 'instrument_cap',
+  ai_quota: 'ai_quota',
+  plan_card: 'plan_card',
+} as const;
+
+export interface UpgradeRequestInput {
+  trigger: UpgradeTrigger;
+  /** @maxLength 1000 */
+  message?: string;
+}
+
+export interface UpgradeRequestCreated {
+  id: number;
+  status: string;
+  /** True when an existing pending request was updated rather than a new one created. */
+  alreadyPending: boolean;
+}
+
+export type MyUpgradeRequestPlan = typeof MyUpgradeRequestPlan[keyof typeof MyUpgradeRequestPlan];
+
+
+export const MyUpgradeRequestPlan = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+  enterprise: 'enterprise',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MyUpgradeRequestPending = {
+  id: number;
+  trigger: UpgradeTrigger;
+  /** @nullable */
+  message?: string | null;
+  createdAt: string;
+} | null;
+
+export interface MyUpgradeRequest {
+  plan: MyUpgradeRequestPlan;
+  /** @nullable */
+  pending: MyUpgradeRequestPending;
+}
+
+export type ResolveUpgradeRequestInputStatus = typeof ResolveUpgradeRequestInputStatus[keyof typeof ResolveUpgradeRequestInputStatus];
+
+
+export const ResolveUpgradeRequestInputStatus = {
+  handled: 'handled',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ResolveUpgradeRequestInput {
+  status: ResolveUpgradeRequestInputStatus;
+}
+
+export interface ResolveUpgradeRequestResult {
+  id: number;
+  status: string;
+}
+
+export type UpgradeRequestQueueRequestsItem = {
+  id: number;
+  userId: number;
+  email: string;
+  trigger: UpgradeTrigger;
+  /** @nullable */
+  message?: string | null;
+  createdAt: string;
+  currentPlan: string;
+  currentStatus: string;
+};
+
+export interface UpgradeRequestQueue {
+  pendingCount: number;
+  requests: UpgradeRequestQueueRequestsItem[];
 }
 
 export type PlanStatusPlan = typeof PlanStatusPlan[keyof typeof PlanStatusPlan];

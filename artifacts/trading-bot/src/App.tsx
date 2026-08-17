@@ -19,6 +19,8 @@ import Admin from "@/pages/admin";
 import Setup from "@/pages/setup";
 import Login from "@/pages/login";
 import Signup from "@/pages/signup";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
@@ -93,13 +95,19 @@ function AppShell() {
     );
   }
 
+  // /reset-password stays reachable even with a session: someone who requested
+  // a reset while still logged in elsewhere should be able to use the emailed
+  // link rather than being bounced to the dashboard.
+  if (location === "/reset-password") return <ResetPassword />;
+
   if (!user) {
     if (location === "/signup") return <Signup />;
+    if (location === "/forgot-password") return <ForgotPassword />;
     if (location !== "/login") return <Redirect to="/login" />;
     return <Login />;
   }
 
-  if (location === "/login" || location === "/signup") {
+  if (location === "/login" || location === "/signup" || location === "/forgot-password") {
     return <Redirect to="/" />;
   }
 

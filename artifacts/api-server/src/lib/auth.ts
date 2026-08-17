@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db, sessionsTable, usersTable, type User } from "@workspace/db";
 
 export const SESSION_COOKIE = "tb_session";
@@ -55,4 +55,24 @@ export async function getSessionUser(token: string): Promise<User | null> {
 
 export async function deleteSession(token: string): Promise<void> {
   await db.delete(sessionsTable).where(eq(sessionsTable.id, token));
+}
+
+/**
+ * Log the user out everywhere EXCEPT the session making the request — used
+ * after a password change, so anyone else holding a stolen session loses it
+ * while the person who just changed their password stays signed in.
+ */
+export async function deleteOtherSessionsForUser(userId: number, keepToken: string): Promise<void> {
+  await db
+    .delete(sessionsTable)
+    .where(and(eq(sessionsTable.userId, userId), ne(sessionsTable.id, keepToken)));
+}
+
+/**
+ * Log the user out everywhere — used after a password RESET. Unlike a change,
+ * a reset means the old password may have been compromised, so every existing
+ * session is dropped including any the attacker holds.
+ */
+export async function deleteAllSessionsForUser(userId: number): Promise<void> {
+  await db.delete(sessionsTable).where(eq(sessionsTable.userId, userId));
 }

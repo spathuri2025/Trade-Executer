@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RequestUpgradeButton } from "@/components/RequestUpgradeButton";
+import { ChangePasswordCard } from "@/components/ChangePasswordCard";
 import { Play, Square, Link2, Unlink } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
@@ -272,6 +273,8 @@ export default function Settings() {
           </CardContent>
         </Card>
       )}
+
+      <ChangePasswordCard />
 
       {/* Broker connection — required before the bot or any live data can work */}
       <Card className={brokerStatus?.connected ? undefined : "border-amber-500/40"}>

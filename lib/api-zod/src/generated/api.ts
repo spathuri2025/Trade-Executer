@@ -41,6 +41,46 @@ export const LoginResponse = zod.object({
 
 
 /**
+ * Requires the current password. On success every OTHER session for this user is invalidated; the caller stays signed in.
+
+ * @summary Change your own password
+ */
+export const changePasswordBodyNewPasswordMin = 8;
+
+
+
+export const ChangePasswordBody = zod.object({
+  "currentPassword": zod.string(),
+  "newPassword": zod.string().min(changePasswordBodyNewPasswordMin)
+})
+
+
+/**
+ * Always returns 204 regardless of whether the address has an account — responding differently would let anyone enumerate registered emails.
+
+ * @summary Email a password reset link
+ */
+export const ForgotPasswordBody = zod.object({
+  "email": zod.string()
+})
+
+
+/**
+ * Single-use, expires one hour after being issued. On success every session for the account is invalidated.
+
+ * @summary Set a new password using an emailed reset token
+ */
+export const resetPasswordBodyNewPasswordMin = 8;
+
+
+
+export const ResetPasswordBody = zod.object({
+  "token": zod.string().describe('The token from the emailed reset link.'),
+  "newPassword": zod.string().min(resetPasswordBodyNewPasswordMin)
+})
+
+
+/**
  * @summary The currently logged-in user
  */
 export const GetMeResponse = zod.object({
@@ -942,6 +982,68 @@ export const GetPlanResponse = zod.object({
   "instruments": zod.number(),
   "aiQueriesToday": zod.number()
 })
+})
+
+
+/**
+ * @summary Ask to be upgraded to a paid plan
+ */
+export const createUpgradeRequestBodyMessageMax = 1000;
+
+
+
+export const CreateUpgradeRequestBody = zod.object({
+  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card']).describe('Which paywall prompted the request.'),
+  "message": zod.string().max(createUpgradeRequestBodyMessageMax).optional()
+})
+
+
+/**
+ * @summary The caller's own pending upgrade request, if any
+ */
+export const GetMyUpgradeRequestResponse = zod.object({
+  "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
+  "pending": zod.object({
+  "id": zod.number(),
+  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card']).describe('Which paywall prompted the request.'),
+  "message": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+}).nullable()
+})
+
+
+/**
+ * @summary Pending upgrade requests awaiting action
+ */
+export const ListUpgradeRequestsResponse = zod.object({
+  "pendingCount": zod.number(),
+  "requests": zod.array(zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "email": zod.string(),
+  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card']).describe('Which paywall prompted the request.'),
+  "message": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "currentPlan": zod.string(),
+  "currentStatus": zod.string()
+}))
+})
+
+
+/**
+ * @summary Mark an upgrade request handled or dismissed
+ */
+export const ResolveUpgradeRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResolveUpgradeRequestBody = zod.object({
+  "status": zod.enum(['handled', 'dismissed'])
+})
+
+export const ResolveUpgradeRequestResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.string()
 })
 
 
