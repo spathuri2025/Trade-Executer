@@ -24,7 +24,8 @@ import performanceCoachRouter from "./performanceCoach";
 import assistantBriefRouter from "./assistantBrief";
 import tradeIntelligenceRouter from "./tradeIntelligence";
 import adminRouter from "./admin";
-import planRouter from "./plan";
+import planRouter, { publicPlansRouter } from "./plan";
+import billingRouter from "./billing";
 import upgradeRequestsRouter from "./upgradeRequests";
 
 const router: IRouter = Router();
@@ -32,6 +33,10 @@ const router: IRouter = Router();
 // Public — must be mounted before the auth gate below.
 router.use(healthRouter);
 router.use(authRouter);
+// Pricing catalogue: logged-out visitors deciding whether to sign up need it.
+router.use(publicPlansRouter);
+// Stripe webhooks authenticate by signature, not session — see routes/billing.ts.
+router.use(billingRouter);
 
 // Everything else requires a logged-in session.
 router.use(requireAuth);

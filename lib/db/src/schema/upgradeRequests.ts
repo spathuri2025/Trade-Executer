@@ -21,7 +21,7 @@ export const upgradeRequestsTable = pgTable("upgrade_requests", {
     .references(() => usersTable.id, { onDelete: "cascade" }),
   /** Which paywall the user hit when they asked. */
   trigger: text("trigger", {
-    enum: ["live_trading", "ai_trade_modes", "instrument_cap", "ai_quota", "plan_card"],
+    enum: ["live_trading", "ai_trade_modes", "instrument_cap", "ai_quota", "plan_card", "enterprise"],
   }).notNull(),
   /** Optional free-text note from the user. */
   message: text("message"),

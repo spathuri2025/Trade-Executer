@@ -7,10 +7,23 @@
  */
 import type { PlanStatusLimits } from './planStatusLimits';
 import type { PlanStatusPlan } from './planStatusPlan';
+import type { PlanStatusStatus } from './planStatusStatus';
 import type { PlanStatusUsage } from './planStatusUsage';
 
 export interface PlanStatus {
   plan: PlanStatusPlan;
+  /** Customer-facing name of the effective plan. */
+  planDisplay: string;
+  /**
+     * Raw subscription status for display; null when no subscription row exists. Entitlement always comes from `plan`.
+     * @nullable
+     */
+  status: PlanStatusStatus;
+  /**
+     * When the paid period ends (ISO). Display only — a past date has already lapsed the plan.
+     * @nullable
+     */
+  renewsAt: string | null;
   limits: PlanStatusLimits;
   usage: PlanStatusUsage;
 }

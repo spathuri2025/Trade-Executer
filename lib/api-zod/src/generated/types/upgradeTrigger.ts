@@ -18,4 +18,5 @@ export const UpgradeTrigger = {
   instrument_cap: 'instrument_cap',
   ai_quota: 'ai_quota',
   plan_card: 'plan_card',
+  enterprise: 'enterprise',
 } as const;

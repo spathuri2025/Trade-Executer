@@ -1145,6 +1145,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/PlanStatus"
 
+  /plans:
+    get:
+      operationId: listPlans
+      tags: [plan]
+      summary: The public plan catalogue — tiers, pricing, features and limits
+      description: >
+        Public (no session required): logged-out visitors deciding whether to
+        sign up need pricing. Contains only catalogue data, nothing
+        user-specific.
+      responses:
+        "200":
+          description: All tiers, cheapest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plans]
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlanCatalogEntry"
+
   /upgrade-requests:
     post:
       operationId: createUpgradeRequest
@@ -2597,7 +2620,7 @@ components:
     UpgradeTrigger:
       type: string
       description: Which paywall prompted the request.
-      enum: [live_trading, ai_trade_modes, instrument_cap, ai_quota, plan_card]
+      enum: [live_trading, ai_trade_modes, instrument_cap, ai_quota, plan_card, enterprise]
 
     UpgradeRequestInput:
       type: object
@@ -2672,13 +2695,59 @@ components:
               currentPlan: { type: string }
               currentStatus: { type: string }
 
-    PlanStatus:
+    PlanCatalogEntry:
       type: object
-      required: [plan, limits, usage]
+      required: [plan, displayName, tagline, monthlyPriceGbp, features, stripePriceId, recommended, limits]
       properties:
         plan:
           type: string
           enum: [free, starter, pro, enterprise]
+        displayName:
+          type: string
+        tagline:
+          type: string
+        monthlyPriceGbp:
+          type: ["number", "null"]
+          description: null means "Contact us" (enterprise); 0 means free.
+        features:
+          type: array
+          items:
+            type: string
+        stripePriceId:
+          type: ["string", "null"]
+          description: null until Stripe billing is configured — UI falls back to a request-upgrade flow.
+        recommended:
+          type: boolean
+        limits:
+          type: object
+          required: [liveTrading, aiTradeModes, maxInstruments, aiQueriesPerDay]
+          properties:
+            liveTrading:
+              type: boolean
+            aiTradeModes:
+              type: boolean
+            maxInstruments:
+              type: ["integer", "null"]
+            aiQueriesPerDay:
+              type: ["integer", "null"]
+
+    PlanStatus:
+      type: object
+      required: [plan, planDisplay, status, renewsAt, limits, usage]
+      properties:
+        plan:
+          type: string
+          enum: [free, starter, pro, enterprise]
+        planDisplay:
+          type: string
+          description: Customer-facing name of the effective plan.
+        status:
+          type: ["string", "null"]
+          description: Raw subscription status for display; null when no subscription row exists. Entitlement always comes from `plan`.
+          enum: [active, trialing, past_due, canceled, null]
+        renewsAt:
+          type: ["string", "null"]
+          description: When the paid period ends (ISO). Display only — a past date has already lapsed the plan.
         limits:
           type: object
           required: [liveTrading, aiTradeModes, maxInstruments, aiQueriesPerDay]

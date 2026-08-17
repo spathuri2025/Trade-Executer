@@ -97,3 +97,17 @@ services:
       # the raw Render hostname in the email instead of the custom domain.
       - key: APP_BASE_URL
         value: https://www.tradebuzz.co.uk
+
+      # ---- Stripe (NOT live yet — see BILLING.md) ----------------------------
+      # All optional. Until STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET are set,
+      # the webhook route answers 503 and the pricing page uses the
+      # request-upgrade flow instead of checkout. STRIPE_PRICE_* are the Stripe
+      # Price ids for each paid tier, read by planCatalog.ts.
+      # - key: STRIPE_SECRET_KEY
+      #   sync: false
+      # - key: STRIPE_WEBHOOK_SECRET
+      #   sync: false
+      # - key: STRIPE_PRICE_STARTER
+      #   sync: false
+      # - key: STRIPE_PRICE_PRO
+      #   sync: false

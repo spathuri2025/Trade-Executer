@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     createdAt: Date;
     plan: string | null;
     status: string | null;
+    renewsAt?: Date | null;
   }>,
   usageRows: [] as Array<{ count: number }>,
 }));
@@ -121,6 +122,47 @@ describe("no grandfathering — signup date never grants entitlements", () => {
 
     mocks.joinRows = [{ role: "customer", createdAt: LEGACY, plan: "pro", status: "canceled" }];
     expect(await getEffectivePlan(USER_ID)).toBe("free");
+  });
+});
+
+describe("subscription expiry — renewsAt finally has teeth", () => {
+  const YESTERDAY = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const NEXT_MONTH = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  it("lapses an active subscription whose renewsAt has passed", async () => {
+    // The revenue leak this closes: before this check a month sold was a
+    // lifetime granted — renewsAt was stored and displayed but never read.
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "pro", status: "active", renewsAt: YESTERDAY }];
+    expect(await getEffectivePlan(USER_ID)).toBe("free");
+  });
+
+  it("lapses an expired trial", async () => {
+    // status=trialing + renewsAt=trial end is the whole trial mechanism; the
+    // lapse must happen by itself, with no admin action and no cron job.
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "pro", status: "trialing", renewsAt: YESTERDAY }];
+    expect(await getEffectivePlan(USER_ID)).toBe("free");
+  });
+
+  it("honours a subscription whose renewsAt is still in the future", async () => {
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "starter", status: "active", renewsAt: NEXT_MONTH }];
+    expect(await getEffectivePlan(USER_ID)).toBe("starter");
+  });
+
+  it("treats a null renewsAt as never expiring", async () => {
+    // Comped / admin-granted accounts: leave the date blank and they keep the
+    // plan until someone changes the row.
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "pro", status: "active", renewsAt: null }];
+    expect(await getEffectivePlan(USER_ID)).toBe("pro");
+  });
+
+  it("keeps the admin override even with an expired row", async () => {
+    mocks.joinRows = [{ role: "admin", createdAt: NEW_SIGNUP, plan: "pro", status: "active", renewsAt: YESTERDAY }];
+    expect(await getEffectivePlan(USER_ID)).toBe("enterprise");
+  });
+
+  it("resolves limits through expiry too — an expired pro gets free limits", async () => {
+    mocks.joinRows = [{ role: "customer", createdAt: NEW_SIGNUP, plan: "pro", status: "active", renewsAt: YESTERDAY }];
+    expect(await getPlanLimits(USER_ID)).toEqual(PLAN_LIMITS.free);
   });
 });
 

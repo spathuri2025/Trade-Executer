@@ -24,7 +24,8 @@ export type UpgradeTrigger =
   | "ai_trade_modes"
   | "instrument_cap"
   | "ai_quota"
-  | "plan_card";
+  | "plan_card"
+  | "enterprise";
 
 /** Plain-English description of the limit, shown in the dialog to confirm what they're asking for. */
 const TRIGGER_LABEL: Record<UpgradeTrigger, string> = {
@@ -33,6 +34,7 @@ const TRIGGER_LABEL: Record<UpgradeTrigger, string> = {
   instrument_cap: "tracking more instruments",
   ai_quota: "a higher daily AI request allowance",
   plan_card: "a higher plan",
+  enterprise: "the Enterprise plan — tell us a little about your team",
 };
 
 /**

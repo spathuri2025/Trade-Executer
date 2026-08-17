@@ -57,6 +57,7 @@ import type {
   LatestDailyBriefResult,
   LatestMarketBrainResult,
   ListMarketNewsParams,
+  ListPlans200,
   ListSignalsParams,
   ListTradesParams,
   MarketBrainSnapshot,
@@ -4307,6 +4308,85 @@ export function useGetPlan<TData = Awaited<ReturnType<typeof getPlan>>, TError =
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPlanQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListPlansUrl = () => {
+
+
+
+
+  return `/api/plans`
+}
+
+/**
+ * Public (no session required): logged-out visitors deciding whether to sign up need pricing. Contains only catalogue data, nothing user-specific.
+
+ * @summary The public plan catalogue — tiers, pricing, features and limits
+ */
+export const listPlans = async ( options?: RequestInit): Promise<ListPlans200> => {
+
+  return customFetch<ListPlans200>(getListPlansUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPlansQueryKey = () => {
+    return [
+    `/api/plans`
+    ] as const;
+    }
+
+
+export const getListPlansQueryOptions = <TData = Awaited<ReturnType<typeof listPlans>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPlansQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPlans>>> = ({ signal }) => listPlans({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPlansQueryResult = NonNullable<Awaited<ReturnType<typeof listPlans>>>
+export type ListPlansQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The public plan catalogue — tiers, pricing, features and limits
+ */
+
+export function useListPlans<TData = Awaited<ReturnType<typeof listPlans>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPlansQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

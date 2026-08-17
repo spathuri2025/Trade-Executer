@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBotStatus,
@@ -244,7 +245,10 @@ export default function Settings() {
             <CardDescription>
               {planStatus.limits.liveTrading
                 ? "Your plan includes live trading."
-                : "Your plan is research-only — backtests, charts, the scanner and the AI assistant all work, but the bot always simulates trades."}
+                : "Your plan is research-only — backtests, charts, the scanner and the AI assistant all work, but the bot always simulates trades."}{" "}
+              <Link href="/pricing" className="text-primary hover:underline" data-testid="link-compare-plans">
+                Compare plans →
+              </Link>
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

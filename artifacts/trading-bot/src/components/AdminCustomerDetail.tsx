@@ -173,6 +173,17 @@ export function AdminCustomerDetail({
           <div className="space-y-1.5">
             <Label className="text-xs">Renews at</Label>
             <Input type="date" value={renewsAt} onChange={(e) => setRenewsAt(e.target.value)} />
+            {/* renewsAt is ENFORCED (planService lapses a past date to free on
+                the next request), so the editor must say what the date does. */}
+            <p className="text-xs text-muted-foreground">
+              {(() => {
+                if (!renewsAt) return "Blank = never expires. Set a date and the plan lapses to Free automatically after it.";
+                const days = Math.ceil((new Date(renewsAt).getTime() - Date.now()) / 86_400_000);
+                if (days < 0) return `Expired ${-days} day${days === -1 ? "" : "s"} ago — this account is on Free now.`;
+                if (days === 0) return "Expires today — the plan lapses to Free at this date.";
+                return `${days} day${days === 1 ? "" : "s"} remaining, then the plan lapses to Free automatically.`;
+              })()}
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Notes</Label>

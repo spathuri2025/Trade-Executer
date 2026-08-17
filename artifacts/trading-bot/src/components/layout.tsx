@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X, LogOut, ShieldCheck } from "lucide-react";
+import { LineChart, LayoutDashboard, Activity, ListOrdered, Settings, ScanSearch, MessageSquare, Radar, TrendingUp, Rocket, CandlestickChart, Newspaper, Menu, X, LogOut, ShieldCheck, CreditCard } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const links = [
@@ -15,6 +15,7 @@ const links = [
   { href: "/assistant", label: "Assistant", icon: MessageSquare },
   { href: "/signal-analyst", label: "Signal Analyst", icon: Radar },
   { href: "/setup", label: "Setup Wizard", icon: Rocket },
+  { href: "/pricing", label: "Plan & Pricing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -1079,6 +1079,7 @@ export const UpgradeTrigger = {
   instrument_cap: 'instrument_cap',
   ai_quota: 'ai_quota',
   plan_card: 'plan_card',
+  enterprise: 'enterprise',
 } as const;
 
 export interface UpgradeRequestInput {
@@ -1155,6 +1156,44 @@ export interface UpgradeRequestQueue {
   requests: UpgradeRequestQueueRequestsItem[];
 }
 
+export type PlanCatalogEntryPlan = typeof PlanCatalogEntryPlan[keyof typeof PlanCatalogEntryPlan];
+
+
+export const PlanCatalogEntryPlan = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+  enterprise: 'enterprise',
+} as const;
+
+export type PlanCatalogEntryLimits = {
+  liveTrading: boolean;
+  aiTradeModes: boolean;
+  /** @nullable */
+  maxInstruments: number | null;
+  /** @nullable */
+  aiQueriesPerDay: number | null;
+};
+
+export interface PlanCatalogEntry {
+  plan: PlanCatalogEntryPlan;
+  displayName: string;
+  tagline: string;
+  /**
+     * null means "Contact us" (enterprise); 0 means free.
+     * @nullable
+     */
+  monthlyPriceGbp: number | null;
+  features: string[];
+  /**
+     * null until Stripe billing is configured — UI falls back to a request-upgrade flow.
+     * @nullable
+     */
+  stripePriceId: string | null;
+  recommended: boolean;
+  limits: PlanCatalogEntryLimits;
+}
+
 export type PlanStatusPlan = typeof PlanStatusPlan[keyof typeof PlanStatusPlan];
 
 
@@ -1163,6 +1202,20 @@ export const PlanStatusPlan = {
   starter: 'starter',
   pro: 'pro',
   enterprise: 'enterprise',
+} as const;
+
+/**
+ * Raw subscription status for display; null when no subscription row exists. Entitlement always comes from `plan`.
+ * @nullable
+ */
+export type PlanStatusStatus = typeof PlanStatusStatus[keyof typeof PlanStatusStatus] | null;
+
+
+export const PlanStatusStatus = {
+  active: 'active',
+  trialing: 'trialing',
+  past_due: 'past_due',
+  canceled: 'canceled',
 } as const;
 
 export type PlanStatusLimits = {
@@ -1189,6 +1242,18 @@ export type PlanStatusUsage = {
 
 export interface PlanStatus {
   plan: PlanStatusPlan;
+  /** Customer-facing name of the effective plan. */
+  planDisplay: string;
+  /**
+     * Raw subscription status for display; null when no subscription row exists. Entitlement always comes from `plan`.
+     * @nullable
+     */
+  status: PlanStatusStatus;
+  /**
+     * When the paid period ends (ISO). Display only — a past date has already lapsed the plan.
+     * @nullable
+     */
+  renewsAt: string | null;
   limits: PlanStatusLimits;
   usage: PlanStatusUsage;
 }
@@ -1418,5 +1483,9 @@ limit?: number;
 export type GetChartInsightParams = {
 epic: string;
 resolution?: string;
+};
+
+export type ListPlans200 = {
+  plans: PlanCatalogEntry[];
 };
 

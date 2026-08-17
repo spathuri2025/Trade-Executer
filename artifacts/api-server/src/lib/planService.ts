@@ -71,6 +71,7 @@ export async function getEffectivePlan(userId: number): Promise<PlanName> {
       role: usersTable.role,
       plan: subscriptionsTable.plan,
       status: subscriptionsTable.status,
+      renewsAt: subscriptionsTable.renewsAt,
     })
     .from(usersTable)
     .leftJoin(subscriptionsTable, eq(subscriptionsTable.userId, usersTable.id))
@@ -83,7 +84,17 @@ export async function getEffectivePlan(userId: number): Promise<PlanName> {
   // No subscription row means a new signup — free until upgraded.
   if (!row.plan || !row.status) return "free";
 
-  return ENTITLING_STATUSES.has(row.status) ? row.plan : "free";
+  if (!ENTITLING_STATUSES.has(row.status)) return "free";
+
+  // A past renewsAt means the paid period is over: access lapses on the next
+  // request, with no job to run or forget. Null = never expires — that's how
+  // admin-granted/comped accounts stay simple. Until this check existed a
+  // month sold was a lifetime granted; renewsAt was stored and shown in the
+  // Admin Centre but nothing read it. This is also what makes trials real:
+  // status=trialing + renewsAt=trial end lapses by itself.
+  if (row.renewsAt && row.renewsAt.getTime() < Date.now()) return "free";
+
+  return row.plan;
 }
 
 export async function getPlanLimits(userId: number): Promise<PlanLimits> {

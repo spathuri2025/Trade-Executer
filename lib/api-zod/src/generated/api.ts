@@ -988,6 +988,9 @@ export const GetPerformanceCoachResponse = zod.object({
  */
 export const GetPlanResponse = zod.object({
   "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
+  "planDisplay": zod.string().describe('Customer-facing name of the effective plan.'),
+  "status": zod.union([zod.literal('active'),zod.literal('trialing'),zod.literal('past_due'),zod.literal('canceled'),zod.literal(null)]).nullable().describe('Raw subscription status for display; null when no subscription row exists. Entitlement always comes from `plan`.'),
+  "renewsAt": zod.string().nullable().describe('When the paid period ends (ISO). Display only — a past date has already lapsed the plan.'),
   "limits": zod.object({
   "liveTrading": zod.boolean().describe('Whether this plan may place real (non-dry-run) orders.'),
   "aiTradeModes": zod.boolean().describe('Whether the AI guard \/ autonomous trade modes are available.'),
@@ -1002,6 +1005,30 @@ export const GetPlanResponse = zod.object({
 
 
 /**
+ * Public (no session required): logged-out visitors deciding whether to sign up need pricing. Contains only catalogue data, nothing user-specific.
+
+ * @summary The public plan catalogue — tiers, pricing, features and limits
+ */
+export const ListPlansResponse = zod.object({
+  "plans": zod.array(zod.object({
+  "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
+  "displayName": zod.string(),
+  "tagline": zod.string(),
+  "monthlyPriceGbp": zod.number().nullable().describe('null means \"Contact us\" (enterprise); 0 means free.'),
+  "features": zod.array(zod.string()),
+  "stripePriceId": zod.string().nullable().describe('null until Stripe billing is configured — UI falls back to a request-upgrade flow.'),
+  "recommended": zod.boolean(),
+  "limits": zod.object({
+  "liveTrading": zod.boolean(),
+  "aiTradeModes": zod.boolean(),
+  "maxInstruments": zod.number().nullable(),
+  "aiQueriesPerDay": zod.number().nullable()
+})
+}))
+})
+
+
+/**
  * @summary Ask to be upgraded to a paid plan
  */
 export const createUpgradeRequestBodyMessageMax = 1000;
@@ -1009,7 +1036,7 @@ export const createUpgradeRequestBodyMessageMax = 1000;
 
 
 export const CreateUpgradeRequestBody = zod.object({
-  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card']).describe('Which paywall prompted the request.'),
+  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card', 'enterprise']).describe('Which paywall prompted the request.'),
   "message": zod.string().max(createUpgradeRequestBodyMessageMax).optional()
 })
 
@@ -1021,7 +1048,7 @@ export const GetMyUpgradeRequestResponse = zod.object({
   "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
   "pending": zod.object({
   "id": zod.number(),
-  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card']).describe('Which paywall prompted the request.'),
+  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card', 'enterprise']).describe('Which paywall prompted the request.'),
   "message": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 }).nullable()
@@ -1037,7 +1064,7 @@ export const ListUpgradeRequestsResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "email": zod.string(),
-  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card']).describe('Which paywall prompted the request.'),
+  "trigger": zod.enum(['live_trading', 'ai_trade_modes', 'instrument_cap', 'ai_quota', 'plan_card', 'enterprise']).describe('Which paywall prompted the request.'),
   "message": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "currentPlan": zod.string(),
