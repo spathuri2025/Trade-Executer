@@ -1099,23 +1099,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [status]
-              properties:
-                status:
-                  type: string
-                  enum: [handled, dismissed]
+              $ref: "#/components/schemas/ResolveUpgradeRequestInput"
       responses:
         "200":
           description: Updated
           content:
             application/json:
               schema:
-                type: object
-                required: [id, status]
-                properties:
-                  id: { type: integer }
-                  status: { type: string }
+                $ref: "#/components/schemas/ResolveUpgradeRequestResult"
 
   /assistant/daily-brief:
     get:
@@ -2489,6 +2480,21 @@ components:
               $ref: "#/components/schemas/UpgradeTrigger"
             message: { type: ["string", "null"] }
             createdAt: { type: string, format: date-time }
+
+    ResolveUpgradeRequestInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [handled, dismissed]
+
+    ResolveUpgradeRequestResult:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: integer }
+        status: { type: string }
 
     UpgradeRequestQueue:
       type: object
