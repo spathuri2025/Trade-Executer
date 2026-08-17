@@ -21,7 +21,15 @@ import { evictCapitalStream } from "../lib/capitalStream";
 import { notifyUser, broadcastAnnouncement } from "../lib/notificationService";
 
 const router: IRouter = Router();
-router.use(requireAdmin);
+// Scoped to /admin paths, NOT router.use(requireAdmin) bare. This router is
+// mounted path-less in routes/index.ts, so a path-less gate would intercept
+// EVERY request that reaches this point in the chain and 403 non-admins
+// before later routers (/plan, /support, /notifications, …) could match.
+// That exact bug silently broke the plan card and upgrade requests for every
+// customer until 17 Aug 2026 — only admins ever passed, so it was invisible
+// to the operator. Every route in this file starts with /admin, so the path
+// scope loses nothing.
+router.use("/admin", requireAdmin);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
