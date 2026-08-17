@@ -71,7 +71,7 @@ manually with:
 | Runtime | Node |
 | Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @workspace/api-spec run codegen && pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build` |
 | Start command | `pnpm --filter @workspace/api-server run start` |
-| Health check path | `/api/healthz` |
+| Health check path | `/api/healthz` (keep this — see Monitoring below) |
 | Instances | **1** |
 | Plan | any **paid** tier |
 
@@ -148,13 +148,40 @@ follow Render's DNS instructions. Render provisions TLS automatically.
 
 ## Verification
 
-1. `/api/healthz` returns `{"status":"ok"}`
+1. `/api/readyz` returns `{"status":"ok","database":{"status":"up",...}}` —
+   check this rather than `/api/healthz`, which passes even with the database
+   completely unreachable
 2. The UI loads, and a client-side route (e.g. `/settings`) survives a refresh
    — proves the SPA fallback works
 3. Sign up, log in — proves cookies and `SESSION_SECRET` work
 4. Connect a broker — proves `CREDENTIALS_ENCRYPTION_KEY` works
 5. Send an Assistant message — proves the Anthropic key works
 6. Start the bot in **Dry Run** and confirm a cycle runs before going live
+
+## Monitoring
+
+Two health endpoints, doing deliberately different jobs:
+
+| Endpoint | Checks | Fails when | Who should watch it |
+|---|---|---|---|
+| `/api/healthz` | process is up | the process is gone | Render (`healthCheckPath`) |
+| `/api/readyz` | a real `select 1` round-trip | the database is unreachable **or** rejecting credentials | your uptime monitor |
+
+**Point an uptime monitor at `/api/readyz`** (UptimeRobot, Better Stack, Render's
+own — anything that can alert on a non-200). It returns **503** when the database
+is down.
+
+**Leave Render's `healthCheckPath` on `/api/healthz`.** It is tempting to point it
+at `/readyz` so Render reacts automatically, but Render restarts an instance whose
+health check fails, and with `numInstances: 1` plus in-memory bot state that means
+a transient Supabase blip would bounce the trading engine and lose in-flight
+cycles. A restart cannot fix an unreachable database anyway. Detection should be
+loud; remediation should stay manual.
+
+This exists because of a real outage on 17 Aug 2026: a wrong password in
+`DATABASE_URL` broke every feature for half an hour while `/api/healthz` cheerfully
+returned `ok` and pages loaded. Note a TCP or port check would not have caught it
+either — Postgres was answering, it was refusing the login. Only a real query does.
 
 ## Notes
 

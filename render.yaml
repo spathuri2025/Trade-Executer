@@ -38,6 +38,11 @@ services:
       pnpm --filter @workspace/api-spec run codegen &&
       pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build
     startCommand: pnpm --filter @workspace/api-server run start
+    # Liveness only — do NOT change this to /api/readyz. Render restarts an
+    # instance whose health check fails, and with numInstances: 1 and in-memory
+    # bot state that would let a transient Supabase blip bounce the trading
+    # engine. /api/readyz does the real database round-trip; point an uptime
+    # monitor at that instead. See the Monitoring section in DEPLOYMENT.md.
     healthCheckPath: /api/healthz
 
     envVars:

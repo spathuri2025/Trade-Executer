@@ -34,7 +34,12 @@ paths:
     get:
       operationId: healthCheck
       tags: [health]
-      summary: Health check
+      summary: Liveness — is the process up?
+      description: >
+        Shallow by design, and what Render's healthCheckPath points at. A failing
+        health check makes Render restart the instance, which with one instance
+        and in-memory bot state would bounce the trading engine over a transient
+        database blip. Use /readyz to detect that instead.
       responses:
         "200":
           description: Healthy
@@ -42,6 +47,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /readyz:
+    get:
+      operationId: readinessCheck
+      tags: [health]
+      summary: Readiness — can the process reach its database?
+      description: >
+        Round-trips a real query, so it catches a database that is unreachable or
+        rejecting credentials while the web server still serves pages. Point an
+        uptime monitor here. Nothing restarts the service on a failure.
+      responses:
+        "200":
+          description: Ready — database reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessStatus"
+        "503":
+          description: Degraded — database unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessStatus"
 
   /auth/signup:
     post:
@@ -1417,6 +1445,27 @@ components:
       properties:
         status:
           type: string
+
+    ReadinessStatus:
+      type: object
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        database:
+          type: object
+          required: [status, latencyMs]
+          properties:
+            status:
+              type: string
+              enum: [up, down]
+            latencyMs:
+              type: integer
+          description: >
+            No error detail is included on failure — this endpoint is public, and
+            database error text names the host and user. The detail is logged
+            server-side instead.
 
     AuthCredentials:
       type: object

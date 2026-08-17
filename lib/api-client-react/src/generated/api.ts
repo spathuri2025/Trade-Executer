@@ -69,6 +69,7 @@ import type {
   PlanStatus,
   Position,
   Quote,
+  ReadinessStatus,
   ResetPasswordInput,
   ResolveUpgradeRequestInput,
   ResolveUpgradeRequestResult,
@@ -108,7 +109,9 @@ export const getHealthCheckUrl = () => {
 }
 
 /**
- * @summary Health check
+ * Shallow by design, and what Render's healthCheckPath points at. A failing health check makes Render restart the instance, which with one instance and in-memory bot state would bounce the trading engine over a transient database blip. Use /readyz to detect that instead.
+
+ * @summary Liveness — is the process up?
  */
 export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus> => {
 
@@ -155,7 +158,7 @@ export type HealthCheckQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Health check
+ * @summary Liveness — is the process up?
  */
 
 export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
@@ -164,6 +167,85 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getReadinessCheckUrl = () => {
+
+
+
+
+  return `/api/readyz`
+}
+
+/**
+ * Round-trips a real query, so it catches a database that is unreachable or rejecting credentials while the web server still serves pages. Point an uptime monitor here. Nothing restarts the service on a failure.
+
+ * @summary Readiness — can the process reach its database?
+ */
+export const readinessCheck = async ( options?: RequestInit): Promise<ReadinessStatus> => {
+
+  return customFetch<ReadinessStatus>(getReadinessCheckUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getReadinessCheckQueryKey = () => {
+    return [
+    `/api/readyz`
+    ] as const;
+    }
+
+
+export const getReadinessCheckQueryOptions = <TData = Awaited<ReturnType<typeof readinessCheck>>, TError = ErrorType<ReadinessStatus>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof readinessCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getReadinessCheckQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof readinessCheck>>> = ({ signal }) => readinessCheck({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof readinessCheck>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ReadinessCheckQueryResult = NonNullable<Awaited<ReturnType<typeof readinessCheck>>>
+export type ReadinessCheckQueryError = ErrorType<ReadinessStatus>
+
+
+/**
+ * @summary Readiness — can the process reach its database?
+ */
+
+export function useReadinessCheck<TData = Awaited<ReturnType<typeof readinessCheck>>, TError = ErrorType<ReadinessStatus>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof readinessCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getReadinessCheckQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

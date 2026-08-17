@@ -9,6 +9,38 @@ export interface HealthStatus {
   status: string;
 }
 
+export type ReadinessStatusStatus = typeof ReadinessStatusStatus[keyof typeof ReadinessStatusStatus];
+
+
+export const ReadinessStatusStatus = {
+  ok: 'ok',
+  degraded: 'degraded',
+} as const;
+
+export type ReadinessStatusDatabaseStatus = typeof ReadinessStatusDatabaseStatus[keyof typeof ReadinessStatusDatabaseStatus];
+
+
+export const ReadinessStatusDatabaseStatus = {
+  up: 'up',
+  down: 'down',
+} as const;
+
+/**
+ * No error detail is included on failure — this endpoint is public, and database error text names the host and user. The detail is logged server-side instead.
+
+ */
+export type ReadinessStatusDatabase = {
+  status: ReadinessStatusDatabaseStatus;
+  latencyMs: number;
+};
+
+export interface ReadinessStatus {
+  status: ReadinessStatusStatus;
+  /** No error detail is included on failure — this endpoint is public, and database error text names the host and user. The detail is logged server-side instead.
+   */
+  database: ReadinessStatusDatabase;
+}
+
 export interface AuthCredentials {
   email: string;
   password: string;

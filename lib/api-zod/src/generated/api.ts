@@ -9,10 +9,26 @@ import * as zod from 'zod';
 
 
 /**
- * @summary Health check
+ * Shallow by design, and what Render's healthCheckPath points at. A failing health check makes Render restart the instance, which with one instance and in-memory bot state would bounce the trading engine over a transient database blip. Use /readyz to detect that instead.
+
+ * @summary Liveness — is the process up?
  */
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
+})
+
+
+/**
+ * Round-trips a real query, so it catches a database that is unreachable or rejecting credentials while the web server still serves pages. Point an uptime monitor here. Nothing restarts the service on a failure.
+
+ * @summary Readiness — can the process reach its database?
+ */
+export const ReadinessCheckResponse = zod.object({
+  "status": zod.enum(['ok', 'degraded']),
+  "database": zod.object({
+  "status": zod.enum(['up', 'down']),
+  "latencyMs": zod.number()
+}).describe('No error detail is included on failure — this endpoint is public, and database error text names the host and user. The detail is logged server-side instead.\n')
 })
 
 
