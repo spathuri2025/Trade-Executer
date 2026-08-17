@@ -11,6 +11,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import AssistantDailyBrief from "@/components/AssistantDailyBrief";
+import { RequestUpgradeButton } from "@/components/RequestUpgradeButton";
 import { Plus, Send, Trash2, Bot, User, MessageSquare, Loader2 } from "lucide-react";
 
 const card = "hsl(var(--card))";
@@ -47,6 +48,9 @@ export default function Assistant() {
   const [isSending, setIsSending] = useState(false);
   const [pendingUser, setPendingUser] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when the server returns 402 — the daily AI allowance is used up, which
+  // is a plan limit rather than a failure, so it gets an upgrade prompt.
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations, isLoading: convosLoading } = useListConversations({
@@ -104,7 +108,18 @@ export default function Assistant() {
       });
 
       if (!res.ok || !res.body) {
-        throw new Error(`Request failed (${res.status})`);
+        // Surface the server's own explanation rather than a bare status code —
+        // 402 in particular carries the "you've used your daily AI allowance"
+        // message, which is actionable.
+        let serverMessage = `Request failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.error) serverMessage = body.error;
+        } catch {
+          // Non-JSON body — keep the status-code fallback.
+        }
+        if (res.status === 402) setQuotaExceeded(true);
+        throw new Error(serverMessage);
       }
 
       const reader = res.body.getReader();
@@ -277,8 +292,14 @@ export default function Assistant() {
           </div>
 
           {error && (
-            <div className="px-4 py-2 text-xs text-destructive border-t" style={{ borderColor: "hsl(var(--border))" }}>
-              {error}
+            <div
+              className={`px-4 py-2 text-xs border-t flex items-center justify-between gap-3 flex-wrap ${
+                quotaExceeded ? "text-muted-foreground" : "text-destructive"
+              }`}
+              style={{ borderColor: "hsl(var(--border))" }}
+            >
+              <span>{error}</span>
+              {quotaExceeded && <RequestUpgradeButton trigger="ai_quota" />}
             </div>
           )}
 

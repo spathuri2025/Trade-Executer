@@ -25,6 +25,7 @@ import assistantBriefRouter from "./assistantBrief";
 import tradeIntelligenceRouter from "./tradeIntelligence";
 import adminRouter from "./admin";
 import planRouter from "./plan";
+import upgradeRequestsRouter from "./upgradeRequests";
 
 const router: IRouter = Router();
 
@@ -58,5 +59,6 @@ router.use(assistantBriefRouter);
 router.use(tradeIntelligenceRouter);
 router.use(adminRouter);
 router.use(planRouter);
+router.use(upgradeRequestsRouter);
 
 export default router;

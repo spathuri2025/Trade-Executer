@@ -6,6 +6,9 @@ import {
   useSuspendCustomer,
   useUnsuspendCustomer,
   useDeleteCustomer,
+  useListUpgradeRequests,
+  getListUpgradeRequestsQueryKey,
+  useResolveUpgradeRequest,
   type AdminCustomer,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -31,6 +34,18 @@ const card = "hsl(var(--card))";
 const cardBorder = "1px solid hsl(var(--card-border))";
 const divider = "1px solid hsl(var(--border))";
 const muted = "hsl(var(--muted-foreground))";
+
+/**
+ * Which paywall the customer hit, in plain English. Commercially this is the
+ * useful part of a request — it shows what people are actually blocked by.
+ */
+const UPGRADE_TRIGGER_LABEL: Record<string, string> = {
+  live_trading: "live trading",
+  ai_trade_modes: "AI trade modes",
+  instrument_cap: "instrument limit",
+  ai_quota: "daily AI limit",
+  plan_card: "asked from plan card",
+};
 
 const BROKER_LABELS: Record<string, string> = {
   trading212: "Trading 212",
@@ -64,6 +79,26 @@ export default function Admin() {
   const customersQueryKey = getListAdminCustomersQueryKey();
   const { data, isLoading } = useListAdminCustomers({
     query: { queryKey: customersQueryKey, enabled: user?.role === "admin" },
+  });
+
+  const upgradeQueryKey = getListUpgradeRequestsQueryKey();
+  const { data: upgradeData } = useListUpgradeRequests({
+    query: { queryKey: upgradeQueryKey, enabled: user?.role === "admin" },
+  });
+
+  const resolveRequest = useResolveUpgradeRequest({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: upgradeQueryKey });
+        // The plan may have been granted on the customer record — refresh that too.
+        queryClient.invalidateQueries({ queryKey: customersQueryKey });
+      },
+      onError: (err: any) => {
+        const serverMessage =
+          err?.response?.data?.error ?? err?.data?.error ?? err?.error ?? err?.message;
+        toast({ title: "Couldn't update the request", description: serverMessage, variant: "destructive" });
+      },
+    },
   });
 
   const suspendMutation = useSuspendCustomer({
@@ -108,10 +143,68 @@ export default function Admin() {
   }
 
   const customers = data?.customers ?? [];
+  const upgradeRequests = upgradeData?.requests ?? [];
+  const pendingCount = upgradeData?.pendingCount ?? 0;
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <h1 className="text-2xl md:text-4xl font-light tracking-tight">Admin Centre</h1>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-2xl md:text-4xl font-light tracking-tight">Admin Centre</h1>
+        {pendingCount > 0 && (
+          <Badge variant="outline" className="text-amber-500 border-amber-500/40 bg-amber-500/10">
+            {pendingCount} upgrade {pendingCount === 1 ? "request" : "requests"}
+          </Badge>
+        )}
+      </div>
+
+      {/* Upgrade requests — a work queue, so only pending ones appear. There's
+          no self-serve checkout yet, so this is how a blocked user reaches you. */}
+      {upgradeRequests.length > 0 && (
+        <div className="rounded-lg overflow-hidden" style={{ backgroundColor: card, border: cardBorder }}>
+          <div className="px-5 py-4" style={{ borderBottom: divider }}>
+            <SectionLabel>Upgrade Requests</SectionLabel>
+          </div>
+          {upgradeRequests.map((r, idx) => (
+            <div
+              key={r.id}
+              className="px-5 py-4 flex items-start justify-between gap-4 flex-wrap"
+              style={idx < upgradeRequests.length - 1 ? { borderBottom: divider } : {}}
+            >
+              <div className="space-y-1 min-w-0">
+                <div className="text-sm font-medium">{r.email}</div>
+                <div className="text-xs" style={{ color: muted }}>
+                  On <span className="font-mono">{r.currentPlan}</span> · blocked by{" "}
+                  <span className="font-mono">{UPGRADE_TRIGGER_LABEL[r.trigger] ?? r.trigger}</span> ·{" "}
+                  {new Date(r.createdAt).toLocaleString()}
+                </div>
+                {r.message && (
+                  <div className="text-xs mt-1 italic" style={{ color: muted }}>
+                    "{r.message}"
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resolveRequest.mutate({ id: r.id, data: { status: "handled" } })}
+                  disabled={resolveRequest.isPending}
+                >
+                  Mark handled
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => resolveRequest.mutate({ id: r.id, data: { status: "dismissed" } })}
+                  disabled={resolveRequest.isPending}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">

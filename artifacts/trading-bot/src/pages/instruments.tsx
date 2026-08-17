@@ -5,8 +5,10 @@ import {
   getListInstrumentsQueryKey,
   useAddInstrument,
   useDeleteInstrument,
+  useGetPlan,
   getGetPlanQueryKey
 } from "@workspace/api-client-react";
+import { RequestUpgradeButton } from "@/components/RequestUpgradeButton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,13 @@ export default function Instruments() {
   const { data: instruments, isLoading } = useListInstruments({
     query: { queryKey: getListInstrumentsQueryKey() }
   });
+
+  const { data: planStatus } = useGetPlan({ query: { queryKey: getGetPlanQueryKey() } });
+  // null means the plan is uncapped — the API sends null rather than Infinity,
+  // which isn't valid JSON.
+  const instrumentCap = planStatus?.limits.maxInstruments ?? null;
+  const instrumentsUsed = planStatus?.usage.instruments ?? instruments?.length ?? 0;
+  const atInstrumentCap = instrumentCap != null && instrumentsUsed >= instrumentCap;
 
   const addMutation = useAddInstrument({
     mutation: {
@@ -76,9 +85,22 @@ export default function Instruments() {
         <Card className="md:col-span-1 h-fit">
           <CardHeader>
             <CardTitle>Add Instrument</CardTitle>
-            <CardDescription>Track a new ticker</CardDescription>
+            <CardDescription>
+              {instrumentCap == null
+                ? "Track a new ticker"
+                : `Tracking ${instrumentsUsed} of ${instrumentCap} on your plan`}
+            </CardDescription>
           </CardHeader>
           <CardContent>
+            {atInstrumentCap && (
+              <div className="text-xs rounded-md p-3 mb-4 border border-border bg-muted/30 text-muted-foreground space-y-2">
+                <p>
+                  You're tracking the maximum {instrumentCap} instruments your plan allows. Remove
+                  one to add another, or upgrade to track more.
+                </p>
+                <RequestUpgradeButton trigger="instrument_cap" />
+              </div>
+            )}
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Ticker Symbol</label>
@@ -99,7 +121,11 @@ export default function Instruments() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={addMutation.isPending}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={addMutation.isPending || atInstrumentCap}
+              >
                 {addMutation.isPending ? "Adding..." : "Add Instrument"}
               </Button>
             </form>

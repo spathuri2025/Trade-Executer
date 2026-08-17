@@ -8,6 +8,7 @@ import {
   contractsTable,
   tradesTable,
   signalsTable,
+  upgradeRequestsTable,
   type SubscriptionRow,
 } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAdmin";
@@ -296,6 +297,75 @@ router.get("/admin/contracts/:contractId/download", async (req, res): Promise<vo
   res.set("Content-Type", row.fileType);
   res.set("Content-Disposition", `attachment; filename="${row.fileName.replace(/"/g, "")}"`);
   res.send(Buffer.from(row.fileData, "base64"));
+});
+
+/**
+ * Upgrade requests waiting to be actioned. Returns pending ones only — this is
+ * a work queue, not an archive — joined to the customer so the admin can see
+ * who is asking, what blocked them, and what plan they're on now, without
+ * cross-referencing the customer list.
+ */
+router.get("/admin/upgrade-requests", async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: upgradeRequestsTable.id,
+      userId: upgradeRequestsTable.userId,
+      email: usersTable.email,
+      trigger: upgradeRequestsTable.trigger,
+      message: upgradeRequestsTable.message,
+      createdAt: upgradeRequestsTable.createdAt,
+      plan: subscriptionsTable.plan,
+      status: subscriptionsTable.status,
+    })
+    .from(upgradeRequestsTable)
+    .innerJoin(usersTable, eq(usersTable.id, upgradeRequestsTable.userId))
+    .leftJoin(subscriptionsTable, eq(subscriptionsTable.userId, upgradeRequestsTable.userId))
+    .where(eq(upgradeRequestsTable.status, "pending"))
+    .orderBy(desc(upgradeRequestsTable.createdAt));
+
+  res.set("Cache-Control", "no-store");
+  res.json({
+    pendingCount: rows.length,
+    requests: rows.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      email: r.email,
+      trigger: r.trigger,
+      message: r.message,
+      createdAt: r.createdAt.toISOString(),
+      // Current plan, so the admin can see what they're upgrading FROM.
+      currentPlan: r.plan ?? "free",
+      currentStatus: r.status ?? "active",
+    })),
+  });
+});
+
+/** Mark a request handled (plan granted) or dismissed (declined / spam). */
+router.patch("/admin/upgrade-requests/:id", async (req, res): Promise<void> => {
+  const id = parseUserId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid request id" });
+    return;
+  }
+
+  const status = (req.body ?? {})["status"];
+  if (status !== "handled" && status !== "dismissed") {
+    res.status(400).json({ error: "status must be 'handled' or 'dismissed'" });
+    return;
+  }
+
+  const [row] = await db
+    .update(upgradeRequestsTable)
+    .set({ status, resolvedAt: new Date() })
+    .where(eq(upgradeRequestsTable.id, id))
+    .returning();
+
+  if (!row) {
+    res.status(404).json({ error: "Upgrade request not found" });
+    return;
+  }
+
+  res.json({ id: row.id, status: row.status });
 });
 
 export default router;

@@ -1039,6 +1039,84 @@ paths:
               schema:
                 $ref: "#/components/schemas/PlanStatus"
 
+  /upgrade-requests:
+    post:
+      operationId: createUpgradeRequest
+      tags: [plan]
+      summary: Ask to be upgraded to a paid plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeRequestInput"
+      responses:
+        "201":
+          description: Request recorded (or the existing pending one updated)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeRequestCreated"
+
+  /upgrade-requests/mine:
+    get:
+      operationId: getMyUpgradeRequest
+      tags: [plan]
+      summary: The caller's own pending upgrade request, if any
+      responses:
+        "200":
+          description: Pending request or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyUpgradeRequest"
+
+  /admin/upgrade-requests:
+    get:
+      operationId: listUpgradeRequests
+      tags: [admin]
+      summary: Pending upgrade requests awaiting action
+      responses:
+        "200":
+          description: Pending requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeRequestQueue"
+
+  /admin/upgrade-requests/{id}:
+    patch:
+      operationId: resolveUpgradeRequest
+      tags: [admin]
+      summary: Mark an upgrade request handled or dismissed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [handled, dismissed]
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: integer }
+                  status: { type: string }
+
   /assistant/daily-brief:
     get:
       operationId: getAssistantDailyBrief
@@ -2369,6 +2447,69 @@ components:
           type: number
         trades:
           type: integer
+
+    UpgradeTrigger:
+      type: string
+      description: Which paywall prompted the request.
+      enum: [live_trading, ai_trade_modes, instrument_cap, ai_quota, plan_card]
+
+    UpgradeRequestInput:
+      type: object
+      required: [trigger]
+      properties:
+        trigger:
+          $ref: "#/components/schemas/UpgradeTrigger"
+        message:
+          type: string
+          maxLength: 1000
+
+    UpgradeRequestCreated:
+      type: object
+      required: [id, status, alreadyPending]
+      properties:
+        id: { type: integer }
+        status: { type: string }
+        alreadyPending:
+          type: boolean
+          description: True when an existing pending request was updated rather than a new one created.
+
+    MyUpgradeRequest:
+      type: object
+      required: [pending, plan]
+      properties:
+        plan:
+          type: string
+          enum: [free, starter, pro, enterprise]
+        pending:
+          type: ["object", "null"]
+          required: [id, trigger, createdAt]
+          properties:
+            id: { type: integer }
+            trigger:
+              $ref: "#/components/schemas/UpgradeTrigger"
+            message: { type: ["string", "null"] }
+            createdAt: { type: string, format: date-time }
+
+    UpgradeRequestQueue:
+      type: object
+      required: [pendingCount, requests]
+      properties:
+        pendingCount: { type: integer }
+        requests:
+          type: array
+          items:
+            type: object
+            required: [id, userId, email, trigger, createdAt, currentPlan, currentStatus]
+            properties:
+              id: { type: integer }
+              userId: { type: integer }
+              email: { type: string }
+              trigger:
+                $ref: "#/components/schemas/UpgradeTrigger"
+              message: { type: ["string", "null"] }
+              createdAt: { type: string, format: date-time }
+              currentPlan: { type: string }
+              currentStatus: { type: string }
 
     PlanStatus:
       type: object

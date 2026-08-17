@@ -16,3 +16,4 @@ export * from "./botConfig";
 export * from "./subscriptions";
 export * from "./contracts";
 export * from "./aiUsage";
+export * from "./upgradeRequests";

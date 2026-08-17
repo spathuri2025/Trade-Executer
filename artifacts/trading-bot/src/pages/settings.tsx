@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RequestUpgradeButton } from "@/components/RequestUpgradeButton";
 import { Play, Square, Link2, Unlink } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
@@ -228,11 +229,16 @@ export default function Settings() {
       {planStatus && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-3">
+            <CardTitle className="flex items-center gap-3 flex-wrap">
               Your Plan
               <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded border border-primary/40 bg-primary/10 text-primary">
                 {planStatus.plan}
               </span>
+              {planStatus.plan !== "enterprise" && (
+                <span className="ml-auto">
+                  <RequestUpgradeButton trigger="plan_card" />
+                </span>
+              )}
             </CardTitle>
             <CardDescription>
               {planStatus.limits.liveTrading
@@ -472,9 +478,12 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="space-y-3">
           {aiModesLocked && (
-            <div className="text-xs rounded-md p-3 border border-border bg-muted/30 text-muted-foreground">
-              AI trade modes aren't included in your plan — the bot uses the moving-average
-              strategy on its own. Upgrade to Pro to let AI review or make trade decisions.
+            <div className="text-xs rounded-md p-3 border border-border bg-muted/30 text-muted-foreground flex items-center justify-between gap-3 flex-wrap">
+              <span>
+                AI trade modes aren't included in your plan — the bot uses the moving-average
+                strategy on its own. Upgrade to Pro to let AI review or make trade decisions.
+              </span>
+              <RequestUpgradeButton trigger="ai_trade_modes" />
             </div>
           )}
           {AI_MODES.map((mode) => {
@@ -786,12 +795,15 @@ export default function Settings() {
                     : `Log signals without executing real trades on ${BROKER_LABELS[config.broker]}`}
                 </div>
               </div>
-              <Switch
-                checked={liveTradingLocked ? true : config.dryRun}
-                disabled={liveTradingLocked}
-                onCheckedChange={(checked) => setConfig({ ...config, dryRun: checked })}
-                data-testid="switch-dry-run"
-              />
+              <div className="flex items-center gap-3 shrink-0">
+                {liveTradingLocked && <RequestUpgradeButton trigger="live_trading" />}
+                <Switch
+                  checked={liveTradingLocked ? true : config.dryRun}
+                  disabled={liveTradingLocked}
+                  onCheckedChange={(checked) => setConfig({ ...config, dryRun: checked })}
+                  data-testid="switch-dry-run"
+                />
+              </div>
             </div>
 
             <Button
