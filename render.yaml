@@ -28,10 +28,14 @@ services:
     # whose vite config still requires Replit-injected PORT/BASE_PATH and so
     # fails here. Scoping the build keeps deploys fast and stops an unrelated
     # sandbox from being able to break production.
+    # Regenerates the API client from openapi.yaml as part of every build, so
+    # the deployed client can never drift from the spec — and so changing an
+    # endpoint doesn't require a machine with Node just to run codegen before
+    # deploying. (The codegen script also runs typecheck:libs.)
     buildCommand: >-
       corepack enable &&
       pnpm install --frozen-lockfile &&
-      pnpm run typecheck:libs &&
+      pnpm --filter @workspace/api-spec run codegen &&
       pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build
     startCommand: pnpm --filter @workspace/api-server run start
     healthCheckPath: /api/healthz

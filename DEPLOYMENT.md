@@ -69,7 +69,7 @@ manually with:
 | Setting | Value |
 |---|---|
 | Runtime | Node |
-| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm run typecheck:libs && pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build` |
+| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @workspace/api-spec run codegen && pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build` |
 | Start command | `pnpm --filter @workspace/api-server run start` |
 | Health check path | `/api/healthz` |
 | Instances | **1** |
