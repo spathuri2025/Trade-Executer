@@ -23,3 +23,4 @@ export * from "./supportThreads";
 export * from "./supportMessages";
 export * from "./notifications";
 export * from "./announcements";
+export * from "./auditLog";

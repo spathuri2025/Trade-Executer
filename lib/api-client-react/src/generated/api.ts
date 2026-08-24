@@ -62,6 +62,7 @@ import type {
   LatestMarketBrainResult,
   ListAdminSupportThreads200,
   ListAnnouncements200,
+  ListAuditLog200,
   ListMarketNewsParams,
   ListPlans200,
   ListSignalsParams,
@@ -5153,6 +5154,85 @@ export const useSendAdminSupportReply = <TError = ErrorType<AssistantError>,
       > => {
       return useMutation(getSendAdminSupportReplyMutationOptions(options));
     }
+
+export const getListAuditLogUrl = () => {
+
+
+
+
+  return `/api/admin/audit-log`
+}
+
+/**
+ * Read-only by design. There is deliberately no endpoint to edit or delete entries: a log an admin can rewrite answers nothing.
+
+ * @summary Admin audit trail — who did what, to whom, and when
+ */
+export const listAuditLog = async ( options?: RequestInit): Promise<ListAuditLog200> => {
+
+  return customFetch<ListAuditLog200>(getListAuditLogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAuditLogQueryKey = () => {
+    return [
+    `/api/admin/audit-log`
+    ] as const;
+    }
+
+
+export const getListAuditLogQueryOptions = <TData = Awaited<ReturnType<typeof listAuditLog>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAuditLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAuditLogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditLog>>> = ({ signal }) => listAuditLog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAuditLog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAuditLogQueryResult = NonNullable<Awaited<ReturnType<typeof listAuditLog>>>
+export type ListAuditLogQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Admin audit trail — who did what, to whom, and when
+ */
+
+export function useListAuditLog<TData = Awaited<ReturnType<typeof listAuditLog>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAuditLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAuditLogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListAnnouncementsUrl = () => {
 

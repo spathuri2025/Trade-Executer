@@ -295,6 +295,11 @@ export default function Dashboard() {
             ) : positions && positions.length > 0 ? (
               positions.map((pos, idx) => {
                 const profit = pos.pnl >= 0;
+                // Distance to each broker-side exit, as a percentage of the
+                // current price. Absolute value: for a short the levels sit the
+                // other way round, and "3.1% away" reads correctly either way.
+                const away = (level: number) =>
+                  pos.currentPrice > 0 ? Math.abs(((level - pos.currentPrice) / pos.currentPrice) * 100) : 0;
                 return (
                   <div
                     key={`${pos.ticker}-${idx}`}
@@ -307,6 +312,30 @@ export default function Dashboard() {
                         <div className="text-sm font-medium">{pos.ticker}</div>
                         <div className="text-xs tabular-nums mt-0.5" style={{ color: muted }}>
                           {pos.quantity} units · avg {pos.averagePrice.toFixed(2)}
+                        </div>
+                        {/* Where this position exits WITHOUT the bot — these sit
+                            at the broker and hold even if the app is offline. */}
+                        <div className="text-xs tabular-nums mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {pos.stopLevel != null ? (
+                            <span style={{ color: "rgba(248,113,113,0.85)" }} data-testid={`stop-${pos.ticker}`}>
+                              Stop {pos.stopLevel.toFixed(2)}
+                              <span style={{ color: muted }}> · {away(pos.stopLevel).toFixed(1)}% away</span>
+                            </span>
+                          ) : (
+                            <span style={{ color: amber }} data-testid={`stop-${pos.ticker}`}>
+                              No stop-loss set
+                            </span>
+                          )}
+                          {pos.takeProfitLevel != null ? (
+                            <span style={{ color: "rgba(16,185,129,0.85)" }} data-testid={`target-${pos.ticker}`}>
+                              Target {pos.takeProfitLevel.toFixed(2)}
+                              <span style={{ color: muted }}> · {away(pos.takeProfitLevel).toFixed(1)}% away</span>
+                            </span>
+                          ) : (
+                            <span style={{ color: muted }} data-testid={`target-${pos.ticker}`}>
+                              No target set
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

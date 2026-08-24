@@ -31,6 +31,17 @@ export interface NormalizedPosition {
   pnlPercent: number;
   /** BUY = long, SELL = short. Closing a position means placing the opposite side. */
   direction: "BUY" | "SELL";
+  /**
+   * Broker-side exit levels, where the broker will close this position without
+   * the bot being involved at all — they hold even if this app is offline,
+   * mid-deploy, or stopped. Null means no level is set, or the broker doesn't
+   * support them.
+   *
+   * Surfacing these is the point: the app used to show P&L but never where a
+   * position would exit, so "when does this close?" was unanswerable from the UI.
+   */
+  stopLevel: number | null;
+  takeProfitLevel: number | null;
 }
 
 export interface NormalizedAccount {
@@ -61,6 +72,10 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
         pnl,
         pnlPercent,
         direction: p.position.direction,
+        stopLevel: p.position.stopLevel,
+        // Capital.com names take-profit `limitLevel` on a POSITION but
+        // `profitLevel` when placing an order — same concept, two names.
+        takeProfitLevel: p.position.limitLevel,
       };
     });
   }
@@ -76,6 +91,11 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
     // Trading 212's Invest/ISA API has no short-selling and no direction field
     // of its own — every position returned here is structurally long.
     direction: "BUY" as const,
+    // T212's Invest/ISA API carries no broker-side stop/limit on a position;
+    // null here means "none set", which the UI states plainly rather than
+    // implying protection that isn't there.
+    stopLevel: null,
+    takeProfitLevel: null,
   }));
 }
 

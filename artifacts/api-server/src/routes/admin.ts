@@ -19,6 +19,7 @@ import { getUserBrokerConnectionStatus } from "../lib/brokerCredentialsService";
 import { peekBotRunning, stopBot } from "../lib/botEngine";
 import { evictCapitalStream } from "../lib/capitalStream";
 import { notifyUser, broadcastAnnouncement } from "../lib/notificationService";
+import { recordAudit, listAudit, lookupEmail } from "../lib/auditService";
 
 const router: IRouter = Router();
 // Scoped to /admin paths, NOT router.use(requireAdmin) bare. This router is
@@ -111,6 +112,13 @@ router.post("/admin/customers/:id/suspend", async (req, res): Promise<void> => {
   await stopBot(id);
   evictCapitalStream(id);
 
+  await recordAudit(req.user!, {
+    action: "customer_suspended",
+    targetUserId: id,
+    targetEmail: updated.email,
+    detail: "Account suspended; bot stopped and live stream evicted.",
+  });
+
   res.json({ id: updated.id, suspendedAt: updated.suspendedAt?.toISOString() ?? null });
 });
 
@@ -126,6 +134,12 @@ router.post("/admin/customers/:id/unsuspend", async (req, res): Promise<void> =>
     res.status(404).json({ error: "Customer not found" });
     return;
   }
+
+  await recordAudit(req.user!, {
+    action: "customer_unsuspended",
+    targetUserId: id,
+    targetEmail: updated.email,
+  });
 
   res.json({ id: updated.id, suspendedAt: null });
 });
@@ -144,11 +158,23 @@ router.delete("/admin/customers/:id", async (req, res): Promise<void> => {
   await stopBot(id);
   evictCapitalStream(id);
 
+  // Captured BEFORE the delete — afterwards the email is gone and the audit
+  // row could only say "user 2", which is the uninformative answer this whole
+  // table exists to prevent.
+  const targetEmail = await lookupEmail(id);
+
   const [deleted] = await db.delete(usersTable).where(eq(usersTable.id, id)).returning();
   if (!deleted) {
     res.status(404).json({ error: "Customer not found" });
     return;
   }
+
+  await recordAudit(req.user!, {
+    action: "customer_deleted",
+    targetUserId: id,
+    targetEmail: targetEmail ?? undefined,
+    detail: "Account and all associated data permanently deleted.",
+  });
 
   res.sendStatus(204);
 });
@@ -201,11 +227,26 @@ router.put("/admin/customers/:id/subscription", async (req, res): Promise<void> 
     renewsAt,
     updatedAt: new Date(),
   };
+  // Read the prior state first so the audit entry records the CHANGE, not just
+  // the new value — "free → pro" is the useful record, "pro" alone isn't.
+  const [before] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, id));
+
   const [row] = await db
     .insert(subscriptionsTable)
     .values(values)
     .onConflictDoUpdate({ target: subscriptionsTable.userId, set: values })
     .returning();
+
+  const wasPlan = before?.plan ?? "none";
+  const wasStatus = before?.status ?? "none";
+  const wasRenews = before?.renewsAt?.toISOString().slice(0, 10) ?? "never";
+  const nowRenews = renewsAt?.toISOString().slice(0, 10) ?? "never";
+  await recordAudit(req.user!, {
+    action: "subscription_updated",
+    targetUserId: id,
+    targetEmail: await lookupEmail(id) ?? undefined,
+    detail: `plan: ${wasPlan} → ${plan}; status: ${wasStatus} → ${status}; renews: ${wasRenews} → ${nowRenews}`,
+  });
 
   res.json(subscriptionToJson(row ?? null));
 });
@@ -380,6 +421,13 @@ router.patch("/admin/upgrade-requests/:id", async (req, res): Promise<void> => {
   // Close the loop with the requester: they asked from inside the app, so the
   // outcome should arrive the same way (plus email). "Handled" nearly always
   // means the plan was granted on the customer record moments earlier.
+  await recordAudit(req.user!, {
+    action: "upgrade_request_resolved",
+    targetUserId: row.userId,
+    targetEmail: await lookupEmail(row.userId) ?? undefined,
+    detail: `Upgrade request #${row.id} marked ${status}.`,
+  });
+
   if (status === "handled") {
     await notifyUser(row.userId, {
       type: "upgrade_handled",
@@ -516,6 +564,13 @@ router.post("/admin/support/threads/:id/messages", async (req, res): Promise<voi
     link: "/inbox",
   });
 
+  await recordAudit(req.user!, {
+    action: "support_replied",
+    targetUserId: thread.userId,
+    targetEmail: await lookupEmail(thread.userId) ?? undefined,
+    detail: `Replied on thread #${threadId} "${thread.subject}".`,
+  });
+
   res.sendStatus(204);
 });
 
@@ -541,6 +596,14 @@ router.patch("/admin/support/threads/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Thread not found" });
     return;
   }
+
+  await recordAudit(req.user!, {
+    action: "support_thread_status_changed",
+    targetUserId: row.userId,
+    targetEmail: await lookupEmail(row.userId) ?? undefined,
+    detail: `Thread #${row.id} set to ${status}.`,
+  });
+
   res.json({ id: row.id, status: row.status });
 });
 
@@ -564,11 +627,24 @@ router.post("/admin/announcements", async (req, res): Promise<void> => {
 
   try {
     const result = await broadcastAnnouncement(title, text, req.user!.id);
+    await recordAudit(req.user!, {
+      action: "announcement_sent",
+      detail: `"${title}" sent to ${result.recipients} user${result.recipients === 1 ? "" : "s"}.`,
+    });
     res.status(201).json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to broadcast announcement");
     res.status(500).json({ error: "Failed to send the announcement" });
   }
+});
+
+/**
+ * The admin audit trail. Read-only by design — there is no endpoint to edit or
+ * delete entries, because a log an admin can rewrite answers nothing.
+ */
+router.get("/admin/audit-log", async (_req, res): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  res.json({ entries: await listAudit(100) });
 });
 
 router.get("/admin/announcements", async (_req, res): Promise<void> => {

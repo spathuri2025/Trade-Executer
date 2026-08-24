@@ -366,6 +366,17 @@ export interface Quote {
   currency?: string | null;
 }
 
+/**
+ * BUY = long, SELL = short.
+ */
+export type PositionDirection = typeof PositionDirection[keyof typeof PositionDirection];
+
+
+export const PositionDirection = {
+  BUY: 'BUY',
+  SELL: 'SELL',
+} as const;
+
 export interface Position {
   ticker: string;
   quantity: number;
@@ -373,6 +384,20 @@ export interface Position {
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
+  /** BUY = long, SELL = short. */
+  direction: PositionDirection;
+  /**
+     * Broker-side stop-loss price. The broker closes the position here without the bot's involvement — it holds even if this app is offline or stopped. Null means no stop is set.
+
+     * @nullable
+     */
+  stopLevel: number | null;
+  /**
+     * Broker-side take-profit price, with the same guarantee as stopLevel. Null means no target is set.
+
+     * @nullable
+     */
+  takeProfitLevel: number | null;
 }
 
 export interface AccountSummary {
@@ -1180,6 +1205,36 @@ export interface NotificationList {
   notifications: AppNotification[];
 }
 
+export type AuditEntryAction = typeof AuditEntryAction[keyof typeof AuditEntryAction];
+
+
+export const AuditEntryAction = {
+  customer_deleted: 'customer_deleted',
+  customer_suspended: 'customer_suspended',
+  customer_unsuspended: 'customer_unsuspended',
+  subscription_updated: 'subscription_updated',
+  upgrade_request_resolved: 'upgrade_request_resolved',
+  announcement_sent: 'announcement_sent',
+  support_replied: 'support_replied',
+  support_thread_status_changed: 'support_thread_status_changed',
+} as const;
+
+export interface AuditEntry {
+  id: number;
+  /** The admin who performed the action. */
+  actorEmail: string;
+  action: AuditEntryAction;
+  /**
+     * Who it was done to. Captured at action time, so it still reads correctly after the account itself is gone.
+
+     * @nullable
+     */
+  targetEmail: string | null;
+  /** @nullable */
+  detail: string | null;
+  createdAt: string;
+}
+
 export interface Announcement {
   id: number;
   title: string;
@@ -1622,6 +1677,10 @@ export type ListSupportThreads200 = {
 
 export type ListAdminSupportThreads200 = {
   threads: AdminSupportThread[];
+};
+
+export type ListAuditLog200 = {
+  entries: AuditEntry[];
 };
 
 export type ListAnnouncements200 = {

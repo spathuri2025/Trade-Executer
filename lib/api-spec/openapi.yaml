@@ -1384,6 +1384,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/AssistantError"
 
+  /admin/audit-log:
+    get:
+      operationId: listAuditLog
+      tags: [admin]
+      summary: Admin audit trail — who did what, to whom, and when
+      description: >
+        Read-only by design. There is deliberately no endpoint to edit or delete
+        entries: a log an admin can rewrite answers nothing.
+      responses:
+        "200":
+          description: Most recent entries, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEntry"
+
   /admin/announcements:
     get:
       operationId: listAnnouncements
@@ -2043,7 +2065,7 @@ components:
 
     Position:
       type: object
-      required: [ticker, quantity, averagePrice, currentPrice, pnl, pnlPercent]
+      required: [ticker, quantity, averagePrice, currentPrice, pnl, pnlPercent, direction, stopLevel, takeProfitLevel]
       properties:
         ticker:
           type: string
@@ -2057,6 +2079,21 @@ components:
           type: number
         pnlPercent:
           type: number
+        direction:
+          type: string
+          enum: [BUY, SELL]
+          description: BUY = long, SELL = short.
+        stopLevel:
+          type: ["number", "null"]
+          description: >
+            Broker-side stop-loss price. The broker closes the position here
+            without the bot's involvement — it holds even if this app is
+            offline or stopped. Null means no stop is set.
+        takeProfitLevel:
+          type: ["number", "null"]
+          description: >
+            Broker-side take-profit price, with the same guarantee as stopLevel.
+            Null means no target is set.
 
     AccountSummary:
       type: object
@@ -3015,6 +3052,36 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AppNotification"
+
+    AuditEntry:
+      type: object
+      required: [id, actorEmail, action, targetEmail, detail, createdAt]
+      properties:
+        id:
+          type: integer
+        actorEmail:
+          type: string
+          description: The admin who performed the action.
+        action:
+          type: string
+          enum:
+            - customer_deleted
+            - customer_suspended
+            - customer_unsuspended
+            - subscription_updated
+            - upgrade_request_resolved
+            - announcement_sent
+            - support_replied
+            - support_thread_status_changed
+        targetEmail:
+          type: ["string", "null"]
+          description: >
+            Who it was done to. Captured at action time, so it still reads
+            correctly after the account itself is gone.
+        detail:
+          type: ["string", "null"]
+        createdAt:
+          type: string
 
     Announcement:
       type: object

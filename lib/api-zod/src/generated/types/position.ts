@@ -5,6 +5,7 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { PositionDirection } from './positionDirection';
 
 export interface Position {
   ticker: string;
@@ -13,4 +14,18 @@ export interface Position {
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
+  /** BUY = long, SELL = short. */
+  direction: PositionDirection;
+  /**
+     * Broker-side stop-loss price. The broker closes the position here without the bot's involvement — it holds even if this app is offline or stopped. Null means no stop is set.
+
+     * @nullable
+     */
+  stopLevel: number | null;
+  /**
+     * Broker-side take-profit price, with the same guarantee as stopLevel. Null means no target is set.
+
+     * @nullable
+     */
+  takeProfitLevel: number | null;
 }

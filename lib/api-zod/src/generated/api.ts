@@ -382,7 +382,10 @@ export const ListPositionsResponseItem = zod.object({
   "averagePrice": zod.number(),
   "currentPrice": zod.number(),
   "pnl": zod.number(),
-  "pnlPercent": zod.number()
+  "pnlPercent": zod.number(),
+  "direction": zod.enum(['BUY', 'SELL']).describe('BUY = long, SELL = short.'),
+  "stopLevel": zod.number().nullable().describe('Broker-side stop-loss price. The broker closes the position here without the bot\'s involvement — it holds even if this app is offline or stopped. Null means no stop is set.\n'),
+  "takeProfitLevel": zod.number().nullable().describe('Broker-side take-profit price, with the same guarantee as stopLevel. Null means no target is set.\n')
 })
 export const ListPositionsResponse = zod.array(ListPositionsResponseItem)
 
@@ -1190,6 +1193,23 @@ export const sendAdminSupportReplyBodyBodyMax = 5000;
 
 export const SendAdminSupportReplyBody = zod.object({
   "body": zod.string().max(sendAdminSupportReplyBodyBodyMax)
+})
+
+
+/**
+ * Read-only by design. There is deliberately no endpoint to edit or delete entries: a log an admin can rewrite answers nothing.
+
+ * @summary Admin audit trail — who did what, to whom, and when
+ */
+export const ListAuditLogResponse = zod.object({
+  "entries": zod.array(zod.object({
+  "id": zod.number(),
+  "actorEmail": zod.string().describe('The admin who performed the action.'),
+  "action": zod.enum(['customer_deleted', 'customer_suspended', 'customer_unsuspended', 'subscription_updated', 'upgrade_request_resolved', 'announcement_sent', 'support_replied', 'support_thread_status_changed']),
+  "targetEmail": zod.string().nullable().describe('Who it was done to. Captured at action time, so it still reads correctly after the account itself is gone.\n'),
+  "detail": zod.string().nullable(),
+  "createdAt": zod.string()
+}))
 })
 
 
