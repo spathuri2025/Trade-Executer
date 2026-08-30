@@ -9,4 +9,6 @@
 export interface SweepStarted {
   sweepId: number;
   status: string;
+  scope?: string;
+  instruments?: number;
 }

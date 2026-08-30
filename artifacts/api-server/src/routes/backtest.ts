@@ -8,7 +8,8 @@ import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion, type Back
 import { requiredBars, type StrategyName } from "../lib/strategyRouter";
 import { ATR_MOMENTUM_PARAMS, atrMomentumRequiredBars } from "../lib/atrMomentumStrategy";
 import { VWAP_REVERSION_PARAMS, vwapReversionRequiredBars } from "../lib/vwapReversionStrategy";
-import { runSweep } from "../lib/backtestSweep";
+import { runSweep, WATCHLIST_OPTIONS, UNIVERSE_OPTIONS } from "../lib/backtestSweep";
+import { getBrokerUniverse } from "../lib/broker";
 
 const router: IRouter = Router();
 
@@ -250,14 +251,42 @@ router.post("/backtest/sweep", async (req, res): Promise<void> => {
     return;
   }
 
-  const instruments = await db
-    .select()
-    .from(instrumentsTable)
-    .where(eq(instrumentsTable.userId, userId));
-  const enabled = instruments.filter((i) => i.enabled).map((i) => ({ ticker: i.ticker, name: i.name }));
-  if (enabled.length === 0) {
-    res.status(400).json({ error: "Enable at least one instrument first" });
-    return;
+  // "universe" sweeps the broker's whole tradeable catalogue rather than the
+  // user's watchlist. That is the honest way to use hundreds of instruments:
+  // search them for an edge BEFORE trading them, since adding instruments to a
+  // negative-expectancy system only makes the losses more consistent.
+  const scope = (req.body ?? {})["scope"] === "universe" ? "universe" : "watchlist";
+  const requestedMax = Number((req.body ?? {})["maxInstruments"]);
+  const maxInstruments =
+    Number.isFinite(requestedMax) && requestedMax > 0 ? Math.min(Math.floor(requestedMax), 400) : 150;
+
+  let enabled: Array<{ ticker: string; name: string }>;
+  if (scope === "universe") {
+    let universe;
+    try {
+      universe = await getBrokerUniverse(userId, credentials);
+    } catch (err) {
+      req.log.error({ err }, "Could not fetch the broker's instrument universe");
+      res.status(502).json({ error: "Could not fetch the instrument list from your broker" });
+      return;
+    }
+    if (universe.length === 0) {
+      res.status(400).json({ error: "Your broker did not return any tradeable instruments" });
+      return;
+    }
+    // Capped: every extra instrument is more broker calls AND one more chance
+    // for a false winner to appear, so breadth is deliberately bounded.
+    enabled = universe.slice(0, maxInstruments).map((m) => ({ ticker: m.epic, name: m.instrumentName }));
+  } else {
+    const instruments = await db
+      .select()
+      .from(instrumentsTable)
+      .where(eq(instrumentsTable.userId, userId));
+    enabled = instruments.filter((i) => i.enabled).map((i) => ({ ticker: i.ticker, name: i.name }));
+    if (enabled.length === 0) {
+      res.status(400).json({ error: "Enable at least one instrument first" });
+      return;
+    }
   }
 
   const [row] = await db
@@ -274,12 +303,18 @@ router.post("/backtest/sweep", async (req, res): Promise<void> => {
   // so a crash cannot leave the sweep "running" forever.
   void (async () => {
     try {
-      const { combos, summary } = await runSweep(userId, credentials, enabled, async (done, total) => {
-        await db
-          .update(backtestSweepsTable)
-          .set({ combosDone: done, combosTotal: total })
-          .where(eq(backtestSweepsTable.id, row.id));
-      });
+      const { combos, summary } = await runSweep(
+        userId,
+        credentials,
+        enabled,
+        async (done, total) => {
+          await db
+            .update(backtestSweepsTable)
+            .set({ combosDone: done, combosTotal: total })
+            .where(eq(backtestSweepsTable.id, row.id));
+        },
+        scope === "universe" ? UNIVERSE_OPTIONS : WATCHLIST_OPTIONS,
+      );
 
       await db
         .update(backtestSweepsTable)
@@ -305,7 +340,7 @@ router.post("/backtest/sweep", async (req, res): Promise<void> => {
     }
   })();
 
-  res.status(202).json({ sweepId: row.id, status: "running" });
+  res.status(202).json({ sweepId: row.id, status: "running", scope, instruments: enabled.length });
 });
 
 /** The caller's most recent sweep — progress while running, results when done. */

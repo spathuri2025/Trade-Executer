@@ -11,6 +11,8 @@ import {
   getCapitalPriceHistory,
   getCapitalCandles,
   getCapitalCandlesPaged,
+  getCapitalMarketUniverse,
+  type CapitalMarketSummary,
   getCapitalQuote,
   placeCapitalOrder,
   type Candle,
@@ -197,6 +199,21 @@ export async function getBrokerCandlesPaged(
     return getCapitalCandlesPaged(userId, credentials.capital, ticker, resolution, targetBars);
   }
   return getBrokerCandles(userId, credentials, ticker, targetBars, resolution);
+}
+
+/**
+ * Every instrument the broker will let this account trade. Capital.com only —
+ * Trading 212's API exposes no comparable catalogue, so it returns empty
+ * rather than a misleading partial list.
+ */
+export async function getBrokerUniverse(
+  userId: number,
+  credentials: UserBrokerCredentials
+): Promise<CapitalMarketSummary[]> {
+  if (credentials.broker === "capitalcom") {
+    return getCapitalMarketUniverse(userId, credentials.capital);
+  }
+  return [];
 }
 
 export interface NormalizedQuote {

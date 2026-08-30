@@ -619,6 +619,16 @@ export const GetScannerResultsResponse = zod.array(GetScannerResultsResponseItem
 
 
 /**
+ * Returns immediately; the sweep runs in the background making paced broker calls for several minutes. Poll GET /backtest/sweep for progress and results. One running sweep per user. Scope "universe" sweeps the broker's whole tradeable catalogue (capped) at two timeframes rather than the user's watchlist at five.
+ * @summary Start a parameter sweep across instruments, timeframes and strategies
+ */
+export const StartBacktestSweepBody = zod.object({
+  "scope": zod.enum(['watchlist', 'universe']).optional().describe('watchlist (default) sweeps enabled instruments; universe sweeps the broker\'s catalogue.'),
+  "maxInstruments": zod.number().optional().describe('Cap for universe scope. Defaults to 150, hard limit 400 — every extra instrument is more broker calls and one more chance for a false winner.')
+})
+
+
+/**
  * @summary The caller's most recent sweep — progress while running, results when done
  */
 export const GetBacktestSweepResponse = zod.object({
@@ -635,6 +645,7 @@ export const GetBacktestSweepResponse = zod.object({
   "robustCount": zod.number(),
   "outOfSamplePositiveRate": zod.number(),
   "medianOutOfSampleExpectancy": zod.number(),
+  "expectedPositiveByChance": zod.number().optional().describe('How many combinations a no-edge strategy would leave profitable out-of-sample purely by chance (half). Read the actual count against this.'),
   "verdict": zod.enum(['no-edge', 'weak', 'worth-forward-testing', 'insufficient-data']),
   "verdictText": zod.string()
 }),zod.null()]),

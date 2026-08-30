@@ -152,3 +152,43 @@ describe("combination independence — non-independent rows must not inflate the
     expect(src).toMatch(/RSI \$\{STRATEGY_PARAMS\.rsiPeriod\}/);
   });
 });
+
+describe("chance baseline — more instruments means more false winners", () => {
+  it("reports how many combinations luck alone would leave profitable", async () => {
+    // Sweeping hundreds of instruments guarantees impressive-looking winners.
+    // Showing the count next to "half of them" is what stops 84 winners from
+    // reading as a discovery when 99 were expected by chance.
+    const combos = [
+      ...Array.from({ length: 30 }, () => combo(0.002, 0.002)),
+      ...Array.from({ length: 70 }, () => combo(0.002, -0.002)),
+    ];
+    const s = summarise(combos);
+    expect(s.combosWithEnoughTrades).toBe(100);
+    expect(s.expectedPositiveByChance).toBe(50);
+    expect(s.positiveOutOfSample).toBe(30); // well BELOW chance
+    expect(s.verdict).toBe("no-edge");
+  });
+
+  it("counts only well-sampled combinations toward the baseline", async () => {
+    const combos = [
+      ...Array.from({ length: 40 }, () => combo(0.01, 0.01, 2)), // too few trades
+      ...Array.from({ length: 20 }, () => combo(0.001, 0.001)),
+    ];
+    const s = summarise(combos);
+    expect(s.expectedPositiveByChance).toBe(10);
+  });
+});
+
+describe("sweep scopes", () => {
+  it("trades depth for breadth on a market-wide run", async () => {
+    // A universe sweep touches hundreds of instruments, so it must use fewer
+    // timeframes, less history and slower pacing — otherwise it is thousands of
+    // broker calls and a rate-limit ban.
+    const { WATCHLIST_OPTIONS, UNIVERSE_OPTIONS } = await import("./backtestSweep");
+    expect(UNIVERSE_OPTIONS.resolutions.length).toBeLessThan(WATCHLIST_OPTIONS.resolutions.length);
+    expect(UNIVERSE_OPTIONS.historyBars).toBeLessThan(WATCHLIST_OPTIONS.historyBars);
+    expect(UNIVERSE_OPTIONS.paceMs).toBeGreaterThan(WATCHLIST_OPTIONS.paceMs);
+    // Still far above the 1000 bars that made three strategies untestable.
+    expect(UNIVERSE_OPTIONS.historyBars).toBeGreaterThan(1000);
+  });
+});

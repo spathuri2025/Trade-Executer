@@ -689,7 +689,15 @@ paths:
       description: >-
         Returns immediately; the sweep runs in the background making paced
         broker calls for several minutes. Poll GET /backtest/sweep for progress
-        and results. One running sweep per user.
+        and results. One running sweep per user. Scope "universe" sweeps the
+        broker's whole tradeable catalogue (capped) at two timeframes rather
+        than the user's watchlist at five.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SweepRequest"
       responses:
         "202":
           description: Sweep started
@@ -3107,6 +3115,17 @@ components:
           items:
             $ref: "#/components/schemas/AppNotification"
 
+    SweepRequest:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum: [watchlist, universe]
+          description: watchlist (default) sweeps enabled instruments; universe sweeps the broker's catalogue.
+        maxInstruments:
+          type: integer
+          description: Cap for universe scope. Defaults to 150, hard limit 400 — every extra instrument is more broker calls and one more chance for a false winner.
+
     SweepStarted:
       type: object
       required: [sweepId, status]
@@ -3115,6 +3134,10 @@ components:
           type: integer
         status:
           type: string
+        scope:
+          type: string
+        instruments:
+          type: integer
 
     SweepWindowStats:
       type: object
@@ -3187,6 +3210,9 @@ components:
           type: number
         medianOutOfSampleExpectancy:
           type: number
+        expectedPositiveByChance:
+          type: integer
+          description: How many combinations a no-edge strategy would leave profitable out-of-sample purely by chance (half). Read the actual count against this.
         verdict:
           type: string
           enum: [no-edge, weak, worth-forward-testing, insufficient-data]

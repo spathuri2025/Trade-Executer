@@ -94,6 +94,7 @@ import type {
   SupportMessageInput,
   SupportThread,
   SupportThreadDetail,
+  SweepRequest,
   SweepStarted,
   ThreadStatusInput,
   ThreadStatusResult,
@@ -2607,17 +2608,18 @@ export const getStartBacktestSweepUrl = () => {
 }
 
 /**
- * Returns immediately; the sweep runs in the background making paced broker calls for several minutes. Poll GET /backtest/sweep for progress and results. One running sweep per user.
+ * Returns immediately; the sweep runs in the background making paced broker calls for several minutes. Poll GET /backtest/sweep for progress and results. One running sweep per user. Scope "universe" sweeps the broker's whole tradeable catalogue (capped) at two timeframes rather than the user's watchlist at five.
  * @summary Start a parameter sweep across instruments, timeframes and strategies
  */
-export const startBacktestSweep = async ( options?: RequestInit): Promise<SweepStarted> => {
+export const startBacktestSweep = async (sweepRequest?: SweepRequest, options?: RequestInit): Promise<SweepStarted> => {
 
   return customFetch<SweepStarted>(getStartBacktestSweepUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sweepRequest,)
   }
 );}
 
@@ -2625,8 +2627,8 @@ export const startBacktestSweep = async ( options?: RequestInit): Promise<SweepS
 
 
 export const getStartBacktestSweepMutationOptions = <TError = ErrorType<AssistantError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,{data?: BodyType<SweepRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,{data?: BodyType<SweepRequest>}, TContext> => {
 
 const mutationKey = ['startBacktestSweep'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -2638,10 +2640,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startBacktestSweep>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startBacktestSweep>>, {data?: BodyType<SweepRequest>}> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  startBacktestSweep(requestOptions)
+          return  startBacktestSweep(data,requestOptions)
         }
 
 
@@ -2652,18 +2654,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type StartBacktestSweepMutationResult = NonNullable<Awaited<ReturnType<typeof startBacktestSweep>>>
-
+    export type StartBacktestSweepMutationBody = BodyType<SweepRequest> | undefined
     export type StartBacktestSweepMutationError = ErrorType<AssistantError>
 
     /**
  * @summary Start a parameter sweep across instruments, timeframes and strategies
  */
 export const useStartBacktestSweep = <TError = ErrorType<AssistantError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,{data?: BodyType<SweepRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof startBacktestSweep>>,
         TError,
-        void,
+        {data?: BodyType<SweepRequest>},
         TContext
       > => {
       return useMutation(getStartBacktestSweepMutationOptions(options));

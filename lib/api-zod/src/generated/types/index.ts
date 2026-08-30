@@ -167,6 +167,8 @@ export * from './supportThread';
 export * from './supportThreadDetail';
 export * from './supportThreadStatus';
 export * from './sweepCombo';
+export * from './sweepRequest';
+export * from './sweepRequestScope';
 export * from './sweepStarted';
 export * from './sweepSummary';
 export * from './sweepSummaryVerdict';

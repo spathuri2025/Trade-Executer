@@ -1233,9 +1233,29 @@ export interface NotificationList {
   notifications: AppNotification[];
 }
 
+/**
+ * watchlist (default) sweeps enabled instruments; universe sweeps the broker's catalogue.
+ */
+export type SweepRequestScope = typeof SweepRequestScope[keyof typeof SweepRequestScope];
+
+
+export const SweepRequestScope = {
+  watchlist: 'watchlist',
+  universe: 'universe',
+} as const;
+
+export interface SweepRequest {
+  /** watchlist (default) sweeps enabled instruments; universe sweeps the broker's catalogue. */
+  scope?: SweepRequestScope;
+  /** Cap for universe scope. Defaults to 150, hard limit 400 — every extra instrument is more broker calls and one more chance for a false winner. */
+  maxInstruments?: number;
+}
+
 export interface SweepStarted {
   sweepId: number;
   status: string;
+  scope?: string;
+  instruments?: number;
 }
 
 export interface SweepWindowStats {
@@ -1280,6 +1300,8 @@ export interface SweepSummary {
   robustCount: number;
   outOfSamplePositiveRate: number;
   medianOutOfSampleExpectancy: number;
+  /** How many combinations a no-edge strategy would leave profitable out-of-sample purely by chance (half). Read the actual count against this. */
+  expectedPositiveByChance?: number;
   verdict: SweepSummaryVerdict;
   verdictText: string;
 }

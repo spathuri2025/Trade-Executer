@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { FlaskConical } from "lucide-react";
 
@@ -54,6 +56,7 @@ export function BacktestSweep() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const sweepKey = getGetBacktestSweepQueryKey();
+  const [scope, setScope] = useState<"watchlist" | "universe">("watchlist");
 
   const { data, isLoading } = useGetBacktestSweep({
     query: {
@@ -65,9 +68,12 @@ export function BacktestSweep() {
 
   const start = useStartBacktestSweep({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (r) => {
         queryClient.invalidateQueries({ queryKey: sweepKey });
-        toast({ title: "Sweep started", description: "This runs for a few minutes — results appear here." });
+        toast({
+          title: "Sweep started",
+          description: `Testing ${r?.instruments ?? "your"} instrument${r?.instruments === 1 ? "" : "s"} — results appear here.`,
+        });
       },
       onError: (err: any) => {
         toast({
@@ -94,13 +100,29 @@ export function BacktestSweep() {
               <FlaskConical className="h-4 w-4" /> Strategy Sweep
             </CardTitle>
             <CardDescription>
-              Tests every instrument across five timeframes, four strategies and several parameter
-              sets — then checks whether the winners hold up on data they weren't chosen on.
+              Tests instruments across timeframes, strategies and parameter sets — then checks
+              whether the winners hold up on data they weren't chosen on. "Whole market" searches
+              the broker's catalogue for an edge instead of assuming your watchlist has one.
             </CardDescription>
           </div>
-          <Button onClick={() => start.mutate()} disabled={running || start.isPending} data-testid="button-run-sweep">
-            {running ? "Running…" : start.isPending ? "Starting…" : "Run sweep"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Select value={scope} onValueChange={(v) => setScope(v as typeof scope)}>
+              <SelectTrigger className="w-[190px]" data-testid="select-sweep-scope">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="watchlist">My instruments</SelectItem>
+                <SelectItem value="universe">Whole market (150)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={() => start.mutate({ data: { scope } })}
+              disabled={running || start.isPending}
+              data-testid="button-run-sweep"
+            >
+              {running ? "Running…" : start.isPending ? "Starting…" : "Run sweep"}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -146,6 +168,11 @@ export function BacktestSweep() {
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">Held up out-of-sample</div>
                 <div className="mt-1 font-mono">
                   {summary.positiveOutOfSample} ({Math.round(summary.outOfSamplePositiveRate * 100)}%)
+                </div>
+                {/* The number luck alone produces. Without it, "84 winners!"
+                    reads as a discovery instead of slightly below par. */}
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  ~{summary.expectedPositiveByChance} expected by chance
                 </div>
               </div>
               <div>

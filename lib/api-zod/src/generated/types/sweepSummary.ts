@@ -15,6 +15,8 @@ export interface SweepSummary {
   robustCount: number;
   outOfSamplePositiveRate: number;
   medianOutOfSampleExpectancy: number;
+  /** How many combinations a no-edge strategy would leave profitable out-of-sample purely by chance (half). Read the actual count against this. */
+  expectedPositiveByChance?: number;
   verdict: SweepSummaryVerdict;
   verdictText: string;
 }

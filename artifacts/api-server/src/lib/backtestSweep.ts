@@ -35,7 +35,7 @@ import { logger } from "./logger";
  * so three of four strategies were never actually tested. More history is the
  * only fix that does not weaken the statistics.
  */
-const HISTORY_BARS = 5000;
+const HISTORY_BARS = 5000; // watchlist default; see WATCHLIST_OPTIONS
 
 /** Fraction of the window used for fitting; the rest is held back for validation. */
 export const IN_SAMPLE_FRACTION = 0.7;
@@ -48,6 +48,33 @@ export const IN_SAMPLE_FRACTION = 0.7;
 export const MIN_TRADES_PER_WINDOW = 15;
 
 export const SWEEP_RESOLUTIONS = ["MINUTE_5", "MINUTE_15", "HOUR", "HOUR_4", "DAY"] as const;
+
+/**
+ * A market-wide sweep touches hundreds of instruments, so it trades breadth for
+ * depth: two timeframes instead of five, and 2000 bars instead of 5000. Even
+ * then it is ~4x the broker calls of a watchlist sweep, hence the slower pace.
+ *
+ * HOUR and DAY are chosen because they are where the strategies produced enough
+ * trades to be judged at all — the 5-minute grids mostly failed the sample floor.
+ */
+export interface SweepOptions {
+  resolutions: readonly string[];
+  historyBars: number;
+  /** Delay between broker fetches. Higher for wide sweeps to stay clear of rate limits. */
+  paceMs: number;
+}
+
+export const WATCHLIST_OPTIONS: SweepOptions = {
+  resolutions: SWEEP_RESOLUTIONS,
+  historyBars: HISTORY_BARS,
+  paceMs: 250,
+};
+
+export const UNIVERSE_OPTIONS: SweepOptions = {
+  resolutions: ["HOUR", "DAY"],
+  historyBars: 2000,
+  paceMs: 400,
+};
 
 /**
  * Warm-up length used for mean reversion. It takes no MA periods of its own, but
@@ -99,6 +126,14 @@ export interface SweepSummary {
   outOfSamplePositiveRate: number;
   /** Median out-of-sample expectancy across well-sampled combos, as a fraction. */
   medianOutOfSampleExpectancy: number;
+  /**
+   * How many combinations a strategy with NO edge would leave profitable
+   * out-of-sample, purely by chance (half of them). Shown next to the actual
+   * count so a big-looking number of "winners" can be read against the number
+   * that luck alone produces — the trap that widens with every extra
+   * instrument tested.
+   */
+  expectedPositiveByChance: number;
   verdict: "no-edge" | "weak" | "worth-forward-testing" | "insufficient-data";
   verdictText: string;
 }
@@ -170,6 +205,7 @@ export function summarise(combos: SweepCombo[]): SweepSummary {
   return {
     combosTested: combos.length,
     combosWithEnoughTrades: wellSampled.length,
+    expectedPositiveByChance: Math.round(wellSampled.length * 0.5),
     positiveInSample,
     positiveOutOfSample: positiveOut,
     robustCount,
@@ -219,9 +255,10 @@ export async function runSweep(
   credentials: UserBrokerCredentials,
   instruments: SweepInstrument[],
   onProgress: (done: number, total: number) => Promise<void>,
+  options: SweepOptions = WATCHLIST_OPTIONS,
 ): Promise<{ combos: SweepCombo[]; summary: SweepSummary }> {
   const combos: SweepCombo[] = [];
-  const fetchPairs = instruments.length * SWEEP_RESOLUTIONS.length;
+  const fetchPairs = instruments.length * options.resolutions.length;
   let pairsDone = 0;
 
   for (const inst of instruments) {
@@ -236,13 +273,13 @@ export async function runSweep(
       // Fail open to frictionless, same as the single-instrument backtest route.
     }
 
-    for (const resolution of SWEEP_RESOLUTIONS) {
+    for (const resolution of options.resolutions) {
       try {
         // ONE paged fetch serves both strategy families: the MA strategies need
         // closes, which are simply the candles' close field. Fetching prices and
         // candles separately (as the first version did) doubled the broker calls
         // for identical data.
-        const candles = await getBrokerCandlesPaged(userId, credentials, inst.ticker, HISTORY_BARS, resolution);
+        const candles = await getBrokerCandlesPaged(userId, credentials, inst.ticker, options.historyBars, resolution);
         const prices = candles.map((c) => c.close);
 
         // Only trend-following actually consumes the MA periods. Mean reversion
@@ -340,7 +377,7 @@ export async function runSweep(
       pairsDone += 1;
       await onProgress(pairsDone, fetchPairs);
       // Paced so a sweep never looks like an attack on the broker's API.
-      await sleep(250);
+      await sleep(options.paceMs);
     }
   }
 

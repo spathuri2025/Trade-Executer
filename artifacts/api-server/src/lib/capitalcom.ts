@@ -348,6 +348,38 @@ async function getCapitalCandlesRaw(
  * rather than `maxPages`. Deduplicated by timestamp because consecutive pages
  * can overlap on the boundary bar.
  */
+export interface CapitalMarketSummary {
+  epic: string;
+  instrumentName: string;
+  instrumentType: string;
+  marketStatus?: string;
+}
+
+/**
+ * The broker's whole tradeable universe — thousands of epics — used to sweep
+ * far beyond a hand-picked watchlist.
+ *
+ * Filtered to TRADEABLE only: a market that cannot be traded cannot be
+ * backtested into a strategy you could actually run, and including it would
+ * only inflate the combination count that the sweep's statistics divide by.
+ */
+export async function getCapitalMarketUniverse(
+  userId: number,
+  credentials: CapitalCredentials,
+): Promise<CapitalMarketSummary[]> {
+  const data = (await capitalFetch(userId, credentials, "/markets")) as {
+    markets?: Array<CapitalMarketSummary & { marketStatus?: string }>;
+  };
+  return (data?.markets ?? [])
+    .filter((m) => m?.epic && (m.marketStatus === undefined || m.marketStatus === "TRADEABLE"))
+    .map((m) => ({
+      epic: m.epic,
+      instrumentName: m.instrumentName ?? m.epic,
+      instrumentType: m.instrumentType ?? "UNKNOWN",
+      marketStatus: m.marketStatus,
+    }));
+}
+
 export async function getCapitalCandlesPaged(
   userId: number,
   credentials: CapitalCredentials,
