@@ -192,3 +192,26 @@ describe("sweep scopes", () => {
     expect(UNIVERSE_OPTIONS.historyBars).toBeGreaterThan(1000);
   });
 });
+
+describe("universe breadth — a shortfall must be visible, not inferred", () => {
+  it("reports how many distinct instruments were actually scored", async () => {
+    // A "whole market (150)" run once swept 2 instruments and reported "28
+    // combinations", which reads like a small sweep rather than a broken one.
+    // The instrument count makes the shortfall obvious at a glance.
+    const mk = (ticker: string): SweepCombo => ({ ...combo(0.001, 0.001), ticker });
+    const s = summarise([mk("EURUSD"), mk("EURUSD"), mk("USDJPY")]);
+    expect(s.instrumentsTested).toBe(2);
+    expect(s.combosTested).toBe(3);
+  });
+
+  it("does not filter the catalogue by whether a market is open right now", async () => {
+    // marketStatus TRADEABLE means "open this second" and says nothing about
+    // whether an instrument can be backtested — history is what a backtest
+    // needs. Filtering on it deleted every stock market outside its session.
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("./capitalcom.ts", import.meta.url), "utf8");
+    const universeFn = src.slice(src.indexOf("export async function getCapitalMarketUniverse"));
+    const body = universeFn.slice(0, universeFn.indexOf("\n}"));
+    expect(body).not.toMatch(/marketStatus === "TRADEABLE"/);
+  });
+});

@@ -639,6 +639,7 @@ export const GetBacktestSweepResponse = zod.object({
   "combosTotal": zod.number(),
   "summary": zod.union([zod.object({
   "combosTested": zod.number(),
+  "instrumentsTested": zod.number().describe('Distinct instruments that produced at least one scored combination.'),
   "combosWithEnoughTrades": zod.number(),
   "positiveInSample": zod.number(),
   "positiveOutOfSample": zod.number(),

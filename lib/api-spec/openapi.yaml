@@ -3187,6 +3187,7 @@ components:
       type: object
       required:
         - combosTested
+        - instrumentsTested
         - combosWithEnoughTrades
         - positiveInSample
         - positiveOutOfSample
@@ -3198,6 +3199,9 @@ components:
       properties:
         combosTested:
           type: integer
+        instrumentsTested:
+          type: integer
+          description: Distinct instruments that produced at least one scored combination.
         combosWithEnoughTrades:
           type: integer
         positiveInSample:

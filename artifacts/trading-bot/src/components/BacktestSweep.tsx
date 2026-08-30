@@ -159,6 +159,9 @@ export function BacktestSweep() {
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">Combinations</div>
                 <div className="mt-1 font-mono">{summary.combosTested}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {summary.instrumentsTested} instrument{summary.instrumentsTested === 1 ? "" : "s"}
+                </div>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">Enough trades</div>

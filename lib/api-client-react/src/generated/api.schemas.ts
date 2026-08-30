@@ -1294,6 +1294,8 @@ export const SweepSummaryVerdict = {
 
 export interface SweepSummary {
   combosTested: number;
+  /** Distinct instruments that produced at least one scored combination. */
+  instrumentsTested: number;
   combosWithEnoughTrades: number;
   positiveInSample: number;
   positiveOutOfSample: number;

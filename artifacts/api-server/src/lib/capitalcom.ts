@@ -359,9 +359,15 @@ export interface CapitalMarketSummary {
  * The broker's whole tradeable universe — thousands of epics — used to sweep
  * far beyond a hand-picked watchlist.
  *
- * Filtered to TRADEABLE only: a market that cannot be traded cannot be
- * backtested into a strategy you could actually run, and including it would
- * only inflate the combination count that the sweep's statistics divide by.
+ * Deliberately NOT filtered by marketStatus. `TRADEABLE` means the market is
+ * open RIGHT NOW, which has nothing to do with whether it can be backtested —
+ * a backtest needs history, not an open session. Filtering on it stripped the
+ * catalogue down to whatever happened to be trading at that moment: a
+ * "whole market (150)" sweep run in the evening returned two instruments,
+ * EURUSD and USDJPY, because forex was all that was open.
+ *
+ * Markets with no history are dropped later anyway, by the sweep itself, when
+ * the candle fetch comes back too short to score.
  */
 export async function getCapitalMarketUniverse(
   userId: number,
@@ -371,7 +377,7 @@ export async function getCapitalMarketUniverse(
     markets?: Array<CapitalMarketSummary & { marketStatus?: string }>;
   };
   return (data?.markets ?? [])
-    .filter((m) => m?.epic && (m.marketStatus === undefined || m.marketStatus === "TRADEABLE"))
+    .filter((m) => Boolean(m?.epic))
     .map((m) => ({
       epic: m.epic,
       instrumentName: m.instrumentName ?? m.epic,

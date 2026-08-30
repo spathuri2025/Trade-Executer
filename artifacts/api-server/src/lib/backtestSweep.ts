@@ -118,6 +118,13 @@ export interface SweepCombo {
 
 export interface SweepSummary {
   combosTested: number;
+  /**
+   * Distinct instruments that produced at least one scored combination.
+   * Surfaced because a shortfall here is invisible in the combination count: a
+   * "whole market (150)" run that silently swept 2 instruments still reported
+   * 28 combinations, which looks like a small sweep rather than a broken one.
+   */
+  instrumentsTested: number;
   combosWithEnoughTrades: number;
   positiveInSample: number;
   positiveOutOfSample: number;
@@ -204,6 +211,7 @@ export function summarise(combos: SweepCombo[]): SweepSummary {
 
   return {
     combosTested: combos.length,
+    instrumentsTested: new Set(combos.map((c) => c.ticker)).size,
     combosWithEnoughTrades: wellSampled.length,
     expectedPositiveByChance: Math.round(wellSampled.length * 0.5),
     positiveInSample,
