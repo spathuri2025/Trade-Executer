@@ -8,6 +8,7 @@
 import type { BotConfigInputAiTradeMode } from './botConfigInputAiTradeMode';
 import type { BotConfigInputBarResolution } from './botConfigInputBarResolution';
 import type { BotConfigInputBroker } from './botConfigInputBroker';
+import type { BotConfigInputMinAiConfidence } from './botConfigInputMinAiConfidence';
 
 export interface BotConfigInput {
   shortPeriod?: number;
@@ -30,6 +31,8 @@ export interface BotConfigInput {
   maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;
+  /** Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls. */
+  minAiConfidence?: BotConfigInputMinAiConfidence;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
   /** Capital.com candle resolution the bot fetches signals at. */

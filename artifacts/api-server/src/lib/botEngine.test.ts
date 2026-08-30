@@ -147,6 +147,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxDailyLossPercent: 3,
     maxConcurrentPositions: 5,
     aiTradeMode: "off",
+    minAiConfidence: "any",
     regimeFilterEnabled: false,
     barResolution: "MINUTE_5",
     ...patch,
@@ -425,7 +426,7 @@ describe("minimum deal size — orders below the broker's minimum are skipped, n
       bid: 100,
       offer: 100,
       price: 100,
-      marketStatus: "CLOSED",
+      marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: 9999, // far above the held quantity (10) — must not block the close
     });
@@ -634,12 +635,13 @@ describe("daily-loss circuit breaker", () => {
 });
 
 describe("flatten-by-close", () => {
-  it("closes a held long position when its market is confirmed closed", async () => {
+  it("closes a held long position when its market is restricted but still orderable", async () => {
     // Positions are set up before startLiveBot(), but the default
     // getBrokerQuote mock (beforeEach) returns TRADEABLE, so startLiveBot's
     // own implicit first cycle does not flatten anything — only the
-    // TRADEABLE→CLOSED override below, applied after, triggers the flatten
-    // on the explicit runCycle() call.
+    // TRADEABLE→EDITS_ONLY override below, applied after, triggers the flatten
+    // on the explicit runCycle() call. EDITS_ONLY is the state flatten-by-close
+    // exists for: no new positions, but existing ones can still be closed.
     broker.getBrokerPositions.mockResolvedValue([position("CLOSEDMKT", 10)]); // long, direction BUY
     await startLiveBot();
 
@@ -648,7 +650,7 @@ describe("flatten-by-close", () => {
       bid: 100,
       offer: 100,
       price: 100,
-      marketStatus: "CLOSED",
+      marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
     });
@@ -675,7 +677,7 @@ describe("flatten-by-close", () => {
       bid: 100,
       offer: 100,
       price: 100,
-      marketStatus: "CLOSED",
+      marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
     });
@@ -686,6 +688,48 @@ describe("flatten-by-close", () => {
     expect(ticker).toBe("SHORTED");
     expect(quantity).toBe(4);
     expect(side).toBe("BUY");
+  });
+
+  it("does NOT attempt a close when the market is fully CLOSED — the order would only be rejected", async () => {
+    // The 25 Aug 2026 bug: "not TRADEABLE" was treated as "flatten now", so the
+    // engine fired a close precisely when the broker could not accept one. It
+    // produced seven consecutive rejected AMZN orders, one per hourly cycle
+    // overnight, each answered "Rejected. AMZN is currently closed."
+    broker.getBrokerPositions.mockResolvedValue([position("SHUTMKT", 10)]);
+    await startLiveBot();
+
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "SHUTMKT",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "CLOSED",
+      currency: "GBP",
+      minDealSize: null,
+    });
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not attempt a close for OFFLINE or SUSPENDED markets either", async () => {
+    for (const marketStatus of ["OFFLINE", "SUSPENDED", "AUCTION_NO_EDIT"]) {
+      broker.placeBrokerOrder.mockClear();
+      broker.getBrokerPositions.mockResolvedValue([position("SHUTMKT", 10)]);
+      broker.getBrokerQuote.mockResolvedValue({
+        ticker: "SHUTMKT",
+        bid: 100,
+        offer: 100,
+        price: 100,
+        marketStatus,
+        currency: "GBP",
+        minDealSize: null,
+      });
+      mocks.enabledInstruments = [];
+      await engine.runCycle(TEST_USER_ID);
+      expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    }
   });
 
   it("never flattens a position whose market is still open (TRADEABLE)", async () => {
@@ -712,7 +756,7 @@ describe("flatten-by-close", () => {
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
   });
 
-  it("dry-run flatten never calls the broker, even when the market is confirmed closed", async () => {
+  it("dry-run flatten never calls the broker, even when the market is restricted", async () => {
     broker.getBrokerPositions.mockResolvedValue([position("CLOSEDMKT", 10)]);
     await startLiveBot({ dryRun: true }); // runCycle's dryRun is true regardless (cfg.dryRun || !running)
 
@@ -721,7 +765,7 @@ describe("flatten-by-close", () => {
       bid: 100,
       offer: 100,
       price: 100,
-      marketStatus: "CLOSED",
+      marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
     });
@@ -740,7 +784,7 @@ describe("flatten-by-close", () => {
       bid: 100,
       offer: 100,
       price: 100,
-      marketStatus: "CLOSED",
+      marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
     });
@@ -912,5 +956,85 @@ describe("resumeRunningBots — bots survive a restart", () => {
 
     expect(broker.getBrokerAccount).toHaveBeenCalled(); // the cycle did run
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled(); // but placed nothing
+  });
+});
+
+describe("minimum AI confidence — the model's own low-conviction calls can be discarded", () => {
+  // Live evidence for why this exists: of the first twelve autonomous trades,
+  // ten were placed on decisions the AI itself labelled "low" confidence.
+  // Acting on those is the user overriding the model, not trusting it.
+  const decision = (confidence: string) => [
+    { ticker: "AAA", action: "BUY" as const, confidence, reason: "test" },
+  ];
+
+  it("skips an autonomous BUY whose confidence is below the floor", async () => {
+    mocks.ai.decideTrades.mockResolvedValue(decision("low"));
+    await startLiveBot({ aiTradeMode: "autonomous", minAiConfidence: "medium" });
+
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("places the trade when confidence meets the floor", async () => {
+    mocks.ai.decideTrades.mockResolvedValue(decision("medium"));
+    await startLiveBot({ aiTradeMode: "autonomous", minAiConfidence: "medium" });
+
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalled();
+  });
+
+  it("'any' preserves the original behaviour of acting on low confidence", async () => {
+    // The default, so existing users see no change until they opt in.
+    mocks.ai.decideTrades.mockResolvedValue(decision("low"));
+    await startLiveBot({ aiTradeMode: "autonomous", minAiConfidence: "any" });
+
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalled();
+  });
+
+  it("treats a missing or unrecognised confidence as the weakest", async () => {
+    // Absence of a stated conviction is not evidence of a strong one.
+    mocks.ai.decideTrades.mockResolvedValue([
+      { ticker: "AAA", action: "BUY" as const, reason: "no confidence field" },
+    ]);
+    await startLiveBot({ aiTradeMode: "autonomous", minAiConfidence: "medium" });
+
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("applies the same floor in guard mode, so it means one thing in both", async () => {
+    mocks.ai.reviewSignal.mockResolvedValue({ approved: true, confidence: "low", reason: "weak but ok" });
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+    await startLiveBot({ aiTradeMode: "guard", minAiConfidence: "high" });
+
+    mocks.enabledInstruments = [{ ticker: "AAA", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+});
+
+describe("meetsConfidenceFloor", () => {
+  it("ranks low < medium < high against each floor", () => {
+    expect(engine.meetsConfidenceFloor("low", "any")).toBe(true);
+    expect(engine.meetsConfidenceFloor("low", "medium")).toBe(false);
+    expect(engine.meetsConfidenceFloor("medium", "medium")).toBe(true);
+    expect(engine.meetsConfidenceFloor("medium", "high")).toBe(false);
+    expect(engine.meetsConfidenceFloor("high", "high")).toBe(true);
+  });
+
+  it("is case-insensitive and defaults unknown values to low", () => {
+    expect(engine.meetsConfidenceFloor("HIGH", "high")).toBe(true);
+    expect(engine.meetsConfidenceFloor(undefined, "medium")).toBe(false);
+    expect(engine.meetsConfidenceFloor("banana", "medium")).toBe(false);
   });
 });

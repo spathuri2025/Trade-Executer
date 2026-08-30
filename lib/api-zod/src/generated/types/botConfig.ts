@@ -8,6 +8,7 @@
 import type { BotConfigAiTradeMode } from './botConfigAiTradeMode';
 import type { BotConfigBarResolution } from './botConfigBarResolution';
 import type { BotConfigBroker } from './botConfigBroker';
+import type { BotConfigMinAiConfidence } from './botConfigMinAiConfidence';
 
 export interface BotConfig {
   /** Short MA period (e.g. 9) */
@@ -36,6 +37,8 @@ export interface BotConfig {
   maxConcurrentPositions: number;
   /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
   aiTradeMode: BotConfigAiTradeMode;
+  /** Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls. */
+  minAiConfidence?: BotConfigMinAiConfidence;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */

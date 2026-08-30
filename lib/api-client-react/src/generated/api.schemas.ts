@@ -101,6 +101,18 @@ export const BotConfigAiTradeMode = {
 } as const;
 
 /**
+ * Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls.
+ */
+export type BotConfigMinAiConfidence = typeof BotConfigMinAiConfidence[keyof typeof BotConfigMinAiConfidence];
+
+
+export const BotConfigMinAiConfidence = {
+  any: 'any',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+/**
  * Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.
  */
 export type BotConfigBarResolution = typeof BotConfigBarResolution[keyof typeof BotConfigBarResolution];
@@ -144,6 +156,8 @@ export interface BotConfig {
   maxConcurrentPositions: number;
   /** How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades. */
   aiTradeMode: BotConfigAiTradeMode;
+  /** Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls. */
+  minAiConfidence?: BotConfigMinAiConfidence;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */
@@ -204,6 +218,18 @@ export const BotConfigInputAiTradeMode = {
 } as const;
 
 /**
+ * Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls.
+ */
+export type BotConfigInputMinAiConfidence = typeof BotConfigInputMinAiConfidence[keyof typeof BotConfigInputMinAiConfidence];
+
+
+export const BotConfigInputMinAiConfidence = {
+  any: 'any',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+/**
  * Capital.com candle resolution the bot fetches signals at.
  */
 export type BotConfigInputBarResolution = typeof BotConfigInputBarResolution[keyof typeof BotConfigInputBarResolution];
@@ -241,6 +267,8 @@ export interface BotConfigInput {
   maxConcurrentPositions?: number;
   /** How Claude participates in execution. */
   aiTradeMode?: BotConfigInputAiTradeMode;
+  /** Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls. */
+  minAiConfidence?: BotConfigInputMinAiConfidence;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
   /** Capital.com candle resolution the bot fetches signals at. */

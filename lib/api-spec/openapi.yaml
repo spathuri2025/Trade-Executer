@@ -1903,6 +1903,10 @@ components:
           type: string
           enum: [off, guard, autonomous]
           description: How Claude participates in execution. off = strategy only; guard = Claude approves/vetoes each MA signal; autonomous = Claude decides trades.
+        minAiConfidence:
+          type: string
+          enum: [any, medium, high]
+          description: Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls.
         regimeFilterEnabled:
           type: boolean
           description: When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.
@@ -1949,6 +1953,10 @@ components:
           type: string
           enum: [off, guard, autonomous]
           description: How Claude participates in execution.
+        minAiConfidence:
+          type: string
+          enum: [any, medium, high]
+          description: Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls.
         regimeFilterEnabled:
           type: boolean
           description: Enable automatic trending/ranging routing between trend-following and mean-reversion.

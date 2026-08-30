@@ -27,6 +27,13 @@ export const botConfigTable = pgTable("bot_config", {
   maxDailyLossPercent: real("max_daily_loss_percent").notNull().default(3),
   maxConcurrentPositions: integer("max_concurrent_positions").notNull().default(5),
   aiTradeMode: text("ai_trade_mode", { enum: ["off", "guard", "autonomous"] }).notNull().default("off"),
+  /**
+   * Minimum AI conviction required before a trade is placed in guard or
+   * autonomous mode. "any" preserves the original behaviour of acting on every
+   * decision regardless of stated confidence — which in practice meant trading
+   * on "low" almost every time.
+   */
+  minAiConfidence: text("min_ai_confidence", { enum: ["any", "medium", "high"] }).notNull().default("any"),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
   /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */

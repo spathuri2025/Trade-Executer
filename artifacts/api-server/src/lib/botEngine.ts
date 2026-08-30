@@ -34,6 +34,22 @@ import {
  */
 export type AiTradeMode = "off" | "guard" | "autonomous";
 
+/** Confidence floor for acting on an AI decision. */
+export type MinAiConfidence = "any" | "medium" | "high";
+
+/** Ranks confidence so a decision can be compared against the configured floor. */
+const CONFIDENCE_RANK: Record<string, number> = { low: 1, medium: 2, high: 3 };
+const FLOOR_RANK: Record<MinAiConfidence, number> = { any: 1, medium: 2, high: 3 };
+
+/**
+ * Whether an AI decision clears the user's conviction floor. Unknown/missing
+ * confidence is treated as the weakest ("low"): if the model didn't state a
+ * conviction, that is not evidence of a strong one.
+ */
+export function meetsConfidenceFloor(confidence: string | undefined, floor: MinAiConfidence): boolean {
+  return (CONFIDENCE_RANK[String(confidence).toLowerCase()] ?? 1) >= FLOOR_RANK[floor];
+}
+
 export interface BotConfig {
   shortPeriod: number;
   longPeriod: number;
@@ -48,6 +64,12 @@ export interface BotConfig {
   maxDailyLossPercent: number;
   maxConcurrentPositions: number;
   aiTradeMode: AiTradeMode;
+  /**
+   * Minimum AI conviction required to act, in guard and autonomous modes.
+   * "any" acts on every decision (the original behaviour); "medium"/"high"
+   * discard the AI's own low-conviction calls instead of trading them.
+   */
+  minAiConfidence: MinAiConfidence;
   /**
    * When true, each instrument is classified as trending or ranging (close-based
    * ADX) and routed to trend-following or mean-reversion automatically. When
@@ -72,6 +94,7 @@ const DEFAULT_CONFIG: BotConfig = {
   maxDailyLossPercent: 3,
   maxConcurrentPositions: 5,
   aiTradeMode: "off",
+  minAiConfidence: "any",
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
 };
@@ -128,6 +151,7 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxDailyLossPercent: row.maxDailyLossPercent,
     maxConcurrentPositions: row.maxConcurrentPositions,
     aiTradeMode: row.aiTradeMode,
+    minAiConfidence: row.minAiConfidence,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
   };
@@ -241,6 +265,20 @@ async function checkEntryQuote(
  * used to be named isMarketClosedForEntry — renamed when it grew a second
  * field, minDealSize, that this flatten-side function has no equivalent of.)
  */
+/**
+ * Broker states in which NO order is accepted, so attempting to flatten is
+ * guaranteed to be rejected. Treating "not TRADEABLE" as "flatten now" made
+ * this function self-defeating: it fired precisely when the close could not
+ * be placed. Observed live on 25 Aug 2026 — an AMZN position produced seven
+ * consecutive rejected orders, one per hourly cycle from 01:15 to 07:15, each
+ * answered by Capital.com with "Rejected. AMZN is currently closed."
+ *
+ * Restricted-but-orderable states (EDITS_ONLY, EDIT, AUCTION) are where
+ * flatten-by-close genuinely works: new positions are barred while existing
+ * ones can still be closed, which is exactly the situation it was written for.
+ */
+const UNORDERABLE_STATUSES = new Set(["CLOSED", "OFFLINE", "SUSPENDED", "AUCTION_NO_EDIT"]);
+
 async function isMarketClosedForFlatten(
   userId: number,
   credentials: UserBrokerCredentials,
@@ -248,7 +286,22 @@ async function isMarketClosedForFlatten(
 ): Promise<boolean> {
   try {
     const quote = await getBrokerQuote(userId, credentials, ticker);
-    return quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE";
+    const status = quote.marketStatus;
+    if (status === null || status === "TRADEABLE") return false;
+
+    if (UNORDERABLE_STATUSES.has(status)) {
+      // Nothing can be done this cycle: the position stays open (protected by
+      // its broker-side stop) and we do NOT burn an order the broker will
+      // certainly reject. Logged at debug because it recurs every cycle for as
+      // long as the market is shut, which is most of the night.
+      logger.debug(
+        { userId, ticker, marketStatus: status },
+        "Flatten-by-close skipped — market is closed, no order can be placed"
+      );
+      return false;
+    }
+
+    return true;
   } catch (err) {
     logger.warn({ userId, ticker, err }, "Could not check market status for flatten-by-close — leaving position open (fail-closed)");
     return false;
@@ -725,7 +778,15 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         // allow the trade" — consistent with checkEntryQuote's own fail-open
         // behavior on a lookup error, not a gap to later tighten into a block.
         const belowMinDealSize = quantity < (entryCheck.minDealSize ?? 0);
-        if ((opensNewPosition || isBuy) && riskDataUnavailable) {
+        if (!meetsConfidenceFloor(decision.confidence, cfg.minAiConfidence)) {
+          // The AI stated its own conviction; acting on a "low" it flagged
+          // itself is the user overriding the model, not trusting it.
+          aiReason = `Skipped: AI confidence was ${decision.confidence}, below your ${cfg.minAiConfidence} threshold. ${decision.reason}`;
+          logger.info(
+            { userId, ticker: c.ticker, side: decision.action, confidence: decision.confidence, floor: cfg.minAiConfidence },
+            "Autonomous entry skipped — below AI confidence floor"
+          );
+        } else if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = `Skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety. ${decision.reason}`;
           logger.warn(
             { userId, ticker: c.ticker, side: decision.action },
@@ -829,6 +890,15 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
           proceed = review.approved;
           if (!proceed) {
             logger.info({ userId, ticker, signal, reason: review.reason }, "AI vetoed signal");
+          } else if (!meetsConfidenceFloor(review.confidence, cfg.minAiConfidence)) {
+            // Approved, but only weakly. Treated as a veto so the floor means
+            // the same thing in both AI modes.
+            proceed = false;
+            aiReason = `Skipped: AI approved but with ${review.confidence} confidence, below your ${cfg.minAiConfidence} threshold. ${review.reason}`;
+            logger.info(
+              { userId, ticker, signal, confidence: review.confidence, floor: cfg.minAiConfidence },
+              "Signal skipped — below AI confidence floor"
+            );
           }
         } catch (err) {
           logger.error({ userId, ticker, signal, err }, "AI safety check failed — skipping trade for safety");

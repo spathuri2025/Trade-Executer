@@ -29,6 +29,7 @@ import { Play, Square, Link2, Unlink } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
 type AiTradeMode = "off" | "guard" | "autonomous";
+type MinAiConfidence = "any" | "medium" | "high";
 type BarResolution = "MINUTE" | "MINUTE_5" | "MINUTE_15" | "MINUTE_30" | "HOUR" | "HOUR_4" | "DAY" | "WEEK";
 
 const BROKER_LABELS: Record<BrokerName, string> = {
@@ -98,6 +99,7 @@ export default function Settings() {
     maxDailyLossPercent: 3,
     maxConcurrentPositions: 5,
     aiTradeMode: "off" as AiTradeMode,
+    minAiConfidence: "any" as MinAiConfidence,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
   });
@@ -118,6 +120,7 @@ export default function Settings() {
         maxDailyLossPercent: botStatus.config.maxDailyLossPercent,
         maxConcurrentPositions: botStatus.config.maxConcurrentPositions,
         aiTradeMode: (botStatus.config.aiTradeMode as AiTradeMode) ?? "off",
+        minAiConfidence: (botStatus.config.minAiConfidence as MinAiConfidence) ?? "any",
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
@@ -527,6 +530,31 @@ export default function Settings() {
             </button>
             );
           })}
+          {/* Conviction floor. Only meaningful when AI is in the loop, so it
+              appears with the modes it governs rather than as a stray setting. */}
+          {config.aiTradeMode !== "off" && (
+            <div className="space-y-1.5 pt-1">
+              <Label htmlFor="min-ai-confidence">Minimum AI confidence to trade</Label>
+              <Select
+                value={config.minAiConfidence ?? "any"}
+                onValueChange={(v) => setConfig({ ...config, minAiConfidence: v as typeof config.minAiConfidence })}
+              >
+                <SelectTrigger id="min-ai-confidence" data-testid="select-min-ai-confidence">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any — trade on every AI decision</SelectItem>
+                  <SelectItem value="medium">Medium or higher</SelectItem>
+                  <SelectItem value="high">High only</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The AI states how confident it is in each decision. "Any" acts on all of them,
+                including the ones it flags as low conviction.
+              </p>
+            </div>
+          )}
+
           {config.aiTradeMode !== "off" && (
             <div className="text-xs rounded-md p-3 border border-amber-500/40 bg-amber-500/10 text-amber-500">
               {config.dryRun

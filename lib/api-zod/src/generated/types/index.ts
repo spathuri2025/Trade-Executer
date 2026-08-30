@@ -49,6 +49,8 @@ export * from './botConfigInput';
 export * from './botConfigInputAiTradeMode';
 export * from './botConfigInputBarResolution';
 export * from './botConfigInputBroker';
+export * from './botConfigInputMinAiConfidence';
+export * from './botConfigMinAiConfidence';
 export * from './botStatus';
 export * from './brainDriver';
 export * from './brainEvent';
