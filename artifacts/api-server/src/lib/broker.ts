@@ -10,6 +10,7 @@ import {
   getCapitalAccounts,
   getCapitalPriceHistory,
   getCapitalCandles,
+  getCapitalCandlesPaged,
   getCapitalQuote,
   placeCapitalOrder,
   type Candle,
@@ -173,6 +174,29 @@ export async function getBrokerCandles(
     return getCapitalCandles(userId, credentials.capital, ticker, resolution, count);
   }
   return [];
+}
+
+/**
+ * As getBrokerCandles, but pages backwards for far more history than the
+ * broker's 1000-bar per-request cap allows. Used by the strategy sweep, where
+ * too little history silently excludes lower-frequency strategies: with only
+ * 1000 bars, mean reversion averaged 2.4 trades per out-of-sample window and
+ * so never reached the sample floor to be judged at all.
+ *
+ * Trading 212 has no historical candle endpoint, so it falls through to the
+ * existing (empty) behaviour rather than pretending to page.
+ */
+export async function getBrokerCandlesPaged(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  ticker: string,
+  targetBars: number,
+  resolution: string
+): Promise<Candle[]> {
+  if (credentials.broker === "capitalcom") {
+    return getCapitalCandlesPaged(userId, credentials.capital, ticker, resolution, targetBars);
+  }
+  return getBrokerCandles(userId, credentials, ticker, targetBars, resolution);
 }
 
 export interface NormalizedQuote {

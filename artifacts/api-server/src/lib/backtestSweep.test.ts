@@ -107,3 +107,26 @@ describe("summarise — the verdict must not mistake noise for an edge", () => {
     expect(s.verdict).toBe("no-edge");
   });
 });
+
+describe("history depth — the first sweep's blind spot", () => {
+  it("fetches candles once per instrument/timeframe instead of prices and candles separately", async () => {
+    // The MA strategies need closes and the candle strategies need OHLC, but
+    // closes ARE the candles' close field — two requests fetched identical
+    // data. This pins the single-fetch shape.
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("./backtestSweep.ts", import.meta.url), "utf8");
+    expect(src).toMatch(/getBrokerCandlesPaged/);
+    expect(src).not.toMatch(/getBrokerPriceHistory/);
+  });
+
+  it("targets enough history for low-frequency strategies to reach the sample floor", async () => {
+    // On 1000 bars, mean reversion averaged 2.4 out-of-sample trades against a
+    // 15-trade floor — it could never be judged at all. The target must be far
+    // above the depth that made three of four strategies untestable.
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("./backtestSweep.ts", import.meta.url), "utf8");
+    const match = src.match(/const HISTORY_BARS = (\d+)/);
+    expect(match).not.toBeNull();
+    expect(Number(match![1])).toBeGreaterThanOrEqual(5000);
+  });
+});

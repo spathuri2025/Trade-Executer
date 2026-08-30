@@ -18,15 +18,23 @@
  *     loses money and only the top few make money, that is a sweep finding
  *     noise. The summary always shows the median alongside the best.
  */
-import { getBrokerPriceHistory, getBrokerCandles, getBrokerQuote } from "./broker";
+import { getBrokerCandlesPaged, getBrokerQuote } from "./broker";
 import type { UserBrokerCredentials } from "./brokerCredentialsService";
 import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion, type BacktestStrategyName } from "./backtest";
 import { ATR_MOMENTUM_PARAMS } from "./atrMomentumStrategy";
 import { VWAP_REVERSION_PARAMS } from "./vwapReversionStrategy";
 import { logger } from "./logger";
 
-/** Capital.com's documented per-request cap on /prices. */
-const HISTORY_BARS = 1000;
+/**
+ * Bars to gather per instrument/timeframe, fetched in 1000-bar pages.
+ *
+ * The first sweep used a single 1000-bar request and could only judge
+ * trend-following: mean reversion averaged 2.4 trades in an out-of-sample
+ * window and VWAP/ATR momentum 9.1 and 6.7, all far below the 15-trade floor,
+ * so three of four strategies were never actually tested. More history is the
+ * only fix that does not weaken the statistics.
+ */
+const HISTORY_BARS = 5000;
 
 /** Fraction of the window used for fitting; the rest is held back for validation. */
 export const IN_SAMPLE_FRACTION = 0.7;
@@ -222,7 +230,12 @@ export async function runSweep(
 
     for (const resolution of SWEEP_RESOLUTIONS) {
       try {
-        const prices = await getBrokerPriceHistory(userId, credentials, inst.ticker, HISTORY_BARS, resolution);
+        // ONE paged fetch serves both strategy families: the MA strategies need
+        // closes, which are simply the candles' close field. Fetching prices and
+        // candles separately (as the first version did) doubled the broker calls
+        // for identical data.
+        const candles = await getBrokerCandlesPaged(userId, credentials, inst.ticker, HISTORY_BARS, resolution);
+        const prices = candles.map((c) => c.close);
 
         for (const [shortPeriod, longPeriod] of MA_PAIRS) {
           for (const strategy of ["trend_following", "mean_reversion"] as const) {
@@ -243,8 +256,6 @@ export async function runSweep(
           }
         }
 
-        // Candle strategies need OHLCV, a separate fetch.
-        const candles = await getBrokerCandles(userId, credentials, inst.ticker, HISTORY_BARS, resolution);
         if (candles.length > 0) {
           const atr = scoreCombo(
             {

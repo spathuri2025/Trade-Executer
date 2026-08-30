@@ -291,10 +291,22 @@ export async function getCapitalCandles(
   resolution: string = "HOUR",
   count: number = 200,
 ): Promise<Candle[]> {
+  return getCapitalCandlesRaw(userId, credentials, epic, resolution, count, "");
+}
+
+/** Shared fetch+parse for one page of candles. `extraParams` appends e.g. `&to=...`. */
+async function getCapitalCandlesRaw(
+  userId: number,
+  credentials: CapitalCredentials,
+  epic: string,
+  resolution: string,
+  count: number,
+  extraParams: string,
+): Promise<Candle[]> {
   const data = (await capitalFetch(
     userId,
     credentials,
-    `/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=${count}`,
+    `/prices/${encodeURIComponent(epic)}?resolution=${resolution}&max=${count}${extraParams}`,
   )) as CapitalPrice;
   const mid = (p: { bid: number; ask: number }) => (p.bid + p.ask) / 2;
   return (data?.prices ?? [])
@@ -323,6 +335,56 @@ export async function getCapitalCandles(
         Number.isFinite(c.close),
     )
     .sort((a, b) => a.time - b.time);
+}
+
+/**
+ * Capital.com's /prices endpoint caps `max` at 1000 bars per request, which is
+ * only ~3.5 days of 5-minute data — enough for a chart, far too little to judge
+ * a strategy. This walks BACKWARDS through history using the `to` parameter:
+ * fetch a batch, take its earliest bar, ask for the batch ending there, repeat.
+ *
+ * Stops early when a page returns nothing new, so an instrument with a short
+ * history (or a resolution the broker only keeps briefly) costs one wasted call
+ * rather than `maxPages`. Deduplicated by timestamp because consecutive pages
+ * can overlap on the boundary bar.
+ */
+export async function getCapitalCandlesPaged(
+  userId: number,
+  credentials: CapitalCredentials,
+  epic: string,
+  resolution: string,
+  targetBars: number,
+  maxPages = 5,
+): Promise<Candle[]> {
+  const PAGE = 1000;
+  const byTime = new Map<number, Candle>();
+  let before: number | null = null;
+
+  for (let page = 0; page < maxPages && byTime.size < targetBars; page++) {
+    // Capital.com wants `yyyy-MM-ddTHH:mm:ss` with no timezone suffix (UTC).
+    const toParam =
+      before === null ? "" : `&to=${new Date(before * 1000).toISOString().slice(0, 19)}`;
+
+    let batch: Candle[];
+    try {
+      batch = await getCapitalCandlesRaw(userId, credentials, epic, resolution, PAGE, toParam);
+    } catch {
+      // A rejected page ends paging; whatever was already collected still
+      // beats failing the whole request.
+      break;
+    }
+
+    const sizeBefore = byTime.size;
+    for (const c of batch) byTime.set(c.time, c);
+    // No NEW bars means we have reached the start of available history.
+    if (byTime.size === sizeBefore) break;
+
+    let earliest = Infinity;
+    for (const t of byTime.keys()) if (t < earliest) earliest = t;
+    before = earliest;
+  }
+
+  return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
 
 export async function placeCapitalOrder(
