@@ -854,6 +854,40 @@ describe("running state is persisted so a restart can restore it", () => {
   });
 });
 
+describe("concurrent starts — one bot, one timer", () => {
+  afterEach(async () => {
+    await engine.stopBot(TEST_USER_ID);
+  });
+
+  it("runs one cycle, not two, when two starts race", async () => {
+    // The real-world shape: two Start clicks landing while the first request is
+    // still awaiting the broker-credential lookup. Before the `starting` claim
+    // both got past the `running` check (only set after that await) and each
+    // armed an interval AND fired an immediate cycle. stopBot can clear only one
+    // handle, so the loser cycled on invisibly — and with dry run off that is a
+    // duplicate order every interval, forever.
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+    broker.getBrokerPriceHistory.mockClear();
+
+    await Promise.all([engine.startBot(TEST_USER_ID), engine.startBot(TEST_USER_ID)]);
+    await flush();
+
+    // One instrument, one cycle → exactly one history fetch. Two before the fix.
+    expect(broker.getBrokerPriceHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays startable after a failed start", async () => {
+    // The claim must be released on the error path too, or a single failed
+    // start would wedge the bot as unstartable until the process restarted.
+    mocks.credentials.getUserBrokerCredentials.mockResolvedValueOnce(null);
+    await expect(engine.startBot(TEST_USER_ID)).rejects.toBeInstanceOf(engine.BrokerNotConnectedError);
+
+    await engine.startBot(TEST_USER_ID);
+    await flush();
+    expect((await engine.getBotStatus(TEST_USER_ID)).running).toBe(true);
+  });
+});
+
 describe("resumeRunningBots — bots survive a restart", () => {
   const RESUMED_USER = 7;
 

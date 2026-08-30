@@ -144,6 +144,15 @@ interface BotState {
    * fire one cycle.
    */
   pendingStartHandle: ReturnType<typeof setTimeout> | null;
+  /**
+   * Claimed synchronously by startBot before it awaits anything, so two
+   * concurrent starts cannot both pass the `running` check and each arm their
+   * own interval. `running` alone cannot do this job: it is only set after the
+   * credential/entitlement awaits, leaving a window in which both callers see
+   * false. An orphaned interval is invisible (nothing holds its handle) and
+   * would double every cycle — duplicate live orders once dry run is off.
+   */
+  starting: boolean;
 }
 
 function freshCircuitBreaker(): CircuitBreakerState {
@@ -212,8 +221,14 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
   if (existing) return existing;
 
   const [row] = await db.select().from(botConfigTable).where(eq(botConfigTable.userId, userId));
+
+  // Another caller may have created the state while this one awaited the read.
+  // Returning theirs keeps ONE state object per user: two would mean the timers
+  // armed against the discarded copy could never be found again to stop them.
+  const raced = botStates.get(userId);
+  if (raced) return raced;
+
   const config = row ? rowToConfig(row) : { ...DEFAULT_CONFIG };
-  if (!row) await persistConfig(userId, config);
 
   // Deliberately starts as NOT running even when the row says running: true.
   // Only resumeRunningBots() may flip it, because that is the one path that also
@@ -227,8 +242,16 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
     circuitBreaker: freshCircuitBreaker(),
     intervalHandle: null,
     pendingStartHandle: null,
+    starting: false,
   };
+  // Published to the map BEFORE the persistConfig await below, so the `raced`
+  // check above is the only window a concurrent caller can be in. Awaiting
+  // first would let two callers each build a state and the second overwrite the
+  // first — leaving the loser's caller holding a state the map no longer knows
+  // about, whose timers nothing could ever stop.
   botStates.set(userId, state);
+
+  if (!row) await persistConfig(userId, config);
   return state;
 }
 
@@ -445,6 +468,17 @@ export async function updateConfig(userId: number, patch: Partial<BotConfig>) {
 function armCycleTimers(userId: number, state: BotState, delayMs: number): void {
   const ms = state.config.intervalMinutes * 60 * 1000;
 
+  // Defence in depth behind startBot's `starting` claim: arming always replaces
+  // whatever was armed before, so no path can accumulate two timers on one bot.
+  if (state.intervalHandle) {
+    clearInterval(state.intervalHandle);
+    state.intervalHandle = null;
+  }
+  if (state.pendingStartHandle) {
+    clearTimeout(state.pendingStartHandle);
+    state.pendingStartHandle = null;
+  }
+
   if (delayMs <= 0) {
     void runCycle(userId);
     state.intervalHandle = setInterval(() => void runCycle(userId), ms);
@@ -465,36 +499,47 @@ function armCycleTimers(userId: number, state: BotState, delayMs: number): void 
 
 export async function startBot(userId: number, opts: { firstCycleDelayMs?: number } = {}) {
   const state = await getOrCreateBotState(userId);
-  if (state.running) return getBotStatus(userId);
+  // Check and claim with NO await between them — that is what makes this
+  // atomic on a single-threaded event loop. Two Start clicks a second apart
+  // would otherwise both get past `running` (only set after the awaits below)
+  // and each arm an interval, of which stopBot can only ever clear one.
+  if (state.running || state.starting) return getBotStatus(userId);
+  state.starting = true;
 
-  const credentials = await getUserBrokerCredentials(userId);
-  if (!credentials) {
-    throw new BrokerNotConnectedError("Connect a broker account before starting the bot");
-  }
+  try {
+    const credentials = await getUserBrokerCredentials(userId);
+    if (!credentials) {
+      throw new BrokerNotConnectedError("Connect a broker account before starting the bot");
+    }
 
   // Scalp mode runs on short intervals and spends ~3 broker calls per
   // instrument per cycle. Capital.com allows roughly 10 requests/second, so a
   // large watchlist at one-minute cycles would be rate-limited into failure
   // rather than trading fast. Refuse clearly instead of degrading mysteriously.
-  if (state.config.strategyMode === "scalp") {
-    const enabled = await db
-      .select({ id: instrumentsTable.id })
-      .from(instrumentsTable)
-      .where(and(eq(instrumentsTable.userId, userId), eq(instrumentsTable.enabled, true)));
-    if (enabled.length > SCALP_MAX_INSTRUMENTS) {
-      throw new ScalpInstrumentLimitError(
-        `Fast mode supports up to ${SCALP_MAX_INSTRUMENTS} instruments; you have ${enabled.length} enabled. ` +
-          `At one-minute cycles more than that exceeds your broker's rate limit.`,
-      );
+    if (state.config.strategyMode === "scalp") {
+      const enabled = await db
+        .select({ id: instrumentsTable.id })
+        .from(instrumentsTable)
+        .where(and(eq(instrumentsTable.userId, userId), eq(instrumentsTable.enabled, true)));
+      if (enabled.length > SCALP_MAX_INSTRUMENTS) {
+        throw new ScalpInstrumentLimitError(
+          `Fast mode supports up to ${SCALP_MAX_INSTRUMENTS} instruments; you have ${enabled.length} enabled. ` +
+            `At one-minute cycles more than that exceeds your broker's rate limit.`,
+        );
+      }
     }
+
+    state.running = true;
+    await persistRunning(userId, true);
+    armCycleTimers(userId, state, opts.firstCycleDelayMs ?? 0);
+
+    logger.info({ userId, config: state.config }, "Bot started");
+    return getBotStatus(userId);
+  } finally {
+    // Released on the error paths too (no broker, too many scalp instruments),
+    // so a rejected start never leaves the bot permanently unstartable.
+    state.starting = false;
   }
-
-  state.running = true;
-  await persistRunning(userId, true);
-  armCycleTimers(userId, state, opts.firstCycleDelayMs ?? 0);
-
-  logger.info({ userId, config: state.config }, "Bot started");
-  return getBotStatus(userId);
 }
 
 /**
