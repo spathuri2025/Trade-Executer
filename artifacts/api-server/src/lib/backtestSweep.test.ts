@@ -130,3 +130,25 @@ describe("history depth — the first sweep's blind spot", () => {
     expect(Number(match![1])).toBeGreaterThanOrEqual(5000);
   });
 });
+
+describe("combination independence — non-independent rows must not inflate the sample", () => {
+  it("sweeps MA pairs for trend-following only, since mean reversion ignores them", async () => {
+    // computeMeanReversionSignal(prices) takes no MA periods — it is RSI +
+    // Bollinger with fixed parameters. Running it once per MA pair produced
+    // four near-identical rows per instrument (differing only by warm-up
+    // offset) and counted them as four independent tests, turning seven real
+    // observations into twenty-eight. Verified live: mean reversion returned
+    // 136 rows but only 46 distinct outcomes, while trend-following returned
+    // 136 rows and 136 distinct outcomes.
+    const fs = await import("node:fs/promises");
+    const src = await fs.readFile(new URL("./backtestSweep.ts", import.meta.url), "utf8");
+
+    // The MA loop must no longer iterate strategies.
+    expect(src).not.toMatch(/for \(const strategy of \["trend_following", "mean_reversion"\]/);
+    // Mean reversion is scored exactly once, outside the MA loop.
+    const meanRevScores = src.match(/strategy: "mean_reversion"/g) ?? [];
+    expect(meanRevScores).toHaveLength(1);
+    // ...and labelled with the parameters it actually uses.
+    expect(src).toMatch(/RSI \$\{STRATEGY_PARAMS\.rsiPeriod\}/);
+  });
+});

@@ -23,6 +23,7 @@ import type { UserBrokerCredentials } from "./brokerCredentialsService";
 import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion, type BacktestStrategyName } from "./backtest";
 import { ATR_MOMENTUM_PARAMS } from "./atrMomentumStrategy";
 import { VWAP_REVERSION_PARAMS } from "./vwapReversionStrategy";
+import { STRATEGY_PARAMS } from "./strategyRouter";
 import { logger } from "./logger";
 
 /**
@@ -48,7 +49,14 @@ export const MIN_TRADES_PER_WINDOW = 15;
 
 export const SWEEP_RESOLUTIONS = ["MINUTE_5", "MINUTE_15", "HOUR", "HOUR_4", "DAY"] as const;
 
-/** MA pairs to try for the two crossover strategies. */
+/**
+ * Warm-up length used for mean reversion. It takes no MA periods of its own, but
+ * backtestStrategy derives its warm-up from the long period, so this sets a
+ * warm-up comfortably above its RSI and Bollinger lookbacks.
+ */
+export const MEAN_REVERSION_WARMUP_PERIOD = 50;
+
+/** MA pairs to try — trend-following is the only strategy that uses them. */
 export const MA_PAIRS: Array<[number, number]> = [
   [5, 20],
   [9, 21],
@@ -237,24 +245,47 @@ export async function runSweep(
         const candles = await getBrokerCandlesPaged(userId, credentials, inst.ticker, HISTORY_BARS, resolution);
         const prices = candles.map((c) => c.close);
 
+        // Only trend-following actually consumes the MA periods. Mean reversion
+        // is RSI + Bollinger with its own fixed parameters (see
+        // computeMeanReversionSignal) and ignores them entirely — sweeping it
+        // across MA pairs produced four near-identical rows per instrument that
+        // differed only by warm-up offset, then counted them as four
+        // independent tests. That inflated its sample fourfold and made seven
+        // real observations look like twenty-eight.
         for (const [shortPeriod, longPeriod] of MA_PAIRS) {
-          for (const strategy of ["trend_following", "mean_reversion"] as const) {
-            const combo = scoreCombo(
-              {
-                ticker: inst.ticker,
-                name: inst.name,
-                resolution,
-                strategy,
-                params: `MA ${shortPeriod}/${longPeriod}`,
-                costPct,
-                bars: prices.length,
-              },
-              (from, to) => backtestStrategy(prices.slice(from, to), shortPeriod, longPeriod, strategy, costPct),
-              prices.length,
-            );
-            if (combo) combos.push(combo);
-          }
+          const combo = scoreCombo(
+            {
+              ticker: inst.ticker,
+              name: inst.name,
+              resolution,
+              strategy: "trend_following",
+              params: `MA ${shortPeriod}/${longPeriod}`,
+              costPct,
+              bars: prices.length,
+            },
+            (from, to) =>
+              backtestStrategy(prices.slice(from, to), shortPeriod, longPeriod, "trend_following", costPct),
+            prices.length,
+          );
+          if (combo) combos.push(combo);
         }
+
+        // One row, its real parameters in the label.
+        const meanRev = scoreCombo(
+          {
+            ticker: inst.ticker,
+            name: inst.name,
+            resolution,
+            strategy: "mean_reversion",
+            params: `RSI ${STRATEGY_PARAMS.rsiPeriod} / Bollinger ${STRATEGY_PARAMS.bollingerPeriod}x${STRATEGY_PARAMS.bollingerMult}`,
+            costPct,
+            bars: prices.length,
+          },
+          (from, to) =>
+            backtestStrategy(prices.slice(from, to), MEAN_REVERSION_WARMUP_PERIOD, MEAN_REVERSION_WARMUP_PERIOD, "mean_reversion", costPct),
+          prices.length,
+        );
+        if (meanRev) combos.push(meanRev);
 
         if (candles.length > 0) {
           const atr = scoreCombo(
