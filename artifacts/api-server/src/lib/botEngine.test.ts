@@ -148,6 +148,10 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxConcurrentPositions: 5,
     aiTradeMode: "off",
     minAiConfidence: "any",
+    strategyMode: "auto",
+    minEdgeVsSpread: 3,
+    maxTradesPerDay: 0,
+    maxIntradayDrawdownPercent: 0,
     regimeFilterEnabled: false,
     barResolution: "MINUTE_5",
     ...patch,
@@ -1036,5 +1040,98 @@ describe("meetsConfidenceFloor", () => {
     expect(engine.meetsConfidenceFloor("HIGH", "high")).toBe(true);
     expect(engine.meetsConfidenceFloor(undefined, "medium")).toBe(false);
     expect(engine.meetsConfidenceFloor("banana", "medium")).toBe(false);
+  });
+});
+
+describe("fast engine — the cost gate is the point of scalp mode", () => {
+  const scalpCfg = { strategyMode: "scalp" as const, minEdgeVsSpread: 3 };
+
+  it("blocks a trade whose expected move cannot clear the spread", () => {
+    // 0.05% expected against a 0.045% spread needing 3x (0.135%) — the exact
+    // shape of trade that made 5-minute trading lose money in the sweep.
+    expect(engine.clearsCostHurdle(scalpCfg, 0.0005, 0.00045)).toBe(false);
+  });
+
+  it("allows a trade whose expected move clears the multiple", () => {
+    expect(engine.clearsCostHurdle(scalpCfg, 0.002, 0.00045)).toBe(true);
+  });
+
+  it("blocks when the spread is unknown — fails CLOSED, unlike the other quote checks", () => {
+    // Market-status and min-size checks fail open because a skipped entry is
+    // cheap. Cost is different: trading blind on it is the mistake the fast
+    // engine exists to prevent.
+    expect(engine.clearsCostHurdle(scalpCfg, 0.01, null)).toBe(false);
+  });
+
+  it("does not apply outside scalp mode", () => {
+    // Slower strategies carry no move estimate; imposing the hurdle on them
+    // would block trades on a number they never computed.
+    expect(engine.clearsCostHurdle({ strategyMode: "auto", minEdgeVsSpread: 3 }, null, 0.05)).toBe(true);
+  });
+
+  it("is disabled by a zero multiple", () => {
+    expect(engine.clearsCostHurdle({ strategyMode: "scalp", minEdgeVsSpread: 0 }, 0.00001, 0.05)).toBe(true);
+  });
+
+  it("explains the block in numbers the user can check", () => {
+    const reason = engine.costHurdleReason({ minEdgeVsSpread: 3 }, 0.0005, 0.00045);
+    expect(reason).toMatch(/0\.050%/);
+    expect(reason).toMatch(/0\.045%/);
+    expect(reason).toMatch(/0\.135%/);
+  });
+
+  it("says so plainly when the spread could not be read", () => {
+    expect(engine.costHurdleReason({ minEdgeVsSpread: 3 }, 0.01, null)).toMatch(/could not be read/i);
+  });
+});
+
+describe("fast engine — intraday drawdown halts from the peak, not the open", () => {
+  it("stops the bot after giving back gains, even while still up on the day", async () => {
+    // The case the day-start breaker cannot see: up 5%, then down 4% from the
+    // high, is still "up" against the open while having lost most of the day.
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(1000)) // baseline + peak
+      .mockResolvedValueOnce(account(1100)) // new peak
+      .mockResolvedValue(account(1045)); // -5% from peak, still +4.5% on the day
+
+    await startLiveBot({ maxIntradayDrawdownPercent: 2, maxDailyLossPercent: 0 });
+    await engine.runCycle(TEST_USER_ID); // sets the higher peak
+    await engine.runCycle(TEST_USER_ID); // observes the fall from it
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/peak/i);
+    expect(status.running).toBe(false);
+    expect(mocks.notify.notifyUser).toHaveBeenCalledWith(
+      TEST_USER_ID,
+      expect.objectContaining({ type: "circuit_breaker" }),
+    );
+  });
+
+  it("does not trip while equity is making new highs", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(1000))
+      .mockResolvedValueOnce(account(1050))
+      .mockResolvedValue(account(1100));
+
+    await startLiveBot({ maxIntradayDrawdownPercent: 2, maxDailyLossPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+  });
+
+  it("is disabled by a zero threshold", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(1000))
+      .mockResolvedValue(account(500)); // catastrophic, but the control is off
+
+    await startLiveBot({ maxIntradayDrawdownPercent: 0, maxDailyLossPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
   });
 });

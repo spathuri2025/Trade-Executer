@@ -30,6 +30,7 @@ import { Play, Square, Link2, Unlink } from "lucide-react";
 type BrokerName = "trading212" | "capitalcom";
 type AiTradeMode = "off" | "guard" | "autonomous";
 type MinAiConfidence = "any" | "medium" | "high";
+type StrategyMode = "auto" | "scalp";
 type BarResolution = "MINUTE" | "MINUTE_5" | "MINUTE_15" | "MINUTE_30" | "HOUR" | "HOUR_4" | "DAY" | "WEEK";
 
 const BROKER_LABELS: Record<BrokerName, string> = {
@@ -100,6 +101,10 @@ export default function Settings() {
     maxConcurrentPositions: 5,
     aiTradeMode: "off" as AiTradeMode,
     minAiConfidence: "any" as MinAiConfidence,
+    strategyMode: "auto" as StrategyMode,
+    minEdgeVsSpread: 3,
+    maxTradesPerDay: 50,
+    maxIntradayDrawdownPercent: 2,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
   });
@@ -121,6 +126,10 @@ export default function Settings() {
         maxConcurrentPositions: botStatus.config.maxConcurrentPositions,
         aiTradeMode: (botStatus.config.aiTradeMode as AiTradeMode) ?? "off",
         minAiConfidence: (botStatus.config.minAiConfidence as MinAiConfidence) ?? "any",
+        strategyMode: (botStatus.config.strategyMode as StrategyMode) ?? "auto",
+        minEdgeVsSpread: botStatus.config.minEdgeVsSpread ?? 3,
+        maxTradesPerDay: botStatus.config.maxTradesPerDay ?? 50,
+        maxIntradayDrawdownPercent: botStatus.config.maxIntradayDrawdownPercent ?? 2,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
@@ -562,6 +571,86 @@ export default function Settings() {
                 : "Dry Run is OFF — the AI's decisions will place REAL orders with real money. Turn Dry Run back on to test safely first."}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Fast engine */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Fast Engine (Scalping)</CardTitle>
+          <CardDescription>
+            Trades short, frequent moves instead of holding for hours. Only worth running with the
+            cost hurdle below — at this speed the spread is fixed while the move you capture shrinks.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="strategy-mode">Strategy mode</Label>
+            <Select
+              value={config.strategyMode}
+              onValueChange={(v) => setConfig({ ...config, strategyMode: v as StrategyMode })}
+            >
+              <SelectTrigger id="strategy-mode" data-testid="select-strategy-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Normal — trend / reversion by market regime</SelectItem>
+                <SelectItem value="scalp">Fast — micro-reversion scalping</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Fast mode supports up to 20 instruments and needs a short Interval (1&ndash;5 minutes)
+              to be worth running.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="min-edge">Required edge vs spread (&times;)</Label>
+              <Input
+                id="min-edge"
+                type="number"
+                step="0.5"
+                min="0"
+                value={config.minEdgeVsSpread}
+                onChange={(e) => setConfig({ ...config, minEdgeVsSpread: Number(e.target.value) })}
+                data-testid="input-min-edge"
+              />
+              <p className="text-xs text-muted-foreground">
+                No trade unless the expected move is this many times the live spread. On a 0.045%
+                spread, 3&times; means a move of 0.135% or nothing happens. 0 disables the check.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="max-trades-day">Max trades per day</Label>
+              <Input
+                id="max-trades-day"
+                type="number"
+                min="0"
+                value={config.maxTradesPerDay}
+                onChange={(e) => setConfig({ ...config, maxTradesPerDay: Number(e.target.value) })}
+                data-testid="input-max-trades-day"
+              />
+              <p className="text-xs text-muted-foreground">Hard stop on churn. 0 = unlimited.</p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="max-intraday-dd">Max intraday drawdown (%)</Label>
+            <Input
+              id="max-intraday-dd"
+              type="number"
+              step="0.5"
+              min="0"
+              value={config.maxIntradayDrawdownPercent}
+              onChange={(e) => setConfig({ ...config, maxIntradayDrawdownPercent: Number(e.target.value) })}
+              data-testid="input-max-intraday-dd"
+            />
+            <p className="text-xs text-muted-foreground">
+              Halts the engine after giving back this much from the day&rsquo;s <em>high</em> — tighter
+              than Max Daily Loss, which only measures from the day&rsquo;s open. 0 disables.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

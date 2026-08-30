@@ -25,7 +25,15 @@ import { rsi, bollingerBands, adx } from "./indicators";
 // "vwap_reversion" in vwapReversionStrategy.ts) are deliberately NOT members
 // here; BacktestStrategyName in backtest.ts is the separate, wider type used
 // by the ephemeral (non-DB-persisted) backtest report instead.
-export type StrategyName = "trend_following" | "mean_reversion";
+export type StrategyName = "trend_following" | "mean_reversion" | "scalp";
+
+/**
+ * "auto" runs the regime router below. "scalp" sends every instrument to the
+ * fast micro-reversion strategy (scalpStrategy.ts) and skips regime
+ * classification entirely — an ADX reading over one-minute bars is noise, not a
+ * regime.
+ */
+export type StrategyMode = "auto" | "scalp";
 export type Regime = "trending" | "ranging";
 export type SignalAction = "BUY" | "SELL" | "HOLD";
 

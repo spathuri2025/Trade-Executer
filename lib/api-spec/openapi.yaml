@@ -1961,6 +1961,19 @@ components:
           type: string
           enum: [any, medium, high]
           description: Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls.
+        strategyMode:
+          type: string
+          enum: [auto, scalp]
+          description: auto runs the regime router (trend-following / mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.
+        minEdgeVsSpread:
+          type: number
+          description: In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.
+        maxTradesPerDay:
+          type: integer
+          description: Hard cap on orders placed per UTC day. 0 = unlimited.
+        maxIntradayDrawdownPercent:
+          type: number
+          description: Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables.
         regimeFilterEnabled:
           type: boolean
           description: When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.
@@ -2011,6 +2024,19 @@ components:
           type: string
           enum: [any, medium, high]
           description: Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls.
+        strategyMode:
+          type: string
+          enum: [auto, scalp]
+          description: auto runs the regime router (trend-following / mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.
+        minEdgeVsSpread:
+          type: number
+          description: In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.
+        maxTradesPerDay:
+          type: integer
+          description: Hard cap on orders placed per UTC day. 0 = unlimited.
+        maxIntradayDrawdownPercent:
+          type: number
+          description: Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables.
         regimeFilterEnabled:
           type: boolean
           description: Enable automatic trending/ranging routing between trend-following and mean-reversion.

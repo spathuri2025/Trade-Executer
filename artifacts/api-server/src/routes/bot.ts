@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { getBotStatus, startBot, stopBotAndGetStatus, updateConfig, resumeBot, BrokerNotConnectedError } from "../lib/botEngine";
+import { getBotStatus, startBot, stopBotAndGetStatus, updateConfig, resumeBot, BrokerNotConnectedError, ScalpInstrumentLimitError } from "../lib/botEngine";
 import { UpdateBotConfigBody } from "@workspace/api-zod";
 import { getBrokerAccount } from "../lib/broker";
 import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
@@ -16,7 +16,7 @@ router.post("/bot/start", async (req, res): Promise<void> => {
     const status = await startBot(req.user!.id);
     res.json(status);
   } catch (err) {
-    if (err instanceof BrokerNotConnectedError) {
+    if (err instanceof BrokerNotConnectedError || err instanceof ScalpInstrumentLimitError) {
       res.status(400).json({ error: err.message });
       return;
     }
@@ -34,7 +34,7 @@ router.post("/bot/resume", async (req, res): Promise<void> => {
     const status = await resumeBot(req.user!.id);
     res.json(status);
   } catch (err) {
-    if (err instanceof BrokerNotConnectedError) {
+    if (err instanceof BrokerNotConnectedError || err instanceof ScalpInstrumentLimitError) {
       res.status(400).json({ error: err.message });
       return;
     }

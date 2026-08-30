@@ -9,6 +9,7 @@ import type { BotConfigAiTradeMode } from './botConfigAiTradeMode';
 import type { BotConfigBarResolution } from './botConfigBarResolution';
 import type { BotConfigBroker } from './botConfigBroker';
 import type { BotConfigMinAiConfidence } from './botConfigMinAiConfidence';
+import type { BotConfigStrategyMode } from './botConfigStrategyMode';
 
 export interface BotConfig {
   /** Short MA period (e.g. 9) */
@@ -39,6 +40,14 @@ export interface BotConfig {
   aiTradeMode: BotConfigAiTradeMode;
   /** Minimum AI conviction required before a trade is placed in guard or autonomous mode. "any" acts on every decision, including the model's own low-confidence calls. */
   minAiConfidence?: BotConfigMinAiConfidence;
+  /** auto runs the regime router (trend-following / mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification. */
+  strategyMode?: BotConfigStrategyMode;
+  /** In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check. */
+  minEdgeVsSpread?: number;
+  /** Hard cap on orders placed per UTC day. 0 = unlimited. */
+  maxTradesPerDay?: number;
+  /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
+  maxIntradayDrawdownPercent?: number;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */

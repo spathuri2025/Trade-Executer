@@ -128,6 +128,10 @@ export const GetBotStatusResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "minAiConfidence": zod.enum(['any', 'medium', 'high']).optional().describe('Minimum AI conviction required before a trade is placed in guard or autonomous mode. \"any\" acts on every decision, including the model\'s own low-confidence calls.'),
+  "strategyMode": zod.enum(['auto', 'scalp']).optional().describe('auto runs the regime router (trend-following \/ mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.'),
+  "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
+  "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
+  "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -162,6 +166,10 @@ export const StartBotResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "minAiConfidence": zod.enum(['any', 'medium', 'high']).optional().describe('Minimum AI conviction required before a trade is placed in guard or autonomous mode. \"any\" acts on every decision, including the model\'s own low-confidence calls.'),
+  "strategyMode": zod.enum(['auto', 'scalp']).optional().describe('auto runs the regime router (trend-following \/ mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.'),
+  "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
+  "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
+  "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -196,6 +204,10 @@ export const StopBotResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "minAiConfidence": zod.enum(['any', 'medium', 'high']).optional().describe('Minimum AI conviction required before a trade is placed in guard or autonomous mode. \"any\" acts on every decision, including the model\'s own low-confidence calls.'),
+  "strategyMode": zod.enum(['auto', 'scalp']).optional().describe('auto runs the regime router (trend-following \/ mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.'),
+  "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
+  "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
+  "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -230,6 +242,10 @@ export const ResumeBotResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "minAiConfidence": zod.enum(['any', 'medium', 'high']).optional().describe('Minimum AI conviction required before a trade is placed in guard or autonomous mode. \"any\" acts on every decision, including the model\'s own low-confidence calls.'),
+  "strategyMode": zod.enum(['auto', 'scalp']).optional().describe('auto runs the regime router (trend-following \/ mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.'),
+  "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
+  "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
+  "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -260,6 +276,10 @@ export const UpdateBotConfigBody = zod.object({
   "maxConcurrentPositions": zod.number().optional().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).optional().describe('How Claude participates in execution.'),
   "minAiConfidence": zod.enum(['any', 'medium', 'high']).optional().describe('Minimum AI conviction required before a trade is placed in guard or autonomous mode. \"any\" acts on every decision, including the model\'s own low-confidence calls.'),
+  "strategyMode": zod.enum(['auto', 'scalp']).optional().describe('auto runs the regime router (trend-following \/ mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.'),
+  "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
+  "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
+  "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
   "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).optional().describe('Capital.com candle resolution the bot fetches signals at.')
 })
@@ -283,6 +303,10 @@ export const UpdateBotConfigResponse = zod.object({
   "maxConcurrentPositions": zod.number().describe('Maximum number of simultaneously open positions. New entries (long or short) are blocked at this limit; trades on an already-open ticker are unaffected. 0 disables the cap.'),
   "aiTradeMode": zod.enum(['off', 'guard', 'autonomous']).describe('How Claude participates in execution. off = strategy only; guard = Claude approves\/vetoes each MA signal; autonomous = Claude decides trades.'),
   "minAiConfidence": zod.enum(['any', 'medium', 'high']).optional().describe('Minimum AI conviction required before a trade is placed in guard or autonomous mode. \"any\" acts on every decision, including the model\'s own low-confidence calls.'),
+  "strategyMode": zod.enum(['auto', 'scalp']).optional().describe('auto runs the regime router (trend-following \/ mean-reversion). scalp runs the fast micro-reversion engine and bypasses regime classification.'),
+  "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
+  "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
+  "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),

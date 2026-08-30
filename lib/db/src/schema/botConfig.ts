@@ -34,6 +34,27 @@ export const botConfigTable = pgTable("bot_config", {
    * on "low" almost every time.
    */
   minAiConfidence: text("min_ai_confidence", { enum: ["any", "medium", "high"] }).notNull().default("any"),
+  /**
+   * "auto" keeps the regime router (trend-following / mean-reversion).
+   * "scalp" routes every instrument to the fast micro-reversion strategy and
+   * bypasses the regime filter — a 1-minute ADX reading is noise.
+   */
+  strategyMode: text("strategy_mode", { enum: ["auto", "scalp"] }).notNull().default("auto"),
+  /**
+   * How many times the expected move must exceed the live round-trip spread
+   * before a scalp order is placed. The central risk control of the fast
+   * engine: at speed the spread is fixed while the captured move shrinks, so
+   * without this hurdle a scalper reliably pays more than it earns.
+   */
+  minEdgeVsSpread: real("min_edge_vs_spread").notNull().default(3),
+  /** Hard churn cap per UTC day. 0 = unlimited. */
+  maxTradesPerDay: integer("max_trades_per_day").notNull().default(50),
+  /**
+   * Halts the engine when equity falls this far from its INTRADAY PEAK (not
+   * the day's open, which maxDailyLossPercent already covers). Strictly
+   * tighter, and what a fast engine needs. 0 = disabled.
+   */
+  maxIntradayDrawdownPercent: real("max_intraday_drawdown_percent").notNull().default(2),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
   /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */

@@ -20,7 +20,8 @@
  */
 import { getBrokerCandlesPaged, getBrokerQuote } from "./broker";
 import type { UserBrokerCredentials } from "./brokerCredentialsService";
-import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion, type BacktestStrategyName } from "./backtest";
+import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion, backtestScalp, type BacktestStrategyName } from "./backtest";
+import { SCALP_PARAMS } from "./scalpStrategy";
 import { ATR_MOMENTUM_PARAMS } from "./atrMomentumStrategy";
 import { VWAP_REVERSION_PARAMS } from "./vwapReversionStrategy";
 import { STRATEGY_PARAMS } from "./strategyRouter";
@@ -47,7 +48,9 @@ export const IN_SAMPLE_FRACTION = 0.7;
  */
 export const MIN_TRADES_PER_WINDOW = 15;
 
-export const SWEEP_RESOLUTIONS = ["MINUTE_5", "MINUTE_15", "HOUR", "HOUR_4", "DAY"] as const;
+// MINUTE included so the fast/scalp strategy is measured at the speed it would
+// actually run, rather than inferred from 5-minute results.
+export const SWEEP_RESOLUTIONS = ["MINUTE", "MINUTE_5", "MINUTE_15", "HOUR", "HOUR_4", "DAY"] as const;
 
 /**
  * A market-wide sweep touches hundreds of instruments, so it trades breadth for
@@ -354,6 +357,21 @@ export async function runSweep(
             candles.length,
           );
           if (atr) combos.push(atr);
+
+          const scalp = scoreCombo(
+            {
+              ticker: inst.ticker,
+              name: inst.name,
+              resolution,
+              strategy: "scalp",
+              params: `EMA ${SCALP_PARAMS.emaPeriod} / ATR ${SCALP_PARAMS.atrPeriod} x${SCALP_PARAMS.entryAtrMult}`,
+              costPct,
+              bars: candles.length,
+            },
+            (from, to) => backtestScalp(candles.slice(from, to), SCALP_PARAMS, costPct),
+            candles.length,
+          );
+          if (scalp) combos.push(scalp);
 
           const vwap = scoreCombo(
             {

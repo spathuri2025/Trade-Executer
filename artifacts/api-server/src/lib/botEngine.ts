@@ -1,5 +1,5 @@
 import { db, instrumentsTable, tradesTable, signalsTable, botConfigTable, type BotConfigRow } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   placeBrokerOrder,
@@ -7,15 +7,18 @@ import {
   getBrokerAccount,
   getBrokerPositions,
   getBrokerQuote,
+  getBrokerCandles,
   type NormalizedPosition,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
+import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
 import {
   routeStrategy,
   requiredBars,
   type StrategyName,
+  type StrategyMode,
   type Regime,
 } from "./strategyRouter";
 import {
@@ -70,6 +73,14 @@ export interface BotConfig {
    * discard the AI's own low-conviction calls instead of trading them.
    */
   minAiConfidence: MinAiConfidence;
+  /** "auto" = regime routing; "scalp" = the fast micro-reversion engine. */
+  strategyMode: StrategyMode;
+  /** Expected move must exceed the live spread by this multiple before a scalp trades. */
+  minEdgeVsSpread: number;
+  /** Hard cap on orders per UTC day. 0 = unlimited. */
+  maxTradesPerDay: number;
+  /** Halt when equity falls this far from its intraday peak. 0 = disabled. */
+  maxIntradayDrawdownPercent: number;
   /**
    * When true, each instrument is classified as trending or ranging (close-based
    * ADX) and routed to trend-following or mean-reversion automatically. When
@@ -95,6 +106,10 @@ const DEFAULT_CONFIG: BotConfig = {
   maxConcurrentPositions: 5,
   aiTradeMode: "off",
   minAiConfidence: "any",
+  strategyMode: "auto",
+  minEdgeVsSpread: 3,
+  maxTradesPerDay: 50,
+  maxIntradayDrawdownPercent: 2,
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
 };
@@ -111,6 +126,8 @@ interface CircuitBreakerState {
   trippedAt: Date | null;
   dayKey: string | null;
   dayStartEquity: number | null;
+  /** Highest equity seen so far today — the reference for the intraday drawdown halt. */
+  dayPeakEquity: number | null;
 }
 
 interface BotState {
@@ -130,7 +147,7 @@ interface BotState {
 }
 
 function freshCircuitBreaker(): CircuitBreakerState {
-  return { tripped: false, reason: null, trippedAt: null, dayKey: null, dayStartEquity: null };
+  return { tripped: false, reason: null, trippedAt: null, dayKey: null, dayStartEquity: null, dayPeakEquity: null };
 }
 
 /** Per-user in-memory bot state — one isolated bot per customer, no cross-tenant sharing. */
@@ -152,6 +169,10 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxConcurrentPositions: row.maxConcurrentPositions,
     aiTradeMode: row.aiTradeMode,
     minAiConfidence: row.minAiConfidence,
+    strategyMode: row.strategyMode,
+    minEdgeVsSpread: row.minEdgeVsSpread,
+    maxTradesPerDay: row.maxTradesPerDay,
+    maxIntradayDrawdownPercent: row.maxIntradayDrawdownPercent,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
   };
@@ -237,16 +258,24 @@ async function checkEntryQuote(
   userId: number,
   credentials: UserBrokerCredentials,
   ticker: string
-): Promise<{ marketClosed: boolean; minDealSize: number | null }> {
+): Promise<{ marketClosed: boolean; minDealSize: number | null; spreadPct: number | null }> {
   try {
     const quote = await getBrokerQuote(userId, credentials, ticker);
+    // Round-trip cost as a fraction of price. Taken from the SAME quote as the
+    // other two checks rather than a second call — at one-minute cycles an
+    // extra request per instrument per cycle is real rate-limit pressure.
+    const rawSpread = quote.price > 0 ? (quote.offer - quote.bid) / quote.price : NaN;
     return {
       marketClosed: quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE",
       minDealSize: quote.minDealSize,
+      spreadPct: Number.isFinite(rawSpread) && rawSpread >= 0 ? rawSpread : null,
     };
   } catch (err) {
     logger.warn({ userId, ticker, err }, "Could not check market status/min size — allowing trade (fail-open)");
-    return { marketClosed: false, minDealSize: null };
+    // null spread means "unknown". The scalp cost gate treats unknown as a
+    // BLOCK, unlike the other two fields' fail-open: trading blind on cost is
+    // precisely the mistake the fast engine exists to avoid.
+    return { marketClosed: false, minDealSize: null, spreadPct: null };
   }
 }
 
@@ -308,7 +337,55 @@ async function isMarketClosedForFlatten(
   }
 }
 
+
+/**
+ * The fast engine's central risk control: refuse any trade whose expected move
+ * cannot clear the round-trip spread by the configured multiple.
+ *
+ * Only applies in scalp mode. The slower strategies hold long enough that the
+ * spread is a small fraction of the move, and they carry no move estimate to
+ * test anyway; imposing this on them would silently block trades on a number
+ * they never computed.
+ *
+ * A null spread (quote lookup failed) BLOCKS. Everywhere else in this file an
+ * unknown fails open, because a skipped entry is cheap. Here it fails closed:
+ * trading blind on cost is the specific mistake the fast engine exists to
+ * avoid, and at one-minute frequency the next chance is sixty seconds away.
+ */
+export function clearsCostHurdle(
+  cfg: Pick<BotConfig, "strategyMode" | "minEdgeVsSpread">,
+  expectedMovePct: number | null,
+  spreadPct: number | null,
+): boolean {
+  if (cfg.strategyMode !== "scalp") return true;
+  if (cfg.minEdgeVsSpread <= 0) return true;
+  if (spreadPct === null || expectedMovePct === null) return false;
+  return expectedMovePct >= cfg.minEdgeVsSpread * spreadPct;
+}
+
+/** User-facing explanation for a blocked scalp, recorded against the signal. */
+export function costHurdleReason(
+  cfg: Pick<BotConfig, "minEdgeVsSpread">,
+  expectedMovePct: number | null,
+  spreadPct: number | null,
+): string {
+  if (spreadPct === null || expectedMovePct === null) {
+    return "Trade skipped: the live spread could not be read, so the trade could not be shown to be worth its cost.";
+  }
+  const need = cfg.minEdgeVsSpread * spreadPct;
+  return (
+    `Trade skipped: expected move ${(expectedMovePct * 100).toFixed(3)}% does not clear ` +
+    `${cfg.minEdgeVsSpread}x the ${(spreadPct * 100).toFixed(3)}% spread (needs ${(need * 100).toFixed(3)}%).`
+  );
+}
+
 export class BrokerNotConnectedError extends Error {}
+
+/** Thrown when scalp mode is started with more instruments than its rate budget allows. */
+export class ScalpInstrumentLimitError extends Error {}
+
+/** Rate-limit budget: ~3 broker calls per instrument per cycle against ~10 req/s. */
+export const SCALP_MAX_INSTRUMENTS = 20;
 
 export async function getBotStatus(userId: number) {
   const state = await getOrCreateBotState(userId);
@@ -393,6 +470,23 @@ export async function startBot(userId: number, opts: { firstCycleDelayMs?: numbe
   const credentials = await getUserBrokerCredentials(userId);
   if (!credentials) {
     throw new BrokerNotConnectedError("Connect a broker account before starting the bot");
+  }
+
+  // Scalp mode runs on short intervals and spends ~3 broker calls per
+  // instrument per cycle. Capital.com allows roughly 10 requests/second, so a
+  // large watchlist at one-minute cycles would be rate-limited into failure
+  // rather than trading fast. Refuse clearly instead of degrading mysteriously.
+  if (state.config.strategyMode === "scalp") {
+    const enabled = await db
+      .select({ id: instrumentsTable.id })
+      .from(instrumentsTable)
+      .where(and(eq(instrumentsTable.userId, userId), eq(instrumentsTable.enabled, true)));
+    if (enabled.length > SCALP_MAX_INSTRUMENTS) {
+      throw new ScalpInstrumentLimitError(
+        `Fast mode supports up to ${SCALP_MAX_INSTRUMENTS} instruments; you have ${enabled.length} enabled. ` +
+          `At one-minute cycles more than that exceeds your broker's rate limit.`,
+      );
+    }
   }
 
   state.running = true;
@@ -568,9 +662,43 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
   if (state.running && account !== null && account.total !== null) {
     const cb = state.circuitBreaker;
     const todayKey = utcDayKey(new Date());
+    // Peak first: a new high this cycle must raise the bar before the drawdown
+    // check below measures against it.
+    if (cb.dayKey === todayKey && (cb.dayPeakEquity === null || account.total > cb.dayPeakEquity)) {
+      cb.dayPeakEquity = account.total;
+    }
     if (cb.dayKey !== todayKey || cb.dayStartEquity === null) {
       cb.dayKey = todayKey;
       cb.dayStartEquity = account.total;
+      cb.dayPeakEquity = account.total;
+    } else if (
+      // Intraday drawdown: measured from the day's PEAK, not its open, so a
+      // morning gain followed by a slide still halts. The day-start breaker
+      // below cannot see that — an account up 5% then down 4% is still "up"
+      // against the open while having given back most of the day. At scalping
+      // frequency that is the loss pattern that actually happens.
+      cfg.maxIntradayDrawdownPercent > 0 &&
+      cb.dayPeakEquity !== null &&
+      cb.dayPeakEquity > 0 &&
+      ((cb.dayPeakEquity - account.total) / cb.dayPeakEquity) * 100 >= cfg.maxIntradayDrawdownPercent
+    ) {
+      const ddPct = ((cb.dayPeakEquity - account.total) / cb.dayPeakEquity) * 100;
+      const reason = `Equity fell ${ddPct.toFixed(2)}% from today's peak, past the ${cfg.maxIntradayDrawdownPercent}% intraday limit. Trading is halted until you resume it.`;
+      cb.tripped = true;
+      cb.trippedAt = new Date();
+      cb.reason = reason;
+      logger.error(
+        { userId, ddPct, limit: cfg.maxIntradayDrawdownPercent, peak: cb.dayPeakEquity, total: account.total },
+        "Intraday drawdown limit TRIPPED — stopping bot"
+      );
+      await stopBot(userId);
+      await notifyUser(userId, {
+        type: "circuit_breaker",
+        title: "Your trading bot was stopped by the intraday drawdown limit",
+        body: reason,
+        link: "/settings",
+      });
+      return results;
     } else if (cfg.maxDailyLossPercent > 0 && cb.dayStartEquity > 0) {
       const lossPct = ((cb.dayStartEquity - account.total) / cb.dayStartEquity) * 100;
       if (lossPct >= cfg.maxDailyLossPercent) {
@@ -595,6 +723,33 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         });
         return results;
       }
+    }
+  }
+
+  // Daily churn cap. Counted ONCE per cycle rather than per candidate: we place
+  // the orders, so trades_table rows for the UTC day are an exact count, and at
+  // one-minute cycles a per-candidate query would be a needless hammering of
+  // the database. A cap reached mid-cycle simply blocks the rest of it.
+  let tradesToday = 0;
+  let atTradeCap = false;
+  if (cfg.maxTradesPerDay > 0) {
+    try {
+      const dayStart = new Date(`${utcDayKey(new Date())}T00:00:00.000Z`);
+      const todaysTrades = await db
+        .select({ id: tradesTable.id })
+        .from(tradesTable)
+        .where(and(eq(tradesTable.userId, userId), gte(tradesTable.executedAt, dayStart)));
+      tradesToday = todaysTrades.length;
+      atTradeCap = tradesToday >= cfg.maxTradesPerDay;
+      if (atTradeCap) {
+        logger.info({ userId, tradesToday, limit: cfg.maxTradesPerDay }, "Daily trade cap reached — no new orders this cycle");
+      }
+    } catch (err) {
+      // Fail CLOSED: if we cannot count today's trades we cannot honour the
+      // cap, and an uncounted fast engine is exactly what the cap exists to
+      // prevent. Opposite of the fail-open used for market-status checks.
+      atTradeCap = true;
+      logger.error({ userId, err }, "Could not count today's trades — blocking new orders this cycle (fail-closed)");
     }
   }
 
@@ -685,12 +840,44 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
     shortMa: number;
     longMa: number;
     strategy: StrategyName;
-    regime: Regime;
+    /** Null in scalp mode — a regime reading over one-minute bars is noise, not a classification. */
+    regime: Regime | null;
+    /**
+     * How far the strategy expects price to travel, as a fraction. Only the
+     * scalp strategy produces one; null elsewhere, which the cost gate treats
+     * as "not applicable" for non-scalp modes.
+     */
+    expectedMovePct: number | null;
   }
   const bars = requiredBars(longPeriod);
   const contexts: InstrumentContext[] = [];
   for (const instrument of instruments) {
     try {
+      if (cfg.strategyMode === "scalp") {
+        // Scalp needs true OHLC (ATR uses highs/lows), so it takes the candle
+        // endpoint rather than the close-only series the other strategies use.
+        const candles = await getBrokerCandles(userId, credentials, instrument.ticker, scalpRequiredBars(), cfg.barResolution);
+        if (candles.length < scalpRequiredBars()) {
+          logger.warn({ userId, ticker: instrument.ticker }, "Not enough candles for a scalp signal");
+          continue;
+        }
+        const scalp = computeScalpSignal(candles);
+        const lastClose = candles[candles.length - 1]!.close;
+        contexts.push({
+          ticker: instrument.ticker,
+          currentPrice: lastClose,
+          signal: scalp.signal,
+          // The EMA anchor stands in for both MA fields so downstream logging
+          // and the AI context keep a consistent shape across strategies.
+          shortMa: scalp.ema ?? lastClose,
+          longMa: scalp.ema ?? lastClose,
+          strategy: "scalp",
+          regime: null,
+          expectedMovePct: scalp.expectedMovePct,
+        });
+        continue;
+      }
+
       const prices = await getBrokerPriceHistory(userId, credentials, instrument.ticker, bars, cfg.barResolution);
       if (prices.length < longPeriod + 1) {
         logger.warn({ userId, ticker: instrument.ticker, broker: credentials.broker }, "Not enough price data for signal computation");
@@ -709,6 +896,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         longMa: routed.longMa,
         strategy: routed.strategy,
         regime: routed.regime,
+        expectedMovePct: null,
       });
     } catch (err) {
       logger.error({ userId, ticker: instrument.ticker, broker: credentials.broker, err }, "Error processing instrument");
@@ -778,7 +966,11 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         // allow the trade" — consistent with checkEntryQuote's own fail-open
         // behavior on a lookup error, not a gap to later tighten into a block.
         const belowMinDealSize = quantity < (entryCheck.minDealSize ?? 0);
-        if (!meetsConfidenceFloor(decision.confidence, cfg.minAiConfidence)) {
+        if (atTradeCap) {
+          aiReason = `Skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit. ${decision.reason}`;
+        } else if (!clearsCostHurdle(cfg, c.expectedMovePct, entryCheck.spreadPct)) {
+          aiReason = costHurdleReason(cfg, c.expectedMovePct, entryCheck.spreadPct) + ` ${decision.reason}`;
+        } else if (!meetsConfidenceFloor(decision.confidence, cfg.minAiConfidence)) {
           // The AI stated its own conviction; acting on a "low" it flagged
           // itself is the user overriding the model, not trusting it.
           aiReason = `Skipped: AI confidence was ${decision.confidence}, below your ${cfg.minAiConfidence} threshold. ${decision.reason}`;
@@ -861,7 +1053,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
   const liveTickers = new Set(positions.map((p) => p.ticker));
 
   for (const c of contexts) {
-    const { ticker, signal, shortMa, longMa, currentPrice } = c;
+    const { ticker, signal, shortMa, longMa, currentPrice, expectedMovePct } = c;
     let tradeExecuted = false;
     let aiReason: string | null = null;
 
@@ -929,7 +1121,16 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         // allow the trade" — consistent with checkEntryQuote's own fail-open
         // behavior on a lookup error, not a gap to later tighten into a block.
         const belowMinDealSize = quantity < (entryCheck.minDealSize ?? 0);
-        if ((opensNewPosition || isBuy) && riskDataUnavailable) {
+        if (atTradeCap) {
+          aiReason = `Trade skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit.`;
+          logger.info({ userId, ticker, limit: cfg.maxTradesPerDay }, "Entry skipped — daily trade cap");
+        } else if (!clearsCostHurdle(cfg, expectedMovePct, entryCheck.spreadPct)) {
+          aiReason = costHurdleReason(cfg, expectedMovePct, entryCheck.spreadPct);
+          logger.info(
+            { userId, ticker, expectedMovePct, spreadPct: entryCheck.spreadPct, multiple: cfg.minEdgeVsSpread },
+            "Entry skipped — expected move does not clear the spread hurdle"
+          );
+        } else if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = "Trade skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety.";
           logger.warn({ userId, ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
         } else if (atPositionLimit) {

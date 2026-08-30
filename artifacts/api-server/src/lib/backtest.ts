@@ -32,6 +32,7 @@ import { computeMASignal } from "./maStrategy";
 import { computeMeanReversionSignal, requiredBars, type StrategyName } from "./strategyRouter";
 import { computeAtrMomentumSignal, atrMomentumRequiredBars } from "./atrMomentumStrategy";
 import { computeVwapReversionSignal, vwapReversionRequiredBars } from "./vwapReversionStrategy";
+import { computeScalpSignal, scalpRequiredBars, SCALP_PARAMS, type ScalpParams } from "./scalpStrategy";
 import type { Candle } from "./capitalcom";
 
 export interface BacktestPoint {
@@ -330,6 +331,45 @@ export function backtestAtrMomentum(
  * candles to warm up, or when the series lacks the volume this strategy
  * fundamentally needs.
  */
+/**
+ * Backtest the fast micro-reversion strategy. Same engine as the others, so the
+ * cost model (a round-trip `costPct` deducted per trade) applies identically —
+ * which is the point: scalping's viability is a question about costs, and this
+ * lets the sweep answer it with the same yardstick used for everything else.
+ */
+export function backtestScalp(
+  candles: Candle[],
+  params: ScalpParams = SCALP_PARAMS,
+  costPct = 0,
+): BacktestResult | null {
+  const warmup = scalpRequiredBars(params);
+  if (candles.length <= warmup + 1) return null;
+
+  if (
+    candles.some(
+      (c) =>
+        !Number.isFinite(c.close) || c.close <= 0 || !Number.isFinite(c.high) || !Number.isFinite(c.low),
+    )
+  ) {
+    return null;
+  }
+
+  const cost = Number.isFinite(costPct) && costPct > 0 ? costPct : 0;
+
+  const result = runBacktestEngine({
+    bars: candles,
+    warmup,
+    costPct: cost,
+    price: (c) => c.close,
+    decideTarget: (window) => {
+      const sig = computeScalpSignal(window, params);
+      return sig.signal === "BUY" ? 1 : sig.signal === "SELL" ? -1 : 0;
+    },
+  });
+
+  return { strategy: "scalp", ...result };
+}
+
 export function backtestVwapReversion(
   candles: Candle[],
   vwapPeriod: number,
