@@ -5,10 +5,10 @@ import {
   getGetBacktestSweepQueryKey,
   type SweepCombo,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -92,40 +92,37 @@ export function BacktestSweep() {
   const verdict = summary ? VERDICT_STYLE[summary.verdict] ?? VERDICT_STYLE["insufficient-data"]! : null;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <FlaskConical className="h-4 w-4" /> Strategy Sweep
-            </CardTitle>
-            <CardDescription>
-              Tests instruments across timeframes, strategies and parameter sets — then checks
-              whether the winners hold up on data they weren't chosen on. "Whole market" searches
-              the broker's catalogue for an edge instead of assuming your watchlist has one.
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={scope} onValueChange={(v) => setScope(v as typeof scope)}>
-              <SelectTrigger className="w-[190px]" data-testid="select-sweep-scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="watchlist">My instruments</SelectItem>
-                <SelectItem value="universe">Whole market (150)</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={() => start.mutate({ data: { scope } })}
-              disabled={running || start.isPending}
-              data-testid="button-run-sweep"
-            >
-              {running ? "Running…" : start.isPending ? "Starting…" : "Run sweep"}
-            </Button>
-          </div>
+    <CollapsibleSection
+      id="performance.sweep"
+      title={<span className="flex items-center gap-2"><FlaskConical className="h-4 w-4" /> Strategy Sweep</span>}
+      defaultOpen={false}
+      meta={
+        // Kept in the header so a sweep can be started (and its progress seen)
+        // without expanding the section first.
+        <div className="flex items-center gap-2">
+          <Select value={scope} onValueChange={(v) => setScope(v as typeof scope)}>
+            <SelectTrigger className="w-[190px]" data-testid="select-sweep-scope">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="watchlist">My instruments</SelectItem>
+              <SelectItem value="universe">Whole market (150)</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={() => start.mutate({ data: { scope } })}
+            disabled={running || start.isPending}
+            data-testid="button-run-sweep"
+          >
+            {running ? "Running…" : start.isPending ? "Starting…" : "Run sweep"}
+          </Button>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
+      }
+      description={<>Tests instruments across timeframes, strategies and parameter sets — then checks
+              whether the winners hold up on data they weren't chosen on. "Whole market" searches
+              the broker's catalogue for an edge instead of assuming your watchlist has one.</>}
+      contentClassName="space-y-5"
+    >
         {isLoading ? (
           <Skeleton className="h-24" />
         ) : !sweep ? (
@@ -217,7 +214,6 @@ export function BacktestSweep() {
             )}
           </>
         ) : null}
-      </CardContent>
-    </Card>
+    </CollapsibleSection>
   );
 }

@@ -11,13 +11,13 @@ import {
   getListAnnouncementsQueryKey,
   useCreateAnnouncement,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Megaphone } from "lucide-react";
 
@@ -131,12 +131,12 @@ export function AdminSupportPanel() {
   const [openThreadId, setOpenThreadId] = useState<number | null>(null);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Support Inbox</CardTitle>
-        <CardDescription>Customer messages. Replies go out in-app and by email.</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <CollapsibleSection
+      id="admin.support"
+      title="Support Inbox"
+      defaultOpen={false}
+      description={<>Customer messages. Replies go out in-app and by email.</>}
+    >
         {openThreadId != null ? (
           <AdminThreadView threadId={openThreadId} onBack={() => setOpenThreadId(null)} />
         ) : isLoading ? (
@@ -169,8 +169,7 @@ export function AdminSupportPanel() {
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+    </CollapsibleSection>
   );
 }
 
@@ -199,17 +198,14 @@ export function AdminAnnouncementsPanel() {
   });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Megaphone className="h-4 w-4" /> Announcements
-        </CardTitle>
-        <CardDescription>
-          One message to every active user — new features, maintenance windows, pricing changes.
-          Sends immediately, in-app and by email. There is no undo.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <CollapsibleSection
+      id="admin.announcements"
+      title={<span className="flex items-center gap-2"><Megaphone className="h-4 w-4" /> Announcements</span>}
+      defaultOpen={false}
+      description={<>One message to every active user — new features, maintenance windows, pricing changes.
+          Sends immediately, in-app and by email. There is no undo.</>}
+      contentClassName="space-y-6"
+    >
         <form
           className="space-y-3"
           onSubmit={(e) => {
@@ -263,7 +259,6 @@ export function AdminAnnouncementsPanel() {
             ))}
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+    </CollapsibleSection>
   );
 }

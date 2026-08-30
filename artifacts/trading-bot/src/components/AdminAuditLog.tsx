@@ -1,6 +1,6 @@
 import { useListAuditLog, getListAuditLogQueryKey } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ScrollText } from "lucide-react";
 
 /**
@@ -27,17 +27,13 @@ export function AdminAuditLog() {
   });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ScrollText className="h-4 w-4" /> Audit Log
-        </CardTitle>
-        <CardDescription>
-          Every admin action, permanently recorded. Read-only — entries cannot be edited or deleted,
-          including by an admin.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <CollapsibleSection
+      id="admin.audit"
+      title={<span className="flex items-center gap-2"><ScrollText className="h-4 w-4" /> Audit Log</span>}
+      defaultOpen={false}
+      description={<>Every admin action, permanently recorded. Read-only — entries cannot be edited or deleted,
+          including by an admin.</>}
+    >
         {isLoading ? (
           <Skeleton className="h-24" />
         ) : !data || data.entries.length === 0 ? (
@@ -70,7 +66,6 @@ export function AdminAuditLog() {
             })}
           </div>
         )}
-      </CardContent>
-    </Card>
+    </CollapsibleSection>
   );
 }

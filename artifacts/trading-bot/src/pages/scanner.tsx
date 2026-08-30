@@ -8,12 +8,13 @@ import {
   useGetScannerResults,
   getGetScannerResultsQueryKey,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { useToast } from "@/hooks/use-toast";
 import { ScanSearch, Play, Square, RefreshCw, TrendingUp, TrendingDown, Zap } from "lucide-react";
 
@@ -164,12 +165,12 @@ export default function Scanner() {
 
       <div className="grid grid-cols-2 gap-6">
         {/* Config */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Scanner Configuration</CardTitle>
-            <CardDescription>Set criteria for screening instruments</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <CollapsibleSection
+          id="scanner.config"
+          title="Scanner Configuration"
+          defaultOpen={false}
+          description={<>Set criteria for screening instruments</>}
+        >
             <form onSubmit={handleSaveConfig} className="space-y-5">
 
               <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/20">
@@ -262,16 +263,14 @@ export default function Scanner() {
                 {updateConfig.isPending ? "Saving…" : "Save Configuration"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
         {/* Results */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Scanner Hits</CardTitle>
-            <CardDescription>Instruments that matched your criteria</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <CollapsibleSection
+          id="scanner.hits"
+          title="Scanner Hits"
+          description={<>Instruments that matched your criteria</>}
+        >
             {resultsLoading ? (
               <div className="space-y-2">
                 {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
@@ -321,8 +320,7 @@ export default function Scanner() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
       </div>
 
       {/* Next scan info */}

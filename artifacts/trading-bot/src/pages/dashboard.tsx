@@ -14,6 +14,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DailyMarketBrief from "@/components/DailyMarketBrief";
@@ -180,7 +181,7 @@ export default function Dashboard() {
               }}
             >
               {botStatus?.running ? "Live" : "Bot Stopped"}
-              {botStatus?.config.dryRun ? " · Dry Run" : ""}
+              {botStatus?.config?.dryRun ? " · Dry Run" : ""}
             </span>
           )}
         </div>
@@ -287,8 +288,7 @@ export default function Dashboard() {
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
         {/* Live Positions */}
-        <div className="space-y-5">
-          <SectionLabel>Live Positions</SectionLabel>
+        <CollapsibleSection id="dashboard.positions" title="Live Positions" variant="label">
           <div className="rounded-lg overflow-hidden" style={{ backgroundColor: card, border: cardBorder }}>
             {positionsLoading ? (
               <div className="p-5 space-y-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
@@ -357,14 +357,16 @@ export default function Dashboard() {
               <div className="p-5 text-sm" style={{ color: muted }}>No open positions</div>
             )}
           </div>
-        </div>
+        </CollapsibleSection>
 
         {/* Recent Signals */}
-        <div className="space-y-5">
-          <div className="flex items-center gap-3">
-            <SectionLabel>Recent Signals</SectionLabel>
-            <RefreshBadge countdown={signalsCountdown} />
-          </div>
+        <CollapsibleSection
+          id="dashboard.signals"
+          title="Recent Signals"
+          variant="label"
+          defaultOpen={false}
+          meta={<RefreshBadge countdown={signalsCountdown} />}
+        >
           <div className="p-2 rounded-lg" style={{ backgroundColor: card, border: cardBorder }}>
             {signalsLoading ? (
               <div className="p-3 space-y-4"><Skeleton className="h-9 w-full" /><Skeleton className="h-9 w-full" /></div>
@@ -403,7 +405,7 @@ export default function Dashboard() {
               <div className="p-3 text-sm" style={{ color: muted }}>No recent signals</div>
             )}
           </div>
-        </div>
+        </CollapsibleSection>
       </section>
 
       {/* ── Market News ── */}

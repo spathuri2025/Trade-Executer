@@ -25,6 +25,7 @@ import { useAdminMode } from "@/hooks/use-admin-mode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RequestUpgradeButton } from "@/components/RequestUpgradeButton";
 import { ChangePasswordCard } from "@/components/ChangePasswordCard";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { Play, Square, Link2, Unlink } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
@@ -293,15 +294,15 @@ export default function Settings() {
       <ChangePasswordCard />
 
       {/* Broker connection — required before the bot or any live data can work */}
-      <Card className={brokerStatus?.connected ? undefined : "border-amber-500/40"}>
-        <CardHeader>
-          <CardTitle>Broker Connection</CardTitle>
-          <CardDescription>
-            Connect your own {BROKER_LABELS[config.broker]} account. Your credentials are encrypted and used only
-            for your own bot — never shared with other accounts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <CollapsibleSection
+        id="settings.broker"
+        title="Broker Connection"
+        defaultOpen={false}
+        description={<>Connect your own {BROKER_LABELS[config.broker]} account. Your credentials are encrypted and used only
+            for your own bot — never shared with other accounts.</>}
+        className={brokerStatus?.connected ? undefined : "border-amber-500/40"}
+        contentClassName="space-y-4"
+      >
           {brokerStatusLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : brokerStatus?.connected ? (
@@ -409,15 +410,15 @@ export default function Settings() {
                     : "Connect"}
             </Button>
           </form>
-        </CardContent>
-      </Card>
+      </CollapsibleSection>
 
       {/* Engine status */}
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle>Engine Status</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <CollapsibleSection
+        id="settings.engine"
+        title="Engine Status"
+        className="border-primary/20"
+        contentClassName="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+      >
           <div className="space-y-1">
             <div className="text-lg font-bold">
               {botStatus?.running ? (
@@ -458,19 +459,16 @@ export default function Settings() {
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleSection>
 
       {/* Admin mode */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Admin Mode</CardTitle>
-          <CardDescription>
-            Unlocks admin-only controls such as generating the AI Daily Market Brief.
-            This is a local toggle only and is not a security boundary.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <CollapsibleSection
+        id="settings.adminMode"
+        title="Admin Mode"
+        defaultOpen={false}
+        description={<>Unlocks admin-only controls such as generating the AI Daily Market Brief.
+            This is a local toggle only and is not a security boundary.</>}
+      >
           <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/20">
             <div className="space-y-0.5 pr-4">
               <label className="text-sm font-medium">Enable Admin Mode</label>
@@ -484,18 +482,16 @@ export default function Settings() {
               data-testid="switch-admin-mode"
             />
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleSection>
 
       {/* AI trade mode */}
-      <Card>
-        <CardHeader>
-          <CardTitle>AI Trade Mode</CardTitle>
-          <CardDescription>
-            Choose how AI takes part in placing trades. Changes save with the button below.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <CollapsibleSection
+        id="settings.aiMode"
+        title="AI Trade Mode"
+        defaultOpen={false}
+        description={<>Choose how AI takes part in placing trades. Changes save with the button below.</>}
+        contentClassName="space-y-3"
+      >
           {aiModesLocked && (
             <div className="text-xs rounded-md p-3 border border-border bg-muted/30 text-muted-foreground flex items-center justify-between gap-3 flex-wrap">
               <span>
@@ -571,19 +567,17 @@ export default function Settings() {
                 : "Dry Run is OFF — the AI's decisions will place REAL orders with real money. Turn Dry Run back on to test safely first."}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </CollapsibleSection>
 
       {/* Fast engine */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Fast Engine (Scalping)</CardTitle>
-          <CardDescription>
-            Trades short, frequent moves instead of holding for hours. Only worth running with the
-            cost hurdle below — at this speed the spread is fixed while the move you capture shrinks.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <CollapsibleSection
+        id="settings.fastEngine"
+        title="Fast Engine (Scalping)"
+        defaultOpen={false}
+        description={<>Trades short, frequent moves instead of holding for hours. Only worth running with the
+            cost hurdle below — at this speed the spread is fixed while the move you capture shrinks.</>}
+        contentClassName="space-y-4"
+      >
           <div className="space-y-1.5">
             <Label htmlFor="strategy-mode">Strategy mode</Label>
             <Select
@@ -651,18 +645,15 @@ export default function Settings() {
               than Max Daily Loss, which only measures from the day&rsquo;s open. 0 disables.
             </p>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleSection>
 
       {/* Market regime filter */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Market Regime Filter</CardTitle>
-          <CardDescription>
-            Automatically pick the right strategy per instrument based on market conditions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <CollapsibleSection
+        id="settings.regime"
+        title="Market Regime Filter"
+        defaultOpen={false}
+        description={<>Automatically pick the right strategy per instrument based on market conditions.</>}
+      >
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-1">
               <p className="text-sm font-medium">Adaptive strategy routing</p>
@@ -679,16 +670,15 @@ export default function Settings() {
               data-testid="switch-regime-filter"
             />
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleSection>
 
       {/* Strategy config */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Strategy Configuration</CardTitle>
-          <CardDescription>Moving Average Crossover — broker, periods, and trade size</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <CollapsibleSection
+        id="settings.strategy"
+        title="Strategy Configuration"
+        defaultOpen={false}
+        description={<>Moving Average Crossover — broker, periods, and trade size</>}
+      >
           <form onSubmit={handleSave} className="space-y-6">
 
             {/* Broker selector */}
@@ -939,8 +929,7 @@ export default function Settings() {
               {updateConfig.isPending ? "Saving…" : "Save Configuration"}
             </Button>
           </form>
-        </CardContent>
-      </Card>
+      </CollapsibleSection>
     </div>
   );
 }

@@ -9,10 +9,10 @@ import {
   getGetPlanQueryKey
 } from "@workspace/api-client-react";
 import { RequestUpgradeButton } from "@/components/RequestUpgradeButton";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { Switch } from "@/components/ui/switch";
 import { Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -82,16 +82,15 @@ export default function Instruments() {
       <h1 className="text-3xl font-bold tracking-tight">Watchlist</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="md:col-span-1 h-fit">
-          <CardHeader>
-            <CardTitle>Add Instrument</CardTitle>
-            <CardDescription>
-              {instrumentCap == null
+        <CollapsibleSection
+          id="instruments.add"
+          title="Add Instrument"
+          defaultOpen={false}
+          description={<>{instrumentCap == null
                 ? "Track a new ticker"
-                : `Tracking ${instrumentsUsed} of ${instrumentCap} on your plan`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+                : `Tracking ${instrumentsUsed} of ${instrumentCap} on your plan`}</>}
+          className="md:col-span-1 h-fit"
+        >
             {atInstrumentCap && (
               <div className="text-xs rounded-md p-3 mb-4 border border-border bg-muted/30 text-muted-foreground space-y-2">
                 <p>
@@ -129,14 +128,13 @@ export default function Instruments() {
                 {addMutation.isPending ? "Adding..." : "Add Instrument"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Tracked Instruments</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <CollapsibleSection
+          id="instruments.list"
+          title="Tracked Instruments"
+          className="md:col-span-2"
+        >
             {isLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-12 w-full" />
@@ -175,8 +173,7 @@ export default function Instruments() {
                 No instruments in watchlist.
               </div>
             )}
-          </CardContent>
-        </Card>
+        </CollapsibleSection>
       </div>
     </div>
   );
