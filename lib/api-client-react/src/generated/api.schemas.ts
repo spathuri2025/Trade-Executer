@@ -1233,6 +1233,81 @@ export interface NotificationList {
   notifications: AppNotification[];
 }
 
+export interface SweepStarted {
+  sweepId: number;
+  status: string;
+}
+
+export interface SweepWindowStats {
+  trades: number;
+  winRate: number;
+  /** Per-trade edge as a fraction, net of the round-trip cost. */
+  expectancyPct: number;
+  totalReturnPct: number;
+  maxDrawdownPct: number;
+}
+
+export interface SweepCombo {
+  ticker: string;
+  name: string;
+  resolution: string;
+  strategy: string;
+  params: string;
+  costPct: number;
+  bars: number;
+  inSample: SweepWindowStats;
+  outOfSample: SweepWindowStats;
+  hasEnoughTrades: boolean;
+  /** Positive expectancy in BOTH windows with enough trades — the only rows worth acting on. */
+  robust: boolean;
+}
+
+export type SweepSummaryVerdict = typeof SweepSummaryVerdict[keyof typeof SweepSummaryVerdict];
+
+
+export const SweepSummaryVerdict = {
+  'no-edge': 'no-edge',
+  weak: 'weak',
+  'worth-forward-testing': 'worth-forward-testing',
+  'insufficient-data': 'insufficient-data',
+} as const;
+
+export interface SweepSummary {
+  combosTested: number;
+  combosWithEnoughTrades: number;
+  positiveInSample: number;
+  positiveOutOfSample: number;
+  robustCount: number;
+  outOfSamplePositiveRate: number;
+  medianOutOfSampleExpectancy: number;
+  verdict: SweepSummaryVerdict;
+  verdictText: string;
+}
+
+export type BacktestSweepStatus = typeof BacktestSweepStatus[keyof typeof BacktestSweepStatus];
+
+
+export const BacktestSweepStatus = {
+  running: 'running',
+  complete: 'complete',
+  failed: 'failed',
+} as const;
+
+export interface BacktestSweep {
+  id: number;
+  status: BacktestSweepStatus;
+  combosDone: number;
+  combosTotal: number;
+  summary: SweepSummary | null;
+  /** @nullable */
+  results: SweepCombo[] | null;
+  /** @nullable */
+  error: string | null;
+  startedAt: string;
+  /** @nullable */
+  completedAt: string | null;
+}
+
 export type AuditEntryAction = typeof AuditEntryAction[keyof typeof AuditEntryAction];
 
 
@@ -1675,6 +1750,10 @@ limit?: number;
 
 export type GetScannerResultsParams = {
 limit?: number;
+};
+
+export type GetBacktestSweep200 = {
+  sweep: BacktestSweep | null;
 };
 
 export type GetActivityFeedParams = {

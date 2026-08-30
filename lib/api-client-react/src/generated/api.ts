@@ -49,6 +49,7 @@ import type {
   ExecuteTradeInput,
   ForgotPasswordInput,
   GetActivityFeedParams,
+  GetBacktestSweep200,
   GetCandlesParams,
   GetChartInsightParams,
   GetMarketNewsParams,
@@ -93,6 +94,7 @@ import type {
   SupportMessageInput,
   SupportThread,
   SupportThreadDetail,
+  SweepStarted,
   ThreadStatusInput,
   ThreadStatusResult,
   Trade,
@@ -2584,6 +2586,154 @@ export function useGetScannerResults<TData = Awaited<ReturnType<typeof getScanne
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetScannerResultsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getStartBacktestSweepUrl = () => {
+
+
+
+
+  return `/api/backtest/sweep`
+}
+
+/**
+ * Returns immediately; the sweep runs in the background making paced broker calls for several minutes. Poll GET /backtest/sweep for progress and results. One running sweep per user.
+ * @summary Start a parameter sweep across instruments, timeframes and strategies
+ */
+export const startBacktestSweep = async ( options?: RequestInit): Promise<SweepStarted> => {
+
+  return customFetch<SweepStarted>(getStartBacktestSweepUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getStartBacktestSweepMutationOptions = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,void, TContext> => {
+
+const mutationKey = ['startBacktestSweep'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startBacktestSweep>>, void> = () => {
+
+
+          return  startBacktestSweep(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartBacktestSweepMutationResult = NonNullable<Awaited<ReturnType<typeof startBacktestSweep>>>
+
+    export type StartBacktestSweepMutationError = ErrorType<AssistantError>
+
+    /**
+ * @summary Start a parameter sweep across instruments, timeframes and strategies
+ */
+export const useStartBacktestSweep = <TError = ErrorType<AssistantError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startBacktestSweep>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startBacktestSweep>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartBacktestSweepMutationOptions(options));
+    }
+
+export const getGetBacktestSweepUrl = () => {
+
+
+
+
+  return `/api/backtest/sweep`
+}
+
+/**
+ * @summary The caller's most recent sweep — progress while running, results when done
+ */
+export const getBacktestSweep = async ( options?: RequestInit): Promise<GetBacktestSweep200> => {
+
+  return customFetch<GetBacktestSweep200>(getGetBacktestSweepUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBacktestSweepQueryKey = () => {
+    return [
+    `/api/backtest/sweep`
+    ] as const;
+    }
+
+
+export const getGetBacktestSweepQueryOptions = <TData = Awaited<ReturnType<typeof getBacktestSweep>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacktestSweep>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBacktestSweepQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBacktestSweep>>> = ({ signal }) => getBacktestSweep({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBacktestSweep>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBacktestSweepQueryResult = NonNullable<Awaited<ReturnType<typeof getBacktestSweep>>>
+export type GetBacktestSweepQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The caller's most recent sweep — progress while running, results when done
+ */
+
+export function useGetBacktestSweep<TData = Awaited<ReturnType<typeof getBacktestSweep>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacktestSweep>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBacktestSweepQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

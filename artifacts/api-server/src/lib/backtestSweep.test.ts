@@ -1,0 +1,109 @@
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("./broker", () => ({
+  getBrokerPriceHistory: vi.fn(),
+  getBrokerCandles: vi.fn(),
+  getBrokerQuote: vi.fn(),
+}));
+vi.mock("./logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+
+const { summarise, MIN_TRADES_PER_WINDOW } = await import("./backtestSweep");
+import type { SweepCombo } from "./backtestSweep";
+
+/** A combo with the trade counts and expectancies the test cares about. */
+function combo(inExp: number, outExp: number, trades = MIN_TRADES_PER_WINDOW): SweepCombo {
+  const w = (expectancyPct: number) => ({
+    trades,
+    winRate: 0.5,
+    expectancyPct,
+    totalReturnPct: expectancyPct * trades,
+    maxDrawdownPct: 0.1,
+  });
+  const hasEnoughTrades = trades >= MIN_TRADES_PER_WINDOW;
+  return {
+    ticker: "AAA",
+    name: "Test",
+    resolution: "HOUR",
+    strategy: "trend_following",
+    params: "MA 9/21",
+    costPct: 0.0005,
+    bars: 1000,
+    inSample: w(inExp),
+    outOfSample: w(outExp),
+    hasEnoughTrades,
+    robust: hasEnoughTrades && inExp > 0 && outExp > 0,
+  };
+}
+
+describe("summarise — the verdict must not mistake noise for an edge", () => {
+  it("calls a coin-flip result no better than chance", () => {
+    // Half the combos hold up out of sample — exactly what a strategy with no
+    // edge produces. The best row will still look good; that is the trap.
+    const combos = [
+      ...Array.from({ length: 10 }, () => combo(0.002, 0.002)),
+      ...Array.from({ length: 10 }, () => combo(0.002, -0.002)),
+    ];
+    const s = summarise(combos);
+    expect(s.outOfSamplePositiveRate).toBeCloseTo(0.5, 2);
+    expect(s.verdict).toBe("weak");
+    expect(s.verdictText).toMatch(/chance/i);
+  });
+
+  it("reports no edge when most combinations lose out of sample", () => {
+    const combos = [
+      ...Array.from({ length: 3 }, () => combo(0.003, 0.001)),
+      ...Array.from({ length: 17 }, () => combo(0.003, -0.001)),
+    ];
+    const s = summarise(combos);
+    expect(s.verdict).toBe("no-edge");
+    expect(s.medianOutOfSampleExpectancy).toBeLessThan(0);
+  });
+
+  it("only says 'worth forward-testing' when the rate beats chance AND the median is positive", () => {
+    const combos = [
+      ...Array.from({ length: 16 }, () => combo(0.003, 0.002)),
+      ...Array.from({ length: 4 }, () => combo(0.003, -0.001)),
+    ];
+    const s = summarise(combos);
+    expect(s.outOfSamplePositiveRate).toBeGreaterThanOrEqual(0.6);
+    expect(s.medianOutOfSampleExpectancy).toBeGreaterThan(0);
+    expect(s.verdict).toBe("worth-forward-testing");
+  });
+
+  it("refuses to judge on too few well-sampled combinations", () => {
+    // A handful of thin-sample combos is how a sweep flatters itself.
+    const combos = Array.from({ length: 5 }, () => combo(0.01, 0.01));
+    const s = summarise(combos);
+    expect(s.verdict).toBe("insufficient-data");
+  });
+
+  it("excludes under-traded combinations from every conclusion", () => {
+    // 40 combos, but only 4 have enough trades — the verdict must be based on
+    // those 4 (and therefore refuse), not on the flattering 36.
+    const combos = [
+      ...Array.from({ length: 36 }, () => combo(0.05, 0.05, 3)),
+      ...Array.from({ length: 4 }, () => combo(0.001, -0.001)),
+    ];
+    const s = summarise(combos);
+    expect(s.combosTested).toBe(40);
+    expect(s.combosWithEnoughTrades).toBe(4);
+    expect(s.verdict).toBe("insufficient-data");
+    expect(s.robustCount).toBe(0);
+  });
+
+  it("counts a combination robust only when it is positive in BOTH windows", () => {
+    const combos = [combo(0.002, 0.002), combo(0.002, -0.002), combo(-0.002, 0.002)];
+    expect(summarise(combos).robustCount).toBe(1);
+  });
+
+  it("reports the median, so a few spectacular rows cannot hide a losing distribution", () => {
+    const combos = [
+      combo(0.05, 0.05), // two outstanding rows...
+      combo(0.05, 0.05),
+      ...Array.from({ length: 18 }, () => combo(-0.001, -0.001)), // ...and a losing body
+    ];
+    const s = summarise(combos);
+    expect(s.medianOutOfSampleExpectancy).toBeLessThan(0);
+    expect(s.verdict).toBe("no-edge");
+  });
+});

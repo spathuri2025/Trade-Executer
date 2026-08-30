@@ -619,6 +619,58 @@ export const GetScannerResultsResponse = zod.array(GetScannerResultsResponseItem
 
 
 /**
+ * @summary The caller's most recent sweep — progress while running, results when done
+ */
+export const GetBacktestSweepResponse = zod.object({
+  "sweep": zod.union([zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['running', 'complete', 'failed']),
+  "combosDone": zod.number(),
+  "combosTotal": zod.number(),
+  "summary": zod.union([zod.object({
+  "combosTested": zod.number(),
+  "combosWithEnoughTrades": zod.number(),
+  "positiveInSample": zod.number(),
+  "positiveOutOfSample": zod.number(),
+  "robustCount": zod.number(),
+  "outOfSamplePositiveRate": zod.number(),
+  "medianOutOfSampleExpectancy": zod.number(),
+  "verdict": zod.enum(['no-edge', 'weak', 'worth-forward-testing', 'insufficient-data']),
+  "verdictText": zod.string()
+}),zod.null()]),
+  "results": zod.array(zod.object({
+  "ticker": zod.string(),
+  "name": zod.string(),
+  "resolution": zod.string(),
+  "strategy": zod.string(),
+  "params": zod.string(),
+  "costPct": zod.number(),
+  "bars": zod.number(),
+  "inSample": zod.object({
+  "trades": zod.number(),
+  "winRate": zod.number(),
+  "expectancyPct": zod.number().describe('Per-trade edge as a fraction, net of the round-trip cost.'),
+  "totalReturnPct": zod.number(),
+  "maxDrawdownPct": zod.number()
+}),
+  "outOfSample": zod.object({
+  "trades": zod.number(),
+  "winRate": zod.number(),
+  "expectancyPct": zod.number().describe('Per-trade edge as a fraction, net of the round-trip cost.'),
+  "totalReturnPct": zod.number(),
+  "maxDrawdownPct": zod.number()
+}),
+  "hasEnoughTrades": zod.boolean(),
+  "robust": zod.boolean().describe('Positive expectancy in BOTH windows with enough trades — the only rows worth acting on.')
+})).nullable(),
+  "error": zod.string().nullable(),
+  "startedAt": zod.string(),
+  "completedAt": zod.string().nullable()
+}),zod.null()])
+})
+
+
+/**
  * Runs trend-following and mean-reversion over recent close-price history for every enabled instrument and returns per-strategy, per-instrument performance stats plus an equity curve. All numbers are computed in code (no LLM). Intended as the "is this strategy working" evidence before turning on live automation.
  * @summary Deterministic backtest of both strategies over recent price history
  */

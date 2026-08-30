@@ -681,6 +681,52 @@ paths:
                 items:
                   $ref: "#/components/schemas/ScannerResult"
 
+  /backtest/sweep:
+    post:
+      operationId: startBacktestSweep
+      tags: [backtest]
+      summary: Start a parameter sweep across instruments, timeframes and strategies
+      description: >-
+        Returns immediately; the sweep runs in the background making paced
+        broker calls for several minutes. Poll GET /backtest/sweep for progress
+        and results. One running sweep per user.
+      responses:
+        "202":
+          description: Sweep started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SweepStarted"
+        "400":
+          description: No broker connected, or no instruments enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+        "409":
+          description: A sweep is already running for this user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantError"
+    get:
+      operationId: getBacktestSweep
+      tags: [backtest]
+      summary: The caller's most recent sweep — progress while running, results when done
+      responses:
+        "200":
+          description: Latest sweep, or null if none has been run
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sweep]
+                properties:
+                  sweep:
+                    oneOf:
+                      - $ref: "#/components/schemas/BacktestSweep"
+                      - type: "null"
+
   /backtest:
     get:
       operationId: getBacktest
@@ -3060,6 +3106,120 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AppNotification"
+
+    SweepStarted:
+      type: object
+      required: [sweepId, status]
+      properties:
+        sweepId:
+          type: integer
+        status:
+          type: string
+
+    SweepWindowStats:
+      type: object
+      required: [trades, winRate, expectancyPct, totalReturnPct, maxDrawdownPct]
+      properties:
+        trades:
+          type: integer
+        winRate:
+          type: number
+        expectancyPct:
+          type: number
+          description: Per-trade edge as a fraction, net of the round-trip cost.
+        totalReturnPct:
+          type: number
+        maxDrawdownPct:
+          type: number
+
+    SweepCombo:
+      type: object
+      required: [ticker, name, resolution, strategy, params, costPct, bars, inSample, outOfSample, hasEnoughTrades, robust]
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+        resolution:
+          type: string
+        strategy:
+          type: string
+        params:
+          type: string
+        costPct:
+          type: number
+        bars:
+          type: integer
+        inSample:
+          $ref: "#/components/schemas/SweepWindowStats"
+        outOfSample:
+          $ref: "#/components/schemas/SweepWindowStats"
+        hasEnoughTrades:
+          type: boolean
+        robust:
+          type: boolean
+          description: Positive expectancy in BOTH windows with enough trades — the only rows worth acting on.
+
+    SweepSummary:
+      type: object
+      required:
+        - combosTested
+        - combosWithEnoughTrades
+        - positiveInSample
+        - positiveOutOfSample
+        - robustCount
+        - outOfSamplePositiveRate
+        - medianOutOfSampleExpectancy
+        - verdict
+        - verdictText
+      properties:
+        combosTested:
+          type: integer
+        combosWithEnoughTrades:
+          type: integer
+        positiveInSample:
+          type: integer
+        positiveOutOfSample:
+          type: integer
+        robustCount:
+          type: integer
+        outOfSamplePositiveRate:
+          type: number
+        medianOutOfSampleExpectancy:
+          type: number
+        verdict:
+          type: string
+          enum: [no-edge, weak, worth-forward-testing, insufficient-data]
+        verdictText:
+          type: string
+
+    BacktestSweep:
+      type: object
+      required: [id, status, combosDone, combosTotal, summary, results, error, startedAt, completedAt]
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [running, complete, failed]
+        combosDone:
+          type: integer
+        combosTotal:
+          type: integer
+        summary:
+          oneOf:
+            - $ref: "#/components/schemas/SweepSummary"
+            - type: "null"
+        results:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/SweepCombo"
+        error:
+          type: ["string", "null"]
+        startedAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
 
     AuditEntry:
       type: object

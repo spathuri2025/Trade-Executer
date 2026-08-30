@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, instrumentsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, instrumentsTable, backtestSweepsTable } from "@workspace/db";
+import { and, desc, eq } from "drizzle-orm";
 import { getBrokerPriceHistory, getBrokerQuote, getBrokerCandles } from "../lib/broker";
 import { getBotStatus } from "../lib/botEngine";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "../lib/brokerCredentialsService";
@@ -8,6 +8,7 @@ import { backtestStrategy, backtestAtrMomentum, backtestVwapReversion, type Back
 import { requiredBars, type StrategyName } from "../lib/strategyRouter";
 import { ATR_MOMENTUM_PARAMS, atrMomentumRequiredBars } from "../lib/atrMomentumStrategy";
 import { VWAP_REVERSION_PARAMS, vwapReversionRequiredBars } from "../lib/vwapReversionStrategy";
+import { runSweep } from "../lib/backtestSweep";
 
 const router: IRouter = Router();
 
@@ -221,6 +222,119 @@ router.get("/backtest", async (req, res): Promise<void> => {
     barResolution,
     generatedAt: new Date().toISOString(),
     results,
+  });
+});
+
+/**
+ * Start a parameter sweep. Returns immediately with the row id: a full sweep
+ * makes dozens of paced broker calls and runs for minutes, far longer than an
+ * HTTP request should live. The UI polls GET /backtest/sweep for progress.
+ *
+ * One running sweep per user at a time — they are broker-API-heavy, and a
+ * second concurrent run would both slow the first and risk rate limits.
+ */
+router.post("/backtest/sweep", async (req, res): Promise<void> => {
+  const userId = req.user!.id;
+  const credentials = await getUserBrokerCredentials(userId);
+  if (!credentials) {
+    res.status(400).json({ error: "Connect a broker account first" });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: backtestSweepsTable.id })
+    .from(backtestSweepsTable)
+    .where(and(eq(backtestSweepsTable.userId, userId), eq(backtestSweepsTable.status, "running")));
+  if (existing) {
+    res.status(409).json({ error: "A sweep is already running", sweepId: existing.id });
+    return;
+  }
+
+  const instruments = await db
+    .select()
+    .from(instrumentsTable)
+    .where(eq(instrumentsTable.userId, userId));
+  const enabled = instruments.filter((i) => i.enabled).map((i) => ({ ticker: i.ticker, name: i.name }));
+  if (enabled.length === 0) {
+    res.status(400).json({ error: "Enable at least one instrument first" });
+    return;
+  }
+
+  const [row] = await db
+    .insert(backtestSweepsTable)
+    .values({ userId, status: "running", combosTotal: 0, combosDone: 0 })
+    .returning();
+  if (!row) {
+    res.status(500).json({ error: "Could not start the sweep" });
+    return;
+  }
+
+  // Deliberately NOT awaited: the response goes back now and the work
+  // continues. Every failure path inside writes its own terminal row status,
+  // so a crash cannot leave the sweep "running" forever.
+  void (async () => {
+    try {
+      const { combos, summary } = await runSweep(userId, credentials, enabled, async (done, total) => {
+        await db
+          .update(backtestSweepsTable)
+          .set({ combosDone: done, combosTotal: total })
+          .where(eq(backtestSweepsTable.id, row.id));
+      });
+
+      await db
+        .update(backtestSweepsTable)
+        .set({
+          status: "complete",
+          summary: JSON.stringify(summary),
+          results: JSON.stringify(combos),
+          completedAt: new Date(),
+        })
+        .where(eq(backtestSweepsTable.id, row.id));
+      req.log.info({ userId, sweepId: row.id, combos: combos.length, verdict: summary.verdict }, "Sweep complete");
+    } catch (err) {
+      req.log.error({ err, userId, sweepId: row.id }, "Sweep failed");
+      await db
+        .update(backtestSweepsTable)
+        .set({
+          status: "failed",
+          error: err instanceof Error ? err.message : "Unknown error",
+          completedAt: new Date(),
+        })
+        .where(eq(backtestSweepsTable.id, row.id))
+        .catch(() => {});
+    }
+  })();
+
+  res.status(202).json({ sweepId: row.id, status: "running" });
+});
+
+/** The caller's most recent sweep — progress while running, results when done. */
+router.get("/backtest/sweep", async (req, res): Promise<void> => {
+  const [row] = await db
+    .select()
+    .from(backtestSweepsTable)
+    .where(eq(backtestSweepsTable.userId, req.user!.id))
+    .orderBy(desc(backtestSweepsTable.startedAt))
+    .limit(1);
+
+  if (!row) {
+    res.json({ sweep: null });
+    return;
+  }
+
+  res.set("Cache-Control", "no-store");
+  res.json({
+    sweep: {
+      id: row.id,
+      status: row.status,
+      combosDone: row.combosDone,
+      combosTotal: row.combosTotal,
+      summary: row.summary ? JSON.parse(row.summary) : null,
+      results: row.results ? JSON.parse(row.results) : null,
+      error: row.error,
+      startedAt: row.startedAt.toISOString(),
+      completedAt: row.completedAt?.toISOString() ?? null,
+    },
   });
 });
 

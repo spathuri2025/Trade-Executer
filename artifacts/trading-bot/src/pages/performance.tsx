@@ -7,6 +7,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import PerformanceCoach from "@/components/PerformanceCoach";
+import { BacktestSweep } from "@/components/BacktestSweep";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -250,6 +251,9 @@ export default function Performance() {
     <div className="space-y-6 md:space-y-8">
       {/* ── AI Performance Coach (behavioural analysis of real trade history) ── */}
       <PerformanceCoach />
+
+      {/* Evidence step: does any configuration actually have an edge? */}
+      <BacktestSweep />
 
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
