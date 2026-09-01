@@ -46,6 +46,13 @@ export const LEASE_RENEW_MS = 30_000;
 
 export type LeaseResource = "bot" | "scanner";
 
+/**
+ * Thrown when another live process holds the lease for an engine. Not a
+ * failure: the engine is running, elsewhere. Callers must report it as "already
+ * running" and never clear the user's `running` intent.
+ */
+export class EngineOwnedElsewhereError extends Error {}
+
 const ttlInterval = sql`make_interval(secs => ${LEASE_TTL_MS / 1000})`;
 
 /**

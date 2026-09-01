@@ -19,6 +19,7 @@ import {
   renewLease,
   holdsLease,
   releaseLease,
+  EngineOwnedElsewhereError,
   LEASE_RENEW_MS,
 } from "./engineLease";
 import {
@@ -420,12 +421,9 @@ export class BrokerNotConnectedError extends Error {}
 /** Thrown when scalp mode is started with more instruments than its rate budget allows. */
 export class ScalpInstrumentLimitError extends Error {}
 
-/**
- * Thrown when another live process holds the ownership lease for this engine.
- * Not a failure: the bot is running, elsewhere. Callers should report it as
- * "already running", never clear the user's `running` intent.
- */
-export class EngineOwnedElsewhereError extends Error {}
+// Defined in engineLease.ts (it is a lease concept, shared with the scanner),
+// re-exported here so existing importers of botEngine keep working.
+export { EngineOwnedElsewhereError } from "./engineLease";
 
 /** Rate-limit budget: ~3 broker calls per instrument per cycle against ~10 req/s. */
 export const SCALP_MAX_INSTRUMENTS = 20;
@@ -769,6 +767,16 @@ export function startAdoptionSweep(): void {
             logger.debug({ userId: row.userId, err }, "Adoption sweep could not start a bot");
           }
         }
+      }
+
+      // Scanners need adopting for the same reason and on the same cadence.
+      // Imported lazily: scannerEngine imports botEngine for getBotStatus, and a
+      // static import here would close that cycle at module load.
+      try {
+        const { adoptOwnerlessScanners } = await import("./scannerEngine");
+        await adoptOwnerlessScanners();
+      } catch (err) {
+        logger.warn({ err }, "Adoption sweep could not adopt scanners");
       }
     })();
   }, ADOPTION_SWEEP_MS);

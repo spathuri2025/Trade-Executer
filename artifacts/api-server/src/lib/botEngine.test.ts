@@ -43,6 +43,8 @@ const mocks = vi.hoisted(() => ({
     holdsLease: vi.fn(),
     releaseLease: vi.fn(),
     releaseAllLeases: vi.fn(),
+    // botEngine re-exports this from engineLease, so the mock must provide it.
+    EngineOwnedElsewhereError: class EngineOwnedElsewhereError extends Error {},
     INSTANCE_ID: "test-instance",
     LEASE_TTL_MS: 90_000,
     LEASE_RENEW_MS: 30_000,

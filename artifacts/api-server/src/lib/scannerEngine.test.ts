@@ -16,6 +16,18 @@ const mocks = vi.hoisted(() => ({
   configWrites: [] as Array<Record<string, unknown>>,
   credentials: { getUserBrokerCredentials: vi.fn() },
   plan: { getPlanLimits: vi.fn() },
+  /** Ownership lease — defaults to "we own everything" for the pre-lease tests. */
+  lease: {
+    acquireLease: vi.fn(),
+    renewLease: vi.fn(),
+    holdsLease: vi.fn(),
+    releaseLease: vi.fn(),
+    releaseAllLeases: vi.fn(),
+    EngineOwnedElsewhereError: class EngineOwnedElsewhereError extends Error {},
+    INSTANCE_ID: "test-instance",
+    LEASE_TTL_MS: 90_000,
+    LEASE_RENEW_MS: 30_000,
+  },
 }));
 
 /** A Promise that also exposes the Drizzle chain methods the engine calls. */
@@ -65,6 +77,7 @@ vi.mock("./strategyRouter", () => ({ routeStrategy: vi.fn(), requiredBars: () =>
 vi.mock("./botEngine", () => ({ getBotStatus: vi.fn() }));
 vi.mock("./brokerCredentialsService", () => mocks.credentials);
 vi.mock("./planService", () => mocks.plan);
+vi.mock("./engineLease", () => mocks.lease);
 vi.mock("./logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -98,6 +111,11 @@ beforeEach(async () => {
   // so `getUserBrokerCredentials` call count is a clean probe for "a scan started"
   // without needing to mock the whole Capital.com market walk.
   mocks.credentials.getUserBrokerCredentials.mockResolvedValue(null);
+
+  mocks.lease.acquireLease.mockResolvedValue(true);
+  mocks.lease.renewLease.mockResolvedValue(true);
+  mocks.lease.holdsLease.mockResolvedValue(true);
+  mocks.lease.releaseLease.mockResolvedValue(undefined);
 
   vi.resetModules();
   engine = await import("./scannerEngine");
@@ -159,6 +177,70 @@ describe("scanner config survives a restart", () => {
     expect(mocks.configWrites.at(-1)).toMatchObject({ minTrendStrength: 0.9 });
     expect(mocks.runningWrites).toEqual([]);
     expect((await engine.getScannerStatus(TEST_USER_ID)).running).toBe(false);
+  });
+});
+
+describe("ownership lease — two processes never run one scanner", () => {
+  it("refuses to start a scanner another process owns", async () => {
+    // The scanner places real orders when auto-trade is on, so two of them on
+    // one account doubles every traded hit — the same exposure as the bot.
+    mocks.lease.acquireLease.mockResolvedValue(false);
+
+    await expect(engine.startScanner(TEST_USER_ID)).rejects.toBeInstanceOf(
+      mocks.lease.EngineOwnedElsewhereError
+    );
+    expect((await engine.getScannerStatus(TEST_USER_ID)).running).toBe(false);
+  });
+
+  it("does not clear the user's running intent when owned elsewhere", async () => {
+    mocks.lease.acquireLease.mockResolvedValue(false);
+    mocks.runningWrites = [];
+
+    await expect(engine.startScanner(TEST_USER_ID)).rejects.toBeInstanceOf(
+      mocks.lease.EngineOwnedElsewhereError
+    );
+
+    expect(mocks.runningWrites).not.toContain(false);
+  });
+
+  it("aborts a scan if the lease was lost mid-run", async () => {
+    await engine.startScanner(TEST_USER_ID);
+    mocks.credentials.getUserBrokerCredentials.mockClear();
+
+    mocks.lease.holdsLease.mockResolvedValue(false);
+    const result = await engine.runScan(TEST_USER_ID);
+
+    expect(result).toEqual({ scanned: 0, hits: 0 });
+    // Aborted before the credential lookup, so nothing downstream can order.
+    expect(mocks.credentials.getUserBrokerCredentials).not.toHaveBeenCalled();
+  });
+
+  it("stands down without clearing intent when the lease is lost", async () => {
+    await engine.startScanner(TEST_USER_ID);
+    mocks.runningWrites = [];
+
+    mocks.lease.holdsLease.mockResolvedValue(false);
+    await engine.runScan(TEST_USER_ID);
+
+    expect((await engine.getScannerStatus(TEST_USER_ID)).running).toBe(false); // here
+    expect(mocks.runningWrites).not.toContain(false); // but not everywhere
+  });
+
+  it("releases the lease on a real stop", async () => {
+    await engine.startScanner(TEST_USER_ID);
+    mocks.lease.releaseLease.mockClear();
+
+    await engine.stopScanner(TEST_USER_ID);
+
+    expect(mocks.lease.releaseLease).toHaveBeenCalledWith(TEST_USER_ID, "scanner");
+  });
+
+  it("takes its own lease, separate from the bot's", async () => {
+    // A user may legitimately have the bot owned by one process and the scanner
+    // by another, so the two must never share a claim.
+    await engine.startScanner(TEST_USER_ID);
+    expect(mocks.lease.acquireLease).toHaveBeenCalledWith(TEST_USER_ID, "scanner");
+    expect(mocks.lease.acquireLease).not.toHaveBeenCalledWith(TEST_USER_ID, "bot");
   });
 });
 

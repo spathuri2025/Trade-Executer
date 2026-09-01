@@ -8,6 +8,7 @@ import {
   getScannerResults,
   type ScannerConfig,
 } from "../lib/scannerEngine";
+import { EngineOwnedElsewhereError } from "../lib/engineLease";
 
 /** Bounded limit parsing — invalid input is refused, never silently defaulted. */
 function parseLimit(raw: unknown, fallback: number, max: number): number | null {
@@ -41,6 +42,13 @@ router.post("/scanner/config", async (req, res): Promise<void> => {
 
     res.json(await getScannerStatus(req.user!.id));
   } catch (err) {
+    if (err instanceof EngineOwnedElsewhereError) {
+      // 409, not 500: the config saved fine and the scanner IS running — just
+      // in a process that is on its way out. Nothing is broken and nothing
+      // needs retrying.
+      res.status(409).json({ error: err.message });
+      return;
+    }
     req.log.error({ err }, "Failed to save scanner config");
     res.status(500).json({ error: "Failed to save scanner config" });
   }

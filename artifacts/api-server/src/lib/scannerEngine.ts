@@ -7,6 +7,14 @@ import { routeStrategy, requiredBars } from "./strategyRouter";
 import { getBotStatus } from "./botEngine";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import { getPlanLimits } from "./planService";
+import {
+  acquireLease,
+  renewLease,
+  holdsLease,
+  releaseLease,
+  EngineOwnedElsewhereError,
+  LEASE_RENEW_MS,
+} from "./engineLease";
 
 export interface ScannerConfig {
   scanEnabled: boolean;
@@ -32,6 +40,13 @@ interface ScannerState {
    * "stopped" scanner would still fire one scan.
    */
   pendingStartHandle: ReturnType<typeof setTimeout> | null;
+  /** Keeps the ownership lease alive while this process runs the scanner. */
+  leaseHandle: ReturnType<typeof setInterval> | null;
+  /**
+   * Claimed synchronously by startScanner before it awaits, so two concurrent
+   * starts cannot both arm a timer. Same reasoning as botEngine's flag.
+   */
+  starting: boolean;
 }
 
 function defaultScannerConfig(): ScannerConfig {
@@ -91,8 +106,12 @@ async function getOrCreateScannerState(userId: number): Promise<ScannerState> {
   if (existing) return existing;
 
   const [row] = await db.select().from(scannerConfigTable).where(eq(scannerConfigTable.userId, userId));
+
+  // Another caller may have created the state while this one awaited the read.
+  const raced = scannerStates.get(userId);
+  if (raced) return raced;
+
   const config = row ? rowToScannerConfig(row) : defaultScannerConfig();
-  if (!row) await persistScannerConfig(userId, config);
 
   const state: ScannerState = {
     running: false,
@@ -104,8 +123,15 @@ async function getOrCreateScannerState(userId: number): Promise<ScannerState> {
     config,
     intervalHandle: null,
     pendingStartHandle: null,
+    leaseHandle: null,
+    starting: false,
   };
+  // Published BEFORE any further await, so two concurrent callers cannot each
+  // build a state and have the second orphan the first's timers — the same race
+  // fixed in botEngine.getOrCreateBotState.
   scannerStates.set(userId, state);
+
+  if (!row) await persistScannerConfig(userId, config);
   return state;
 }
 
@@ -158,17 +184,56 @@ function armScanTimers(userId: number, state: ScannerState, delayMs: number): vo
 
 export async function startScanner(userId: number, opts: { firstScanDelayMs?: number } = {}) {
   const state = await getOrCreateScannerState(userId);
-  if (state.running) return getScannerStatus(userId);
+  // Check and claim with no await between them — atomic on one event loop.
+  if (state.running || state.starting) return getScannerStatus(userId);
+  state.starting = true;
 
-  state.running = true;
-  await persistScannerRunning(userId, true);
-  armScanTimers(userId, state, opts.firstScanDelayMs ?? 0);
+  try {
+    // The scanner places real orders when auto-trade is on, so it needs the same
+    // one-process-per-engine guarantee as the bot. Its own lease, since a user
+    // may legitimately have the bot here and the scanner elsewhere.
+    if (!(await acquireLease(userId, "scanner"))) {
+      logger.warn({ userId }, "Scanner not started — another process holds the lease for it");
+      throw new EngineOwnedElsewhereError(
+        "This scanner is already running in another process. It will move here automatically within 90 seconds if that process has stopped."
+      );
+    }
 
-  logger.info({ userId, config: state.config }, "Scanner started");
-  return getScannerStatus(userId);
+    state.running = true;
+    await persistScannerRunning(userId, true);
+    armScannerLeaseRenewal(userId, state);
+    armScanTimers(userId, state, opts.firstScanDelayMs ?? 0);
+
+    logger.info({ userId, config: state.config }, "Scanner started");
+    return getScannerStatus(userId);
+  } finally {
+    state.starting = false;
+  }
 }
 
-export async function stopScanner(userId: number) {
+/**
+ * Renew the scanner's lease, and stand down the moment it is lost — another
+ * process has taken over and two scanners on one account would double every
+ * auto-traded hit.
+ */
+function armScannerLeaseRenewal(userId: number, state: ScannerState): void {
+  if (state.leaseHandle) clearInterval(state.leaseHandle);
+  state.leaseHandle = setInterval(() => {
+    void (async () => {
+      if (!state.running) return;
+      if (!(await renewLease(userId, "scanner"))) {
+        logger.error({ userId }, "Lost the scanner's ownership lease — standing down here");
+        await stopScanner(userId, { keepRunningFlag: true });
+      }
+    })();
+  }, LEASE_RENEW_MS);
+}
+
+export async function stopScanner(
+  userId: number,
+  /** See botEngine.stopBot — stands down locally without clearing the user's intent. */
+  opts: { keepRunningFlag?: boolean } = {}
+) {
   const state = await getOrCreateScannerState(userId);
   if (state.intervalHandle) {
     clearInterval(state.intervalHandle);
@@ -178,8 +243,21 @@ export async function stopScanner(userId: number) {
     clearTimeout(state.pendingStartHandle);
     state.pendingStartHandle = null;
   }
+  if (state.leaseHandle) {
+    clearInterval(state.leaseHandle);
+    state.leaseHandle = null;
+  }
   state.running = false;
   state.nextRunAt = null;
+
+  if (opts.keepRunningFlag) {
+    // Ownership moved; the new owner holds the lease and the user still wants
+    // the scanner running. Releasing here would delete their row.
+    logger.info({ userId }, "Scanner stood down locally — ownership moved to another process");
+    return getScannerStatus(userId);
+  }
+
+  await releaseLease(userId, "scanner");
   await persistScannerRunning(userId, false).catch((err: unknown) =>
     logger.error({ err, userId }, "Failed to persist stopped scanner state"),
   );
@@ -219,6 +297,13 @@ export async function resumeRunningScanners(): Promise<{ resumed: number; skippe
       resumed += 1;
     } catch (err) {
       skipped += 1;
+      if (err instanceof EngineOwnedElsewhereError) {
+        // Normal during a deploy: the outgoing instance still owns it. Leave the
+        // running flag alone — the adoption sweep picks it up once that process
+        // releases.
+        logger.info({ userId: row.userId }, "Scanner owned by another process — not resuming here");
+        continue;
+      }
       logger.error({ err, userId: row.userId }, "Could not resume scanner — leaving it stopped");
       await persistScannerRunning(row.userId, false).catch((persistErr: unknown) =>
         logger.error({ err: persistErr, userId: row.userId }, "Failed to clear scanner running flag"),
@@ -228,6 +313,34 @@ export async function resumeRunningScanners(): Promise<{ resumed: number; skippe
 
   logger.info({ resumed, skipped }, "Finished resuming scanners after restart");
   return { resumed, skipped };
+}
+
+/**
+ * Adopt scanners that should be running but that this process is not running.
+ * Called from botEngine's adoption sweep — see startAdoptionSweep for why this
+ * exists: without it a deploy leaves every scanner stopped, because the incoming
+ * instance correctly declines while the outgoing one still holds the lease and
+ * nothing ever tries again.
+ */
+export async function adoptOwnerlessScanners(): Promise<void> {
+  let rows: ScannerConfigRow[];
+  try {
+    rows = await db.select().from(scannerConfigTable).where(eq(scannerConfigTable.running, true));
+  } catch (err) {
+    logger.warn({ err }, "Scanner adoption sweep could not read running scanners");
+    return;
+  }
+  for (const row of rows) {
+    if (scannerStates.get(row.userId)?.running) continue; // already ours
+    try {
+      await startScanner(row.userId);
+      logger.info({ userId: row.userId }, "Adopted a scanner whose previous owner released it");
+    } catch (err) {
+      if (!(err instanceof EngineOwnedElsewhereError)) {
+        logger.debug({ userId: row.userId, err }, "Scanner adoption sweep could not start a scanner");
+      }
+    }
+  }
 }
 
 interface CapitalMarket {
@@ -266,6 +379,15 @@ export async function runScan(userId: number): Promise<{ scanned: number; hits: 
   const state = await getOrCreateScannerState(userId);
   if (state.scanning) {
     logger.warn({ userId }, "Scanner already running — skipping cycle");
+    return { scanned: 0, hits: 0 };
+  }
+
+  // Ownership, before anything else touches the broker. A manual scan on a
+  // stopped scanner needs no lease — it is gated by autoTrade and dryRun and
+  // places nothing on its own account.
+  if (state.running && !(await holdsLease(userId, "scanner"))) {
+    logger.error({ userId }, "Scan aborted — this process no longer owns the scanner");
+    await stopScanner(userId, { keepRunningFlag: true });
     return { scanned: 0, hits: 0 };
   }
 
