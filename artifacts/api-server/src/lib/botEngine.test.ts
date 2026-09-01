@@ -32,6 +32,21 @@ const mocks = vi.hoisted(() => ({
   credentials: { getUserBrokerCredentials: vi.fn() },
   plan: { getPlanLimits: vi.fn() },
   notify: { notifyUser: vi.fn() },
+  /**
+   * Ownership lease. Defaults to "we own everything" so the tests written before
+   * leases existed keep exercising the same paths; the lease tests override
+   * these per case.
+   */
+  lease: {
+    acquireLease: vi.fn(),
+    renewLease: vi.fn(),
+    holdsLease: vi.fn(),
+    releaseLease: vi.fn(),
+    releaseAllLeases: vi.fn(),
+    INSTANCE_ID: "test-instance",
+    LEASE_TTL_MS: 90_000,
+    LEASE_RENEW_MS: 30_000,
+  },
 }));
 
 /** A Promise that also exposes the extra Drizzle chain methods botEngine calls. */
@@ -82,6 +97,7 @@ vi.mock("./broker", () => mocks.broker);
 vi.mock("./brokerCredentialsService", () => mocks.credentials);
 vi.mock("./planService", () => mocks.plan);
 vi.mock("./notificationService", () => mocks.notify);
+vi.mock("./engineLease", () => mocks.lease);
 vi.mock("./maStrategy", () => mocks.ma);
 vi.mock("./aiTrader", () => mocks.ai);
 vi.mock("./logger", () => ({
@@ -190,6 +206,10 @@ beforeEach(async () => {
     maxInstruments: Infinity,
     aiQueriesPerDay: Infinity,
   });
+  mocks.lease.acquireLease.mockResolvedValue(true);
+  mocks.lease.renewLease.mockResolvedValue(true);
+  mocks.lease.holdsLease.mockResolvedValue(true);
+  mocks.lease.releaseLease.mockResolvedValue(undefined);
   ma.computeMASignal.mockReturnValue({ signal: "HOLD", shortMa: 1, longMa: 1 });
   // Every test's user has a broker "connected" by default, matching the
   // pre-multi-tenant assumption that the single global account was always configured.
@@ -973,6 +993,98 @@ describe("concurrent starts — one bot, one timer", () => {
     await engine.startBot(TEST_USER_ID);
     await flush();
     expect((await engine.getBotStatus(TEST_USER_ID)).running).toBe(true);
+  });
+});
+
+describe("ownership lease — two processes never run one bot", () => {
+  afterEach(async () => {
+    await engine.stopBot(TEST_USER_ID);
+  });
+
+  it("refuses to start a bot another process owns", async () => {
+    // The deploy case: the incoming instance boots while the outgoing one still
+    // holds the lease. Starting here would put two engines on one account.
+    mocks.lease.acquireLease.mockResolvedValue(false);
+
+    await expect(engine.startBot(TEST_USER_ID)).rejects.toBeInstanceOf(engine.EngineOwnedElsewhereError);
+    expect((await engine.getBotStatus(TEST_USER_ID)).running).toBe(false);
+  });
+
+  it("does not clear the user's running intent when the bot is owned elsewhere", async () => {
+    // Critical: a refused start must not look like "the user stopped it".
+    // Clearing the column would stop the bot in the process that IS running it.
+    mocks.lease.acquireLease.mockResolvedValue(false);
+    mocks.runningWrites = [];
+
+    await expect(engine.startBot(TEST_USER_ID)).rejects.toBeInstanceOf(engine.EngineOwnedElsewhereError);
+
+    expect(mocks.runningWrites).not.toContain(false);
+  });
+
+  it("aborts a cycle and places nothing if the lease was lost mid-run", async () => {
+    // The window this closes: a process that has lost its lease still believes
+    // it is running until its next renewal. Every cycle re-checks against the
+    // database before anything can be ordered.
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+
+    mocks.lease.holdsLease.mockResolvedValue(false);
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(results).toEqual([]);
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("stands down without clearing running intent when the lease is lost", async () => {
+    // Standing down is local. The new owner is running this bot, so the column
+    // must keep saying "running" — it records the USER's intent, not which
+    // process happens to hold it.
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+    mocks.runningWrites = [];
+
+    mocks.lease.holdsLease.mockResolvedValue(false);
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).running).toBe(false); // stopped HERE
+    expect(mocks.runningWrites).not.toContain(false); // but not stopped everywhere
+  });
+
+  it("releases the lease on a real stop, so a successor can take over at once", async () => {
+    await startLiveBot();
+    mocks.lease.releaseLease.mockClear();
+
+    await engine.stopBot(TEST_USER_ID);
+
+    expect(mocks.lease.releaseLease).toHaveBeenCalledWith(TEST_USER_ID, "bot");
+    expect(mocks.runningWrites).toContain(false); // a real stop DOES clear intent
+  });
+
+  it("does not release the lease when standing down — it belongs to the new owner", async () => {
+    // Releasing here would delete the successor's row, freeing a lease that is
+    // legitimately held and letting a third process start the same bot.
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+    mocks.lease.releaseLease.mockClear();
+
+    mocks.lease.holdsLease.mockResolvedValue(false);
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(mocks.lease.releaseLease).not.toHaveBeenCalled();
+  });
+
+  it("a manual cycle on a stopped bot needs no lease and still cannot trade", async () => {
+    // Not-running cycles are forced to dry run, so they place nothing and have
+    // no reason to demand ownership.
+    mocks.lease.holdsLease.mockResolvedValue(false);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(results).toHaveLength(1); // the cycle ran
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled(); // but placed nothing
   });
 });
 

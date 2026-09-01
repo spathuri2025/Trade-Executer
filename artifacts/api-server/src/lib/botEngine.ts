@@ -15,6 +15,13 @@ import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
 import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
 import {
+  acquireLease,
+  renewLease,
+  holdsLease,
+  releaseLease,
+  LEASE_RENEW_MS,
+} from "./engineLease";
+import {
   routeStrategy,
   requiredBars,
   type StrategyName,
@@ -151,8 +158,13 @@ interface BotState {
    * credential/entitlement awaits, leaving a window in which both callers see
    * false. An orphaned interval is invisible (nothing holds its handle) and
    * would double every cycle — duplicate live orders once dry run is off.
+   *
+   * Guards this PROCESS against itself. The ownership lease guards it against
+   * other processes — a different problem, and neither substitutes for the other.
    */
   starting: boolean;
+  /** Keeps the ownership lease alive while this process runs the bot. */
+  leaseHandle: ReturnType<typeof setInterval> | null;
 }
 
 function freshCircuitBreaker(): CircuitBreakerState {
@@ -243,6 +255,7 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
     intervalHandle: null,
     pendingStartHandle: null,
     starting: false,
+    leaseHandle: null,
   };
   // Published to the map BEFORE the persistConfig await below, so the `raced`
   // check above is the only window a concurrent caller can be in. Awaiting
@@ -407,6 +420,13 @@ export class BrokerNotConnectedError extends Error {}
 /** Thrown when scalp mode is started with more instruments than its rate budget allows. */
 export class ScalpInstrumentLimitError extends Error {}
 
+/**
+ * Thrown when another live process holds the ownership lease for this engine.
+ * Not a failure: the bot is running, elsewhere. Callers should report it as
+ * "already running", never clear the user's `running` intent.
+ */
+export class EngineOwnedElsewhereError extends Error {}
+
 /** Rate-limit budget: ~3 broker calls per instrument per cycle against ~10 req/s. */
 export const SCALP_MAX_INSTRUMENTS = 20;
 
@@ -465,6 +485,28 @@ export async function updateConfig(userId: number, patch: Partial<BotConfig>) {
  * restoring many bots at boot — and only starts the repeating interval once that
  * first cycle has run, so a restored bot never fires two cycles close together.
  */
+/**
+ * Keep renewing the ownership lease for as long as we run this bot, and stop the
+ * bot the moment we lose it.
+ *
+ * Losing a lease means another process has taken over — continuing would put two
+ * engines on one account, the exact failure this whole mechanism exists to
+ * prevent. Stopping locally is therefore the safe response, not an error case.
+ */
+function armLeaseRenewal(userId: number, state: BotState): void {
+  if (state.leaseHandle) clearInterval(state.leaseHandle);
+  state.leaseHandle = setInterval(() => {
+    void (async () => {
+      if (!state.running) return;
+      const stillOurs = await renewLease(userId, "bot");
+      if (!stillOurs) {
+        logger.error({ userId }, "Lost the bot's ownership lease — another process has taken over; stopping here");
+        await stopBot(userId, { keepRunningFlag: true });
+      }
+    })();
+  }, LEASE_RENEW_MS);
+}
+
 function armCycleTimers(userId: number, state: BotState, delayMs: number): void {
   const ms = state.config.intervalMinutes * 60 * 1000;
 
@@ -512,6 +554,18 @@ export async function startBot(userId: number, opts: { firstCycleDelayMs?: numbe
       throw new BrokerNotConnectedError("Connect a broker account before starting the bot");
     }
 
+    // Claim ownership before arming anything. If another live process holds the
+    // lease, that process is already running this bot — starting here would
+    // double every cycle, which during a deploy means two real orders per
+    // signal. Refusing is correct and invisible to the user: their bot IS
+    // running, just not in this process.
+    if (!(await acquireLease(userId, "bot"))) {
+      logger.warn({ userId }, "Bot not started — another process holds the lease for it");
+      throw new EngineOwnedElsewhereError(
+        "This bot is already running in another process. It will move here automatically within 90 seconds if that process has stopped."
+      );
+    }
+
   // Scalp mode runs on short intervals and spends ~3 broker calls per
   // instrument per cycle. Capital.com allows roughly 10 requests/second, so a
   // large watchlist at one-minute cycles would be rate-limited into failure
@@ -531,6 +585,7 @@ export async function startBot(userId: number, opts: { firstCycleDelayMs?: numbe
 
     state.running = true;
     await persistRunning(userId, true);
+    armLeaseRenewal(userId, state);
     armCycleTimers(userId, state, opts.firstCycleDelayMs ?? 0);
 
     logger.info({ userId, config: state.config }, "Bot started");
@@ -548,7 +603,16 @@ export async function startBot(userId: number, opts: { firstCycleDelayMs?: numbe
  * write, the next boot would resurrect a bot the user (or the circuit breaker)
  * had stopped — worse than failing to resume one.
  */
-export async function stopBot(userId: number): Promise<void> {
+export async function stopBot(
+  userId: number,
+  /**
+   * `keepRunningFlag` stops this process's timers WITHOUT recording that the
+   * user wants the bot stopped. Used when we lose the ownership lease: the bot
+   * is still meant to be running — another process is running it — so clearing
+   * the column would stop it everywhere and leave the UI lying about intent.
+   */
+  opts: { keepRunningFlag?: boolean } = {}
+): Promise<void> {
   const state = botStates.get(userId);
   if (!state) {
     // No in-memory state, but the column may still say running — e.g. an admin
@@ -566,8 +630,24 @@ export async function stopBot(userId: number): Promise<void> {
     clearTimeout(state.pendingStartHandle);
     state.pendingStartHandle = null;
   }
+  if (state.leaseHandle) {
+    clearInterval(state.leaseHandle);
+    state.leaseHandle = null;
+  }
   state.running = false;
   state.nextRunAt = null;
+
+  if (opts.keepRunningFlag) {
+    // We lost the lease rather than being told to stop. The new owner holds it;
+    // releasing here would delete THEIR row, so do nothing but stand down.
+    logger.info({ userId }, "Bot stood down locally — ownership moved to another process");
+    return;
+  }
+
+  // Release before persisting: a successor that picks this up immediately should
+  // find the lease free. Scoped to our own owner id, so this can never revoke
+  // someone else's claim.
+  await releaseLease(userId, "bot");
   await persistRunning(userId, false).catch((err: unknown) =>
     logger.error({ err, userId }, "Failed to persist stopped state"),
   );
@@ -618,10 +698,19 @@ export async function resumeRunningBots(): Promise<{ resumed: number; skipped: n
       await startBot(row.userId, { firstCycleDelayMs: (index + 1) * RESUME_STAGGER_MS });
       resumed += 1;
     } catch (err) {
+      skipped += 1;
+      if (err instanceof EngineOwnedElsewhereError) {
+        // The outgoing instance still owns this bot — the normal case for the
+        // few seconds a zero-downtime deploy runs both. It is still running, so
+        // the `running` flag stays exactly as it is. Once the old process exits
+        // it releases the lease (or the lease expires) and the next resume pass
+        // picks the bot up here.
+        logger.info({ userId: row.userId }, "Bot owned by another process — not resuming here");
+        continue;
+      }
       // Most likely BrokerNotConnectedError: the user disconnected their broker
       // while this process was down. Clear the flag so the UI honestly shows
       // STOPPED rather than claiming a bot that cannot run.
-      skipped += 1;
       logger.error({ err, userId: row.userId }, "Could not resume bot — leaving it stopped");
       await persistRunning(row.userId, false).catch((persistErr: unknown) =>
         logger.error({ err: persistErr, userId: row.userId }, "Failed to clear running flag"),
@@ -631,6 +720,67 @@ export async function resumeRunningBots(): Promise<{ resumed: number; skipped: n
 
   logger.info({ resumed, skipped }, "Finished resuming bots after restart");
   return { resumed, skipped };
+}
+
+/** How often an instance re-checks for running bots nobody is currently running. */
+export const ADOPTION_SWEEP_MS = 60_000;
+
+let adoptionHandle: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Periodically adopt bots that are meant to be running but that this process is
+ * not running.
+ *
+ * Without this, a deploy would strand them. The incoming instance boots while
+ * the outgoing one still holds the leases, declines to resume (correctly — the
+ * bots are running over there), and then the old process exits. Nothing would
+ * ever try again, so every bot would sit stopped until someone noticed and
+ * pressed Start.
+ *
+ * The sweep closes that gap from the other side: whoever is alive keeps asking,
+ * and the first to find a free lease takes over. It is also the recovery path
+ * for an instance that crashed without releasing — its leases lapse and are
+ * picked up within a sweep of expiry.
+ *
+ * Safe to run on every instance: acquisition is atomic, so a bot already owned
+ * is simply skipped. Adoption starts a cycle immediately (no stagger) — this is
+ * a handover, and the gap is already as long as it has been.
+ */
+export function startAdoptionSweep(): void {
+  if (adoptionHandle) return;
+  adoptionHandle = setInterval(() => {
+    void (async () => {
+      let rows: BotConfigRow[];
+      try {
+        rows = await db.select().from(botConfigTable).where(eq(botConfigTable.running, true));
+      } catch (err) {
+        logger.warn({ err }, "Adoption sweep could not read running bots");
+        return;
+      }
+      for (const row of rows) {
+        if (botStates.get(row.userId)?.running) continue; // already ours
+        try {
+          await startBot(row.userId);
+          logger.info({ userId: row.userId }, "Adopted a bot whose previous owner released it");
+        } catch (err) {
+          // Still owned elsewhere, or the broker is gone. Both are expected and
+          // quiet — the next sweep tries again.
+          if (!(err instanceof EngineOwnedElsewhereError)) {
+            logger.debug({ userId: row.userId, err }, "Adoption sweep could not start a bot");
+          }
+        }
+      }
+    })();
+  }, ADOPTION_SWEEP_MS);
+  // Never hold the process open for this.
+  adoptionHandle.unref?.();
+}
+
+export function stopAdoptionSweep(): void {
+  if (adoptionHandle) {
+    clearInterval(adoptionHandle);
+    adoptionHandle = null;
+  }
 }
 
 export async function runCycle(userId: number): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
@@ -671,6 +821,22 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
   // user-editable setting, so a free user could simply switch it off. The
   // route that writes it rejects that too, but this is the gate that actually
   // guarantees no real order is ever placed without a live-trading plan.
+  // Ownership check, immediately before anything can be ordered.
+  //
+  // In-memory `running` is not enough: a process that has lost its lease still
+  // believes it is running until its next renewal, up to LEASE_RENEW_MS later.
+  // That window is exactly a deploy handover, so it is the window that would
+  // produce duplicate orders. Verified against the database's clock every cycle.
+  //
+  // Skipped entirely for a manual, not-running cycle: those are already forced
+  // to dry run below and place nothing, so they need no ownership.
+  const ownsEngine = state.running ? await holdsLease(userId, "bot") : false;
+  if (state.running && !ownsEngine) {
+    logger.error({ userId }, "Cycle aborted — this process no longer owns the bot");
+    await stopBot(userId, { keepRunningFlag: true });
+    return results;
+  }
+
   const dryRun = cfg.dryRun || !state.running || !limits.liveTrading;
   if (cfg.dryRun === false && !state.running) {
     logger.warn({ userId }, "Bot is stopped — forcing dry-run for this manual cycle (no real orders)");

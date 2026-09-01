@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { getBotStatus, startBot, stopBotAndGetStatus, updateConfig, resumeBot, BrokerNotConnectedError, ScalpInstrumentLimitError } from "../lib/botEngine";
+import { getBotStatus, startBot, stopBotAndGetStatus, updateConfig, resumeBot, BrokerNotConnectedError, ScalpInstrumentLimitError, EngineOwnedElsewhereError } from "../lib/botEngine";
 import { UpdateBotConfigBody } from "@workspace/api-zod";
 import { getBrokerAccount } from "../lib/broker";
 import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
@@ -18,6 +18,12 @@ router.post("/bot/start", async (req, res): Promise<void> => {
   } catch (err) {
     if (err instanceof BrokerNotConnectedError || err instanceof ScalpInstrumentLimitError) {
       res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof EngineOwnedElsewhereError) {
+      // 409, not 400: nothing is wrong with the request and nothing needs
+      // fixing — the bot is running, in a process that is on its way out.
+      res.status(409).json({ error: err.message });
       return;
     }
     throw err;
