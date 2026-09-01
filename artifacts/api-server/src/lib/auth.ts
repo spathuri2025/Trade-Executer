@@ -35,6 +35,31 @@ export function verifyPassword(password: string, hash: string): Promise<boolean>
   return bcrypt.compare(password, hash);
 }
 
+/**
+ * A bcrypt hash of a random value, at the same cost as a real one. Computed
+ * once at module load so the first unknown-email login is not itself the odd
+ * one out.
+ */
+const dummyHash: Promise<string> = bcrypt.hash(crypto.randomBytes(32).toString("hex"), BCRYPT_ROUNDS);
+void dummyHash.catch(() => {
+  /* surfaced by verifyPasswordAgainstDummy's own await; nothing to do here */
+});
+
+/**
+ * Spend the same time as a real password check when no user record exists.
+ *
+ * Skipping the comparison leaks account existence through response time alone:
+ * measured on production, a known address took ~553ms against ~115ms for an
+ * unknown one — roughly 4.8x, with no overlap across samples, which classifies
+ * any address with certainty. bcrypt is deliberately slow, so the presence or
+ * absence of one compare is the whole signal. Always returns false; the return
+ * type says so.
+ */
+export async function verifyPasswordAgainstDummy(password: string): Promise<false> {
+  await bcrypt.compare(password, await dummyHash);
+  return false;
+}
+
 export async function createSession(userId: number): Promise<{ token: string; expiresAt: Date }> {
   const token = crypto.randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);

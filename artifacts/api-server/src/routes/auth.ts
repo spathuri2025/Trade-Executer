@@ -12,6 +12,7 @@ import {
   deleteAllSessionsForUser,
   hashPassword,
   verifyPassword,
+  verifyPasswordAgainstDummy,
 } from "../lib/auth";
 import { sendEmail } from "../lib/email";
 import { hashResetToken, issueResetToken, isResetTokenUsable } from "../lib/passwordReset";
@@ -50,7 +51,17 @@ router.post("/auth/signup", authRateLimit, async (req, res): Promise<void> => {
 
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, parsed.email));
   if (existing) {
-    res.status(409).json({ error: "An account with this email already exists" });
+    // Deliberately does not say "that email is taken". Saying so turns signup
+    // into an account-existence oracle for any address an attacker cares to try.
+    //
+    // This raises the bar; it does not close the hole. A caller can still infer
+    // existence from 409-vs-201, because a successful signup has to return a
+    // session. Closing it properly means verification-on-signup: always answer
+    // "check your email", and create nothing until the link is followed. That
+    // is the real fix and it is not yet built.
+    res.status(409).json({
+      error: "We couldn't create an account with those details. If you already have one, sign in or reset your password.",
+    });
     return;
   }
 
@@ -80,7 +91,11 @@ router.post("/auth/login", authRateLimit, async (req, res): Promise<void> => {
 
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, parsed.email));
-    const valid = user ? await verifyPassword(parsed.password, user.passwordHash) : false;
+    // The dummy compare on the miss path is what keeps the two branches taking
+    // the same time — see verifyPasswordAgainstDummy. Do not "optimise" it away.
+    const valid = user
+      ? await verifyPassword(parsed.password, user.passwordHash)
+      : await verifyPasswordAgainstDummy(parsed.password);
     if (!user || !valid) {
       res.status(401).json({ error: "Invalid email or password" });
       return;

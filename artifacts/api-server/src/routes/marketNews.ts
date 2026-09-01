@@ -4,6 +4,14 @@ import { desc, inArray } from "drizzle-orm";
 import { getMarketNews } from "../lib/newsService";
 import { analyseNews, NEWS_DISCLAIMER } from "../lib/newsAnalysisService";
 
+/** Bounded limit parsing — invalid input is refused, never silently defaulted. */
+function parseLimit(raw: unknown, fallback: number, max: number): number | null {
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > max) return null;
+  return n;
+}
+
 const router: IRouter = Router();
 
 /** Shown only when both the live RSS feed and the stored table are empty. */
@@ -61,7 +69,11 @@ function serialize(n: MarketNews) {
 
 router.get("/market-news", async (req, res): Promise<void> => {
   try {
-    const limit = req.query["limit"] ? Math.min(Number(req.query["limit"]), 50) : 30;
+    const limit = parseLimit(req.query["limit"], 30, 50);
+    if (limit === null) {
+      res.status(400).json({ error: "limit must be a whole number between 1 and 50" });
+      return;
+    }
 
     // Pull the live RSS feed and persist any new items so the page has a stable,
     // growing store (and so mock data is only ever a last resort).

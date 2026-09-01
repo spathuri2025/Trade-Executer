@@ -1672,6 +1672,19 @@ export const AdminCustomerRole = {
   admin: 'admin',
 } as const;
 
+/**
+ * What this account can actually do right now, from getEffectivePlan — the same value entitlement checks use. Differs from subscription.plan when the row has lapsed (past renewsAt), is not in an entitling status, or the user is an admin (mapped to enterprise). Show THIS in any "what can this account do?" view; subscription.plan is the stored billing row, not the answer.
+ */
+export type AdminCustomerEffectivePlan = typeof AdminCustomerEffectivePlan[keyof typeof AdminCustomerEffectivePlan];
+
+
+export const AdminCustomerEffectivePlan = {
+  free: 'free',
+  starter: 'starter',
+  pro: 'pro',
+  enterprise: 'enterprise',
+} as const;
+
 export type SubscriptionPlan = typeof SubscriptionPlan[keyof typeof SubscriptionPlan];
 
 
@@ -1713,6 +1726,8 @@ export interface AdminCustomer {
   createdAt: string;
   broker: AdminCustomerBroker | null;
   botRunning: boolean;
+  /** What this account can actually do right now, from getEffectivePlan — the same value entitlement checks use. Differs from subscription.plan when the row has lapsed (past renewsAt), is not in an entitling status, or the user is an admin (mapped to enterprise). Show THIS in any "what can this account do?" view; subscription.plan is the stored billing row, not the answer. */
+  effectivePlan: AdminCustomerEffectivePlan;
   subscription: Subscription;
   tradeCount: number;
   signalCount: number;
@@ -1781,6 +1796,10 @@ export interface ContractList {
 }
 
 export type ListTradesParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
 limit?: number;
 };
 
@@ -1789,6 +1808,10 @@ ticker: string;
 };
 
 export type ListSignalsParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
 limit?: number;
 };
 
@@ -1807,10 +1830,18 @@ export type RunScan200 = {
 };
 
 export type GetMarketNewsParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
 limit?: number;
 };
 
 export type GetScannerResultsParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
 limit?: number;
 };
 
@@ -1828,6 +1859,10 @@ limit?: number;
 };
 
 export type ListMarketNewsParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
 limit?: number;
 };
 

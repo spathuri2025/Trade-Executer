@@ -215,7 +215,7 @@ function ResultCard({ row }: { row: BacktestRow }) {
             <Stat label="Total Return" value={signedPct(row.totalReturnPct)} tone={row.totalReturnPct >= 0 ? "pos" : "neg"} />
             <Stat label="Win Rate" value={pct(row.winRate)} />
             <Stat
-              label="Profit Factor"
+              label="Profit Factor (net)"
               value={row.profitFactor == null ? "∞" : Number.isFinite(row.profitFactor) ? row.profitFactor.toFixed(2) : "n/a"}
               tone={row.profitFactor != null && row.profitFactor >= 1 ? "pos" : row.profitFactor == null ? "pos" : "neg"}
             />

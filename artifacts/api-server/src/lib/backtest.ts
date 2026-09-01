@@ -219,10 +219,18 @@ function runBacktestEngine<B>(params: EngineParams<B>): Omit<BacktestResult, "st
     ? winRate * avgWinPct - lossRate * Math.abs(avgLossPct) - cost
     : 0;
 
-  // Profit factor: gross wins ÷ gross losses. null when there were no losses.
-  const grossWins = sum(wins);
-  const grossLosses = Math.abs(sum(losses));
-  const profitFactor = grossLosses > 0 ? grossWins / grossLosses : null;
+  // Profit factor, NET of cost — the same basis as expectancy above.
+  //
+  // Computed gross, it contradicted the number beside it: AAPL trend-following
+  // over 48 trades read profit factor 1.109 (apparently profitable) against a
+  // net expectancy of -0.0416%. A backtester that flatters is worse than none,
+  // so both figures now answer the same question: after costs, did this make
+  // money? Each trade carries the cost once, which can move a small gross
+  // winner into the loss column — that is the point.
+  const netReturns = [...wins, ...losses].map((r) => r - cost);
+  const netWins = sum(netReturns.filter((r) => r > 0));
+  const netLosses = Math.abs(sum(netReturns.filter((r) => r <= 0)));
+  const profitFactor = netLosses > 0 ? netWins / netLosses : null;
 
   return {
     totalTrades,

@@ -149,7 +149,11 @@ function ManualTradePanel() {
         </Badge>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr_auto] md:items-end">
+      {/* Columns only from lg. At the md breakpoint the sidebar takes ~27% of a
+          768px viewport and the 1fr tracks collapsed far enough that the Amount
+          input rendered 44px wide — one digit of a value like 100. minmax floors
+          stop a track shrinking below what its control needs to stay readable. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(11rem,1fr)_auto_minmax(9rem,1fr)_auto] lg:items-end">
         <div className="space-y-1.5">
           <Label className="text-xs" style={{ color: muted }}>Instrument</Label>
           {instruments && instruments.length > 0 ? (

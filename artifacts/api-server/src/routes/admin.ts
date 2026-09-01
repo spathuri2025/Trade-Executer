@@ -20,6 +20,7 @@ import { peekBotRunning, stopBot } from "../lib/botEngine";
 import { evictCapitalStream } from "../lib/capitalStream";
 import { notifyUser, broadcastAnnouncement } from "../lib/notificationService";
 import { recordAudit, listAudit, lookupEmail } from "../lib/auditService";
+import { getEffectivePlan } from "../lib/planService";
 
 const router: IRouter = Router();
 // Scoped to /admin paths, NOT router.use(requireAdmin) bare. This router is
@@ -58,7 +59,15 @@ router.get("/admin/customers", async (_req, res): Promise<void> => {
 
   const customers = await Promise.all(
     users.map(async (u) => {
-      const broker = await getUserBrokerConnectionStatus(u.id);
+      const [broker, effectivePlan] = await Promise.all([
+        getUserBrokerConnectionStatus(u.id),
+        // The stored subscription row is NOT the answer to "what can this
+        // account do?" — a lapsed row still reads "pro", and an admin with no
+        // row at all is entitled to everything. Testing found the console
+        // showing id 1 as "free" while that account held enterprise
+        // entitlements. Report both: the billing row, and the truth.
+        getEffectivePlan(u.id),
+      ]);
       const lastTradeAt = lastTradeByUser.get(u.id) ?? null;
       const lastSignalAt = lastSignalByUser.get(u.id) ?? null;
       const lastActivityAt =
@@ -72,6 +81,7 @@ router.get("/admin/customers", async (_req, res): Promise<void> => {
         id: u.id,
         email: u.email,
         role: u.role,
+        effectivePlan,
         suspendedAt: u.suspendedAt?.toISOString() ?? null,
         createdAt: u.createdAt.toISOString(),
         broker,

@@ -68,6 +68,15 @@ const frontendDist =
   process.env.FRONTEND_DIST_PATH ??
   path.resolve(serverDir, "../../trading-bot/dist/public");
 
+// Unknown /api routes must answer JSON. Without this they fall through to
+// Express's default handler, which returns an HTML page reading "Cannot GET
+// /api/bot/config" — it breaks the JSON contract every client assumes, and
+// names the framework to anyone probing. Registered before the static/SPA
+// block so it always wins for /api, whether or not a frontend build exists.
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: `No such endpoint: ${req.method} ${req.baseUrl}${req.path}` });
+});
+
 if (fs.existsSync(path.join(frontendDist, "index.html"))) {
   // Hashed assets are immutable and safe to cache hard; index.html must not be
   // cached, or browsers keep booting an old bundle after a deploy.

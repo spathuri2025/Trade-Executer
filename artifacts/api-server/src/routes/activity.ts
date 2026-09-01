@@ -12,8 +12,15 @@ const router: IRouter = Router();
  * standalone Scanner/Signals/Trades pages, never a replacement.
  */
 router.get("/activity", async (req, res): Promise<void> => {
+  // Reject rather than silently default. Swallowing `limit=abc` or `limit=-1`
+  // and answering 200 with a full page tells the caller their filter was
+  // honoured when it was ignored — a lie the client cannot detect.
   const parsed = ListSignalsQueryParams.safeParse(req.query);
-  const perSource = parsed.success ? (parsed.data.limit ?? 30) : 30;
+  if (!parsed.success) {
+    res.status(400).json({ error: "limit must be a whole number between 1 and 500" });
+    return;
+  }
+  const perSource = parsed.data.limit ?? 30;
 
   const userId = req.user!.id;
   const [signals, trades, scans] = await Promise.all([

@@ -7,5 +7,9 @@
  */
 
 export type ListMarketNewsParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
 limit?: number;
 };

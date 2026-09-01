@@ -7,5 +7,9 @@
  */
 
 export type ListSignalsParams = {
+/**
+ * @minimum 1
+ * @maximum 500
+ */
 limit?: number;
 };

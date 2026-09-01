@@ -18,6 +18,7 @@ export * from './activityItemType';
 export * from './adminCustomer';
 export * from './adminCustomerBroker';
 export * from './adminCustomerBrokerBroker';
+export * from './adminCustomerEffectivePlan';
 export * from './adminCustomerList';
 export * from './adminCustomerRole';
 export * from './adminSupportThread';

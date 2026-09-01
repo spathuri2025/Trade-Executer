@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AdminCustomerBroker } from './adminCustomerBroker';
+import type { AdminCustomerEffectivePlan } from './adminCustomerEffectivePlan';
 import type { AdminCustomerRole } from './adminCustomerRole';
 import type { Subscription } from './subscription';
 
@@ -21,6 +22,8 @@ export interface AdminCustomer {
   createdAt: Date;
   broker: AdminCustomerBroker | null;
   botRunning: boolean;
+  /** What this account can actually do right now, from getEffectivePlan — the same value entitlement checks use. Differs from subscription.plan when the row has lapsed (past renewsAt), is not in an entitling status, or the user is an admin (mapped to enterprise). Show THIS in any "what can this account do?" view; subscription.plan is the stored billing row, not the answer. */
+  effectivePlan: AdminCustomerEffectivePlan;
   subscription: Subscription;
   tradeCount: number;
   signalCount: number;

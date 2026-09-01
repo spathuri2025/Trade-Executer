@@ -64,6 +64,14 @@
 }
 
 :root {
+  /* This app commits to one dark visual world ("Obsidian Noir"); there is no
+     light theme and no toggle. Declaring color-scheme is what makes that
+     commitment complete: without it the browser still paints its OWN controls
+     for a light page — scrollbars, date and number spinners, select popups,
+     autofill backgrounds — so native chrome rendered light on a dark surface.
+     This is not a light theme; it tells the browser which one we are in. */
+  color-scheme: dark;
+
   /* ── Obsidian Noir palette (high-contrast revision) ── */
   --background: 222 22% 6%;         /* #0b0e16 — dark navy, not pure black */
   --foreground: 0 0% 96%;           /* #f5f5f5 — slightly off-white, easier on eyes */

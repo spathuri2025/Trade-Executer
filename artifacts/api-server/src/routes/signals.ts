@@ -32,8 +32,15 @@ function serialize(s: Signal) {
 }
 
 router.get("/signals", async (req, res): Promise<void> => {
+  // Reject rather than silently default. Swallowing `limit=abc` or `limit=-1`
+  // and answering 200 with a full page tells the caller their filter was
+  // honoured when it was ignored — a lie the client cannot detect.
   const parsed = ListSignalsQueryParams.safeParse(req.query);
-  const limit = parsed.success ? (parsed.data.limit ?? 20) : 20;
+  if (!parsed.success) {
+    res.status(400).json({ error: "limit must be a whole number between 1 and 500" });
+    return;
+  }
+  const limit = parsed.data.limit ?? 20;
 
   const signals = await db
     .select()

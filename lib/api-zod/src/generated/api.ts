@@ -352,9 +352,12 @@ export const GetBrokerStatusResponse = zod.object({
  * @summary List trade history
  */
 export const listTradesQueryLimitDefault = 50;
+export const listTradesQueryLimitMax = 500;
+
+
 
 export const ListTradesQueryParams = zod.object({
-  "limit": zod.coerce.number().default(listTradesQueryLimitDefault)
+  "limit": zod.coerce.number().min(1).max(listTradesQueryLimitMax).default(listTradesQueryLimitDefault)
 })
 
 export const ListTradesResponseItem = zod.object({
@@ -467,9 +470,12 @@ export const DeleteInstrumentParams = zod.object({
  * @summary Get recent MA crossover signals
  */
 export const listSignalsQueryLimitDefault = 20;
+export const listSignalsQueryLimitMax = 500;
+
+
 
 export const ListSignalsQueryParams = zod.object({
-  "limit": zod.coerce.number().default(listSignalsQueryLimitDefault)
+  "limit": zod.coerce.number().min(1).max(listSignalsQueryLimitMax).default(listSignalsQueryLimitDefault)
 })
 
 export const ListSignalsResponseItem = zod.object({
@@ -604,8 +610,12 @@ export const RunScanResponse = zod.object({
 /**
  * @summary Get high-impact market news filtered by importance
  */
+export const getMarketNewsQueryLimitMax = 500;
+
+
+
 export const GetMarketNewsQueryParams = zod.object({
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().min(1).max(getMarketNewsQueryLimitMax).optional()
 })
 
 export const GetMarketNewsResponseItem = zod.object({
@@ -622,8 +632,12 @@ export const GetMarketNewsResponse = zod.array(GetMarketNewsResponseItem)
 /**
  * @summary Get recent scanner hits
  */
+export const getScannerResultsQueryLimitMax = 500;
+
+
+
 export const GetScannerResultsQueryParams = zod.object({
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().min(1).max(getScannerResultsQueryLimitMax).optional()
 })
 
 export const GetScannerResultsResponseItem = zod.object({
@@ -956,9 +970,12 @@ export const GetLatestDailyBriefResponse = zod.object({
  * @summary List market news (live RSS, persisted; mock fallback if empty)
  */
 export const listMarketNewsQueryLimitDefault = 30;
+export const listMarketNewsQueryLimitMax = 500;
+
+
 
 export const ListMarketNewsQueryParams = zod.object({
-  "limit": zod.coerce.number().default(listMarketNewsQueryLimitDefault)
+  "limit": zod.coerce.number().min(1).max(listMarketNewsQueryLimitMax).default(listMarketNewsQueryLimitDefault)
 })
 
 export const ListMarketNewsResponse = zod.object({
@@ -1510,6 +1527,7 @@ export const ListAdminCustomersResponse = zod.object({
   "identifierMasked": zod.string().describe('Partially masked identifier\/key for display — never the credential itself.')
 }),zod.null()]),
   "botRunning": zod.boolean(),
+  "effectivePlan": zod.enum(['free', 'starter', 'pro', 'enterprise']).describe('What this account can actually do right now, from getEffectivePlan — the same value entitlement checks use. Differs from subscription.plan when the row has lapsed (past renewsAt), is not in an entitling status, or the user is an admin (mapped to enterprise). Show THIS in any \"what can this account do?\" view; subscription.plan is the stored billing row, not the answer.'),
   "subscription": zod.object({
   "plan": zod.enum(['free', 'starter', 'pro', 'enterprise']),
   "status": zod.enum(['active', 'trialing', 'past_due', 'canceled']),

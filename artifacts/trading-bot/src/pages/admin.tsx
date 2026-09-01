@@ -271,9 +271,20 @@ export default function Admin() {
                       </Badge>
                     </td>
                     <td className="px-5 py-4">
+                      {/* The EFFECTIVE plan leads: it is what this account can
+                          actually do. The stored billing row appears beneath it
+                          only when the two disagree — a lapsed subscription, or
+                          an admin entitled to everything with no row at all.
+                          Showing the row alone made the console report id 1 as
+                          "free" while that account held enterprise access. */}
                       <Badge variant="outline" className={STATUS_STYLES[c.subscription.status] ?? ""}>
-                        {c.subscription.plan} · {c.subscription.status}
+                        {c.effectivePlan} · {c.subscription.status}
                       </Badge>
+                      {c.effectivePlan !== c.subscription.plan && (
+                        <div className="text-[11px] mt-1" style={{ color: muted }}>
+                          billing row: {c.subscription.plan}
+                        </div>
+                      )}
                     </td>
                     <td className="px-5 py-4 font-mono">{c.tradeCount}</td>
                     <td className="px-5 py-4 font-mono">{c.signalCount}</td>

@@ -870,6 +870,27 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
   const riskDataUnavailable =
     (account === null && (cfg.maxPositionSizePercent > 0 || cfg.maxDailyLossPercent > 0)) ||
     (!positionsFetchOk && cfg.maxConcurrentPositions > 0);
+
+  // Equity that cannot fund a position. Distinct from riskDataUnavailable —
+  // there the balance is UNKNOWN; here it is known and unusable.
+  //
+  // A zero balance is not caught by the sizing maths: `sizePosition` returns a
+  // position value of 0, and a quantity of 0 clears the min-deal-size gate
+  // whenever the broker's minimum is unknown (`quantity < (minDealSize ?? 0)`
+  // is `0 < 0`, false). Without this gate a zero-equity account sends the
+  // broker a zero-quantity order to reject, once per instrument per cycle.
+  //
+  // Until now the only thing refusing those orders was the language model's
+  // veto in guard/autonomous mode — a prose opinion, and one that disappears
+  // entirely when aiTradeMode is "off". The risk layer has to refuse this on
+  // its own, deterministically, in every mode.
+  const equityUnusable = account !== null && account.total !== null && account.total <= 0;
+  if (equityUnusable) {
+    logger.warn(
+      { userId, total: account?.total },
+      "Account equity is zero or negative — blocking exposure-increasing orders this cycle"
+    );
+  }
   if (riskDataUnavailable) {
     logger.warn(
       { userId, accountAvailable: account !== null, positionsFetchOk },
@@ -1023,6 +1044,13 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             { userId, ticker: c.ticker, side: decision.action, confidence: decision.confidence, floor: cfg.minAiConfidence },
             "Autonomous entry skipped — below AI confidence floor"
           );
+        } else if ((opensNewPosition || isBuy) && equityUnusable) {
+          aiReason = `Skipped: your account balance is ${account?.total ?? 0} ${account?.currency ?? ""}`.trim() +
+            `, so there is nothing to open a position with. ${decision.reason}`;
+          logger.warn(
+            { userId, ticker: c.ticker, side: decision.action, total: account?.total },
+            "Autonomous entry skipped — account equity is zero or negative"
+          );
         } else if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = `Skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety. ${decision.reason}`;
           logger.warn(
@@ -1175,6 +1203,13 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             { userId, ticker, expectedMovePct, spreadPct: entryCheck.spreadPct, multiple: cfg.minEdgeVsSpread },
             "Entry skipped — expected move does not clear the spread hurdle"
           );
+        } else if ((opensNewPosition || isBuy) && equityUnusable) {
+          aiReason = `Trade skipped: your account balance is ${account?.total ?? 0} ${account?.currency ?? ""}`.trim() +
+            ", so there is nothing to open a position with.";
+          logger.warn(
+            { userId, ticker, side: signal, total: account?.total },
+            "Entry skipped — account equity is zero or negative"
+          );
         } else if ((opensNewPosition || isBuy) && riskDataUnavailable) {
           aiReason = "Trade skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety.";
           logger.warn({ userId, ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
@@ -1285,6 +1320,16 @@ async function placeAndRecord(args: {
 }): Promise<boolean> {
   const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence, isClose } = args;
   const { stopLossPercent, takeProfitPercent } = cfg;
+
+  // Last line of defence, covering every caller including future ones: an order
+  // for nothing is never valid. Reached when equity is zero (sizing returns 0)
+  // or a price is absurd. Refused here rather than sent for the broker to
+  // reject, and not written as a dry-run row — a DRY_RUN row for a zero-size
+  // order would be noise in the very log the forward test is meant to produce.
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    logger.warn({ userId, ticker, side, quantity, positionValue }, "Order refused — non-positive quantity");
+    return false;
+  }
 
   if (dryRun) {
     logger.info({ userId, ticker, side, broker: credentials.broker, dryRun: true }, "Dry-run signal");

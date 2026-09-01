@@ -327,6 +327,94 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
 
 // Default config: riskPerTradePercent 1% of defaultAccount.total (100,000) =
 // positionValue 1000, over defaultPrices' flat currentPrice of 100 = quantity 10.
+describe("zero equity — the risk layer refuses on its own, without the AI", () => {
+  it("blocks a new BUY when the account balance is zero", async () => {
+    // Production evidence: with a £0 balance and aiTradeMode "guard", the ONLY
+    // thing refusing orders was the model's prose veto ("The account has zero
+    // funds available…"). aiTradeMode is a user setting — turn it off and that
+    // veto disappears. The deterministic layer has to refuse this itself.
+    //
+    // Zero is not caught by the other gates: sizePosition returns a position
+    // value of 0, and `quantity < (minDealSize ?? 0)` is `0 < 0` — false — so a
+    // zero-quantity order would otherwise be sent for the broker to reject.
+    broker.getBrokerAccount.mockResolvedValue(account(0));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results[0]?.tradeExecuted).toBe(false);
+  });
+
+  it("blocks on a negative balance too", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(-250));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not trap an open position: flatten-by-close still closes it in full", async () => {
+    // The danger with any new block is trapping a position you cannot exit.
+    // Flatten-by-close is the exit that matters, and it is unaffected: it sizes
+    // from the POSITION (pos.quantity), not from equity, so a zero balance
+    // cannot shrink it to nothing.
+    broker.getBrokerAccount.mockResolvedValue(account(0));
+    broker.getBrokerPositions.mockResolvedValue([position("CLOSEDMKT", 10)]);
+    await startLiveBot({ aiTradeMode: "off" });
+
+    broker.getBrokerQuote.mockResolvedValue({
+      ticker: "CLOSEDMKT",
+      bid: 100,
+      offer: 100,
+      price: 100,
+      marketStatus: "EDITS_ONLY",
+      currency: "GBP",
+      minDealSize: null,
+    });
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][3]).toBe(10); // the whole position, not an equity-derived size
+    expect(orders[0][4]).toBe("SELL");
+  });
+
+  it("refuses a strategy SELL that equity-sizing has shrunk to zero", async () => {
+    // A strategy SELL on a held ticker is sized by sizePosition, which returns
+    // 0 at zero equity. Previously that zero-quantity order was sent for the
+    // broker to reject; it is now refused locally. Same outcome for the
+    // position, one less pointless order — and the flatten path above is what
+    // actually gets you out.
+    broker.getBrokerAccount.mockResolvedValue(account(0));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("a funded account is unaffected", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    mocks.enabledInstruments = [{ ticker: "TEST", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("minimum deal size — orders below the broker's minimum are skipped, not attempted", () => {
   it("skips a BUY (off mode) whose calculated quantity is below the broker's minimum deal size", async () => {
     broker.getBrokerPositions.mockResolvedValue([]);

@@ -9,6 +9,14 @@ import {
   type ScannerConfig,
 } from "../lib/scannerEngine";
 
+/** Bounded limit parsing — invalid input is refused, never silently defaulted. */
+function parseLimit(raw: unknown, fallback: number, max: number): number | null {
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > max) return null;
+  return n;
+}
+
 const router: IRouter = Router();
 
 router.get("/scanner/status", async (req, res): Promise<void> => {
@@ -50,7 +58,11 @@ router.post("/scanner/run", async (req, res): Promise<void> => {
 
 router.get("/scanner/results", async (req, res): Promise<void> => {
   try {
-    const limit = req.query["limit"] ? Number(req.query["limit"]) : 50;
+    const limit = parseLimit(req.query["limit"], 50, 500);
+    if (limit === null) {
+      res.status(400).json({ error: "limit must be a whole number between 1 and 500" });
+      return;
+    }
     const results = await getScannerResults(req.user!.id, limit);
     res.json(results);
   } catch (err) {

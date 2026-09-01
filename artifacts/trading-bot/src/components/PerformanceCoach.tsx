@@ -10,6 +10,15 @@ const cardBorder = "1px solid hsl(var(--card-border))";
 const divider = "1px solid hsl(var(--border))";
 const muted = "hsl(var(--muted-foreground))";
 const mutedLo = "hsl(var(--muted-foreground) / 0.7)";
+
+/** Money is coloured by its own sign, never by the label above it. */
+function pnlColor(value: number): string {
+  if (value > 0) return emerald;
+  if (value < 0) return red;
+  return "hsl(var(--muted-foreground))";
+}
+
+const tradeCount = (n: number): string => `(${n} ${n === 1 ? "trade" : "trades"})`;
 const emerald = "#10b981";
 const red = "#f87171";
 const amber = "#d97706";
@@ -109,8 +118,8 @@ export default function PerformanceCoach() {
               {data.bestInstrument ? (
                 <div>
                   <span className="text-sm font-medium">{data.bestInstrument.ticker}</span>
-                  <span className="text-sm font-mono ml-2" style={{ color: emerald }}>{money(data.bestInstrument.netPnl)}</span>
-                  <span className="text-xs ml-2" style={{ color: mutedLo }}>({data.bestInstrument.trades} trades)</span>
+                  <span className="text-sm font-mono ml-2" style={{ color: pnlColor(data.bestInstrument.netPnl) }}>{money(data.bestInstrument.netPnl)}</span>
+                  <span className="text-xs ml-2" style={{ color: mutedLo }}>{tradeCount(data.bestInstrument.trades)}</span>
                 </div>
               ) : (
                 <p className="text-xs" style={{ color: muted }}>—</p>
@@ -124,8 +133,8 @@ export default function PerformanceCoach() {
               {data.worstInstrument ? (
                 <div>
                   <span className="text-sm font-medium">{data.worstInstrument.ticker}</span>
-                  <span className="text-sm font-mono ml-2" style={{ color: red }}>{money(data.worstInstrument.netPnl)}</span>
-                  <span className="text-xs ml-2" style={{ color: mutedLo }}>({data.worstInstrument.trades} trades)</span>
+                  <span className="text-sm font-mono ml-2" style={{ color: pnlColor(data.worstInstrument.netPnl) }}>{money(data.worstInstrument.netPnl)}</span>
+                  <span className="text-xs ml-2" style={{ color: mutedLo }}>{tradeCount(data.worstInstrument.trades)}</span>
                 </div>
               ) : (
                 <p className="text-xs" style={{ color: muted }}>—</p>
