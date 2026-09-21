@@ -70,7 +70,7 @@ manually with:
 |---|---|
 | Runtime | Node |
 | Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @workspace/api-spec run codegen && pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build` |
-| Start command | `pnpm --filter @workspace/api-server run start` |
+| Start command | `cd artifacts/api-server && exec node --enable-source-maps ./dist/index.mjs` — **not** `pnpm … run start`: pnpm doesn't forward SIGTERM, so the server never runs its graceful shutdown and every deploy waits for engine leases to time out |
 | Health check path | `/api/healthz` (keep this — see Monitoring below) |
 | Instances | **1** |
 | Plan | any **paid** tier |

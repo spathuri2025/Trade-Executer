@@ -1,8 +1,15 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { resumeRunningBots, startAdoptionSweep, stopAdoptionSweep } from "./lib/botEngine";
-import { resumeRunningScanners } from "./lib/scannerEngine";
+import {
+  resumeRunningBots,
+  startAdoptionSweep,
+  stopAdoptionSweep,
+  standDownAllBots,
+  cyclesInFlight,
+} from "./lib/botEngine";
+import { resumeRunningScanners, standDownAllScanners, scansInFlight } from "./lib/scannerEngine";
 import { releaseAllLeases, INSTANCE_ID } from "./lib/engineLease";
+import { gracefulShutdown } from "./lib/shutdown";
 
 const rawPort = process.env["PORT"];
 
@@ -44,29 +51,27 @@ const server = app.listen(port, (err) => {
 });
 
 /**
- * Graceful shutdown.
- *
- * Releasing the leases is the point: it turns a deploy handover from "the new
- * instance waits up to 90 seconds for leases to expire" into "the new instance
- * takes over on its next sweep". Without it the bots are correct but idle for a
- * minute and a half after every deploy.
- *
- * Render sends SIGTERM and then kills the process, so this is best-effort and
- * deliberately short. A missed release is not a correctness problem — the lease
- * expires on its own — only a slower handover.
+ * Graceful shutdown — see lib/shutdown.ts for the sequence and why each step
+ * is there. This only receives SIGTERM because render.yaml starts node
+ * directly (`exec node …`): started through `pnpm run`, the signal never
+ * reached this process and none of this ran.
  */
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  logger.info({ signal, instanceId: INSTANCE_ID }, "Shutting down — releasing engine leases");
+  logger.info({ signal, instanceId: INSTANCE_ID }, "Shutting down");
 
-  stopAdoptionSweep();
-  // Stop accepting new connections while we let the leases go.
-  server.close();
-  await releaseAllLeases();
+  const result = await gracefulShutdown({
+    stopAdopting: stopAdoptionSweep,
+    standDownEngines: async () => (await standDownAllBots()) + (await standDownAllScanners()),
+    stopServer: () => server.close(),
+    inFlight: () => cyclesInFlight() + scansInFlight(),
+    releaseLeases: releaseAllLeases,
+    log: (msg, extra) => logger.info({ ...extra, instanceId: INSTANCE_ID }, msg),
+  });
 
-  logger.info({ signal }, "Shutdown complete");
+  logger.info({ signal, ...result }, "Shutdown complete");
   process.exit(0);
 }
 

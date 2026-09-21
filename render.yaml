@@ -37,7 +37,12 @@ services:
       pnpm install --frozen-lockfile &&
       pnpm --filter @workspace/api-spec run codegen &&
       pnpm --filter @workspace/api-server --filter @workspace/trading-bot run build
-    startCommand: pnpm --filter @workspace/api-server run start
+    # node must be the process Render signals. Through `pnpm … run start` the
+    # SIGTERM stopped at pnpm, so the server never ran its graceful shutdown:
+    # engine leases weren't released and every deploy waited for them to time
+    # out (1.5-2.5 min with no cycles). `exec` replaces the shell with node.
+    # Same working directory and flags as the package's own start script.
+    startCommand: cd artifacts/api-server && exec node --enable-source-maps ./dist/index.mjs
     # Liveness only — do NOT change this to /api/readyz. Render restarts an
     # instance whose health check fails, and with numInstances: 1 and in-memory
     # bot state that would let a transient Supabase blip bounce the trading

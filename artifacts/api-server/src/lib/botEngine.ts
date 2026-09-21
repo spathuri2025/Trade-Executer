@@ -766,7 +766,12 @@ export async function resumeRunningBots(): Promise<{ resumed: number; skipped: n
 }
 
 /** How often an instance re-checks for running bots nobody is currently running. */
-export const ADOPTION_SWEEP_MS = 60_000;
+/**
+ * 15s rather than 60s: the sweep is how the incoming instance takes over once
+ * the outgoing one releases, so this interval IS most of the deploy handover
+ * gap. The query is one indexed read of bot_config every 15 seconds.
+ */
+export const ADOPTION_SWEEP_MS = 15_000;
 
 let adoptionHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -829,6 +834,24 @@ export function startAdoptionSweep(): void {
   adoptionHandle.unref?.();
 }
 
+/**
+ * Stop every bot this process runs, for shutdown. Timers stop, so no NEW cycle
+ * begins; `running` in the database is left alone, because the user still
+ * wants these bots running — the next instance is about to run them.
+ *
+ * It does not release the leases. The caller must first wait for
+ * cyclesInFlight() to reach zero: a cycle that began before shutdown may be
+ * mid-order, and releasing its lease then would let the incoming instance
+ * start trading the same account before the outgoing one has finished.
+ */
+export async function standDownAllBots(): Promise<number> {
+  const running = [...botStates.entries()].filter(([, st]) => st.running).map(([userId]) => userId);
+  for (const userId of running) {
+    await stopBot(userId, { keepRunningFlag: true });
+  }
+  return running.length;
+}
+
 export function stopAdoptionSweep(): void {
   if (adoptionHandle) {
     clearInterval(adoptionHandle);
@@ -836,7 +859,26 @@ export function stopAdoptionSweep(): void {
   }
 }
 
+/**
+ * Cycles currently executing in this process. Shutdown waits for this to reach
+ * zero before giving up the ownership lease — see standDownAllBots.
+ */
+let cyclesInFlightCount = 0;
+
+export function cyclesInFlight(): number {
+  return cyclesInFlightCount;
+}
+
 export async function runCycle(userId: number): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
+  cyclesInFlightCount += 1;
+  try {
+    return await runCycleUnlocked(userId);
+  } finally {
+    cyclesInFlightCount -= 1;
+  }
+}
+
+async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
   const results: Array<{ ticker: string; signal: string; tradeExecuted: boolean }> = [];
 
   const credentials = await getUserBrokerCredentials(userId);

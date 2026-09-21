@@ -322,6 +322,20 @@ export async function resumeRunningScanners(): Promise<{ resumed: number; skippe
  * instance correctly declines while the outgoing one still holds the lease and
  * nothing ever tries again.
  */
+/** Scans currently executing in this process (each state's own re-entrancy flag). */
+export function scansInFlight(): number {
+  return [...scannerStates.values()].filter((st) => st.scanning).length;
+}
+
+/** Stop every scanner this process runs, for shutdown, keeping the user's intent. See standDownAllBots. */
+export async function standDownAllScanners(): Promise<number> {
+  const running = [...scannerStates.entries()].filter(([, st]) => st.running).map(([userId]) => userId);
+  for (const userId of running) {
+    await stopScanner(userId, { keepRunningFlag: true });
+  }
+  return running.length;
+}
+
 export async function adoptOwnerlessScanners(): Promise<void> {
   let rows: ScannerConfigRow[];
   try {
