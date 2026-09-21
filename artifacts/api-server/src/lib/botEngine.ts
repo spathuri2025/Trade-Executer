@@ -1,5 +1,5 @@
 import { db, instrumentsTable, tradesTable, signalsTable, botConfigTable, type BotConfigRow } from "@workspace/db";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   placeBrokerOrder,
@@ -295,7 +295,7 @@ async function checkEntryQuote(
   userId: number,
   credentials: UserBrokerCredentials,
   ticker: string
-): Promise<{ marketClosed: boolean; minDealSize: number | null; spreadPct: number | null }> {
+): Promise<{ marketClosed: boolean; unorderable: boolean; minDealSize: number | null; spreadPct: number | null }> {
   try {
     const quote = await getBrokerQuote(userId, credentials, ticker);
     // Round-trip cost as a fraction of price. Taken from the SAME quote as the
@@ -304,6 +304,11 @@ async function checkEntryQuote(
     const rawSpread = quote.price > 0 ? (quote.offer - quote.bid) / quote.price : NaN;
     return {
       marketClosed: quote.marketStatus !== null && quote.marketStatus !== "TRADEABLE",
+      // Stricter than marketClosed: not "no new positions" but "no orders at
+      // all". Blocks closes too — the broker will reject them anyway, and
+      // sending one every cycle until the open is how a single losing position
+      // produced 32 rejected sells overnight on 17-18 Sep.
+      unorderable: quote.marketStatus !== null && UNORDERABLE_STATUSES.has(quote.marketStatus),
       minDealSize: quote.minDealSize,
       spreadPct: Number.isFinite(rawSpread) && rawSpread >= 0 ? rawSpread : null,
     };
@@ -312,7 +317,9 @@ async function checkEntryQuote(
     // null spread means "unknown". The scalp cost gate treats unknown as a
     // BLOCK, unlike the other two fields' fail-open: trading blind on cost is
     // precisely the mistake the fast engine exists to avoid.
-    return { marketClosed: false, minDealSize: null, spreadPct: null };
+    // unorderable false: one order that the broker may reject is better than
+    // stranding a close because a quote lookup blipped.
+    return { marketClosed: false, unorderable: false, minDealSize: null, spreadPct: null };
   }
 }
 
@@ -954,10 +961,21 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
   if (cfg.maxTradesPerDay > 0) {
     try {
       const dayStart = new Date(`${utcDayKey(new Date())}T00:00:00.000Z`);
+      // Only orders that actually executed count. A FAILED row is a broker
+      // rejection — nothing traded — and counting them let one overnight retry
+      // storm eat most of the day's allowance before the market even opened
+      // (32 rejected sells on 17-18 Sep, against a cap of 50). DRY_RUN counts,
+      // so a dry run is capped exactly as the live bot would be.
       const todaysTrades = await db
         .select({ id: tradesTable.id })
         .from(tradesTable)
-        .where(and(eq(tradesTable.userId, userId), gte(tradesTable.executedAt, dayStart)));
+        .where(
+          and(
+            eq(tradesTable.userId, userId),
+            gte(tradesTable.executedAt, dayStart),
+            inArray(tradesTable.status, ["FILLED", "DRY_RUN"])
+          )
+        );
       tradesToday = todaysTrades.length;
       atTradeCap = tradesToday >= cfg.maxTradesPerDay;
       if (atTradeCap) {
@@ -1023,6 +1041,10 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
     // check will retry it next cycle — identical retry behavior to any other
     // trade failure, no bespoke handling needed.
   }
+
+  // Held size per ticker and direction, from the post-flatten set: what a close
+  // this cycle can actually close. Kept current as orders execute below.
+  const held = heldByTicker(rawPositions);
 
   const positions: PositionSnapshot[] = rawPositions.map((p) => ({
     ticker: p.ticker,
@@ -1185,7 +1207,13 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
       let tradeExecuted = false;
       let aiReason = decision.reason;
       if (decision.action !== "HOLD") {
-        const { positionValue, quantity } = sizePosition(c.currentPrice, cfg, accountBalance);
+        const { closing, quantity, positionValue } = planOrder(
+          decision.action, c.ticker, held, c.currentPrice, cfg, accountBalance
+        );
+        // Every risk gate below exists to limit NEW exposure. A close reduces
+        // exposure, so none of them may block it — a churn cap, a cost hurdle or
+        // a missing balance must never trap a position you are trying to exit.
+        const exposureIncreasing = !closing;
         const isBuy = decision.action === "BUY";
         // A trade on a ticker we don't already hold opens a NEW distinct position
         // regardless of side — on Capital.com a SELL opens a short. The
@@ -1206,9 +1234,15 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         // allow the trade" — consistent with checkEntryQuote's own fail-open
         // behavior on a lookup error, not a gap to later tighten into a block.
         const belowMinDealSize = quantity < (entryCheck.minDealSize ?? 0);
-        if (atTradeCap) {
+        if (entryCheck.unorderable) {
+          // First, and for every order including closes: the broker will reject
+          // anything placed now. Nothing is recorded as a trade — nothing was
+          // attempted — and the same decision simply runs again next cycle.
+          aiReason = `Waiting: ${c.ticker}'s market is closed, so no order can be placed until it reopens. ${decision.reason}`;
+          logger.info({ userId, ticker: c.ticker, side: decision.action, closing }, "Order deferred — market closed to all orders");
+        } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit. ${decision.reason}`;
-        } else if (!clearsCostHurdle(cfg, c.expectedMovePct, entryCheck.spreadPct)) {
+        } else if (exposureIncreasing && !clearsCostHurdle(cfg, c.expectedMovePct, entryCheck.spreadPct)) {
           aiReason = costHurdleReason(cfg, c.expectedMovePct, entryCheck.spreadPct) + ` ${decision.reason}`;
         } else if (!meetsConfidenceFloor(decision.confidence, cfg.minAiConfidence)) {
           // The AI stated its own conviction; acting on a "low" it flagged
@@ -1218,14 +1252,14 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             { userId, ticker: c.ticker, side: decision.action, confidence: decision.confidence, floor: cfg.minAiConfidence },
             "Autonomous entry skipped — below AI confidence floor"
           );
-        } else if ((opensNewPosition || isBuy) && equityUnusable) {
+        } else if (exposureIncreasing && equityUnusable) {
           aiReason = `Skipped: your account balance is ${account?.total ?? 0} ${account?.currency ?? ""}`.trim() +
             `, so there is nothing to open a position with. ${decision.reason}`;
           logger.warn(
             { userId, ticker: c.ticker, side: decision.action, total: account?.total },
             "Autonomous entry skipped — account equity is zero or negative"
           );
-        } else if ((opensNewPosition || isBuy) && riskDataUnavailable) {
+        } else if (exposureIncreasing && riskDataUnavailable) {
           aiReason = `Skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety. ${decision.reason}`;
           logger.warn(
             { userId, ticker: c.ticker, side: decision.action },
@@ -1246,7 +1280,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             { userId, ticker: c.ticker, side: decision.action, quantity, minDealSize: entryCheck.minDealSize },
             "Autonomous entry skipped — below broker's minimum deal size"
           );
-        } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
+        } else if (exposureIncreasing && isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = `Skipped: would exceed the account's available cash budget for this cycle. ${decision.reason}`;
           logger.warn(
             { userId, ticker: c.ticker, positionValue, deployedThisCycle, cashBudget },
@@ -1265,10 +1299,14 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             dryRun,
             aiReason: decision.reason,
             aiConfidence: decision.confidence,
+            // A close carries no new stop/take-profit: there is no resulting
+            // position left for them to protect.
+            isClose: closing,
           });
           if (tradeExecuted) {
-            if (isBuy) deployedThisCycle += positionValue;
+            if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
             if (opensNewPosition) liveTickers.add(c.ticker);
+            recordExecution(held, liveTickers, c.ticker, decision.action, quantity, closing);
           }
         }
       }
@@ -1347,7 +1385,12 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
       }
 
       if (proceed) {
-        const { positionValue, quantity } = sizePosition(currentPrice, cfg, accountBalance);
+        const { closing, quantity, positionValue } = planOrder(
+          signal, ticker, held, currentPrice, cfg, accountBalance
+        );
+        // Same rule as the autonomous branch: risk gates limit NEW exposure and
+        // must never block a close.
+        const exposureIncreasing = !closing;
         const isBuy = signal === "BUY";
         // Any order on a ticker we don't already hold opens a new distinct
         // position (a SELL opens a short on Capital.com), so the concurrent-cap
@@ -1368,23 +1411,26 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         // allow the trade" — consistent with checkEntryQuote's own fail-open
         // behavior on a lookup error, not a gap to later tighten into a block.
         const belowMinDealSize = quantity < (entryCheck.minDealSize ?? 0);
-        if (atTradeCap) {
+        if (entryCheck.unorderable) {
+          aiReason = `Waiting: ${ticker}'s market is closed, so no order can be placed until it reopens.`;
+          logger.info({ userId, ticker, side: signal, closing }, "Order deferred — market closed to all orders");
+        } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Trade skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit.`;
           logger.info({ userId, ticker, limit: cfg.maxTradesPerDay }, "Entry skipped — daily trade cap");
-        } else if (!clearsCostHurdle(cfg, expectedMovePct, entryCheck.spreadPct)) {
+        } else if (exposureIncreasing && !clearsCostHurdle(cfg, expectedMovePct, entryCheck.spreadPct)) {
           aiReason = costHurdleReason(cfg, expectedMovePct, entryCheck.spreadPct);
           logger.info(
             { userId, ticker, expectedMovePct, spreadPct: entryCheck.spreadPct, multiple: cfg.minEdgeVsSpread },
             "Entry skipped — expected move does not clear the spread hurdle"
           );
-        } else if ((opensNewPosition || isBuy) && equityUnusable) {
+        } else if (exposureIncreasing && equityUnusable) {
           aiReason = `Trade skipped: your account balance is ${account?.total ?? 0} ${account?.currency ?? ""}`.trim() +
             ", so there is nothing to open a position with.";
           logger.warn(
             { userId, ticker, side: signal, total: account?.total },
             "Entry skipped — account equity is zero or negative"
           );
-        } else if ((opensNewPosition || isBuy) && riskDataUnavailable) {
+        } else if (exposureIncreasing && riskDataUnavailable) {
           aiReason = "Trade skipped: risk data was unavailable this cycle, so no exposure-increasing trade was placed for safety.";
           logger.warn({ userId, ticker, side: signal }, "Exposure-increasing trade skipped — risk data unavailable (fail-safe)");
         } else if (atPositionLimit) {
@@ -1402,7 +1448,7 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             { userId, ticker, side: signal, quantity, minDealSize: entryCheck.minDealSize },
             "Entry skipped — below broker's minimum deal size"
           );
-        } else if (isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
+        } else if (exposureIncreasing && isBuy && cashBudget !== null && deployedThisCycle + positionValue > cashBudget) {
           aiReason = "Trade skipped: it would exceed the account's available cash budget for this cycle.";
           logger.warn(
             { userId, ticker, positionValue, deployedThisCycle, cashBudget },
@@ -1422,10 +1468,12 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
             dryRun,
             aiReason: aiReason ?? undefined,
             aiConfidence,
+            isClose: closing,
           });
           if (tradeExecuted) {
-            if (isBuy) deployedThisCycle += positionValue;
+            if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
             if (opensNewPosition) liveTickers.add(ticker);
+            recordExecution(held, liveTickers, ticker, signal, quantity, closing);
           }
         }
       }
@@ -1468,6 +1516,85 @@ export function sizePosition(
   }
 
   return { positionValue, quantity: positionValue / currentPrice };
+}
+
+/**
+ * Update this cycle's view of what is held after an order executes, so a later
+ * decision in the same cycle sees the truth: a closed position is no longer
+ * held (and frees its concurrent-position slot), and a new one is.
+ */
+function recordExecution(
+  held: HeldPositions,
+  liveTickers: Set<string>,
+  ticker: string,
+  side: "BUY" | "SELL",
+  quantity: number,
+  closing: boolean
+): void {
+  const h = held.get(ticker) ?? { long: 0, short: 0 };
+  if (closing) {
+    if (side === "SELL") h.long = 0;
+    else h.short = 0;
+  } else if (side === "BUY") {
+    h.long += quantity;
+  } else {
+    h.short += quantity;
+  }
+  held.set(ticker, h);
+  if (h.long === 0 && h.short === 0) liveTickers.delete(ticker);
+}
+
+/** Held size per ticker, split by direction. */
+export type HeldPositions = Map<string, { long: number; short: number }>;
+
+/**
+ * Collapse the broker's per-deal positions into held size per ticker.
+ *
+ * Capital.com returns each deal as its own position: buying PL twice gives two
+ * rows, not one. Anything that asks "how much do we hold?" has to sum them.
+ */
+export function heldByTicker(positions: NormalizedPosition[]): HeldPositions {
+  const held: HeldPositions = new Map();
+  for (const p of positions) {
+    const h = held.get(p.ticker) ?? { long: 0, short: 0 };
+    if (p.direction === "BUY") h.long += p.quantity;
+    else h.short += p.quantity;
+    held.set(p.ticker, h);
+  }
+  return held;
+}
+
+/**
+ * What an order would actually do, and how big it has to be.
+ *
+ * An order against a position we already hold in the OPPOSITE direction is a
+ * close, and a close must be sized from the position — never from the balance.
+ * Sizing it from `balance × riskPerTradePercent` (what every order used to get)
+ * is harmless only while the two happen to agree. They stop agreeing the moment
+ * the balance moves or the user raises their risk setting: a £20 long opened at
+ * 1% risk, "closed" after switching to 10%, sends a £200 sell. The £180 extra
+ * becomes a short nobody asked for. In live data the gap was already visible at
+ * 1%: a SELL of 1.177 units against a 1.165-unit holding.
+ *
+ * So a close takes exactly the held quantity, which also means it can never
+ * overshoot into the opposite side. Anything else — a new position, or adding
+ * to one in the same direction — increases exposure and is sized as before.
+ */
+export function planOrder(
+  side: "BUY" | "SELL",
+  ticker: string,
+  held: HeldPositions,
+  currentPrice: number,
+  cfg: BotConfig,
+  accountBalance: number | null
+): { closing: boolean; quantity: number; positionValue: number } {
+  const h = held.get(ticker);
+  const opposite = side === "SELL" ? (h?.long ?? 0) : (h?.short ?? 0);
+  if (opposite > 0) {
+    return { closing: true, quantity: opposite, positionValue: opposite * currentPrice };
+  }
+  const { quantity, positionValue } = sizePosition(currentPrice, cfg, accountBalance);
+  return { closing: false, quantity, positionValue };
 }
 
 /**

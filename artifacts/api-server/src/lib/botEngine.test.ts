@@ -408,12 +408,11 @@ describe("zero equity — the risk layer refuses on its own, without the AI", ()
     expect(orders[0][4]).toBe("SELL");
   });
 
-  it("refuses a strategy SELL that equity-sizing has shrunk to zero", async () => {
-    // A strategy SELL on a held ticker is sized by sizePosition, which returns
-    // 0 at zero equity. Previously that zero-quantity order was sent for the
-    // broker to reject; it is now refused locally. Same outcome for the
-    // position, one less pointless order — and the flatten path above is what
-    // actually gets you out.
+  it("closes a held position in full even at zero equity — sized from the position, not the balance", async () => {
+    // Previously this SELL was sized from equity (0) and refused, so at zero
+    // equity the strategy could never exit a position — only flatten-by-close
+    // could. A close is now sized from what is held, and no exposure gate
+    // (equity included) may block it.
     broker.getBrokerAccount.mockResolvedValue(account(0));
     broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
     ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
@@ -422,7 +421,14 @@ describe("zero equity — the risk layer refuses on its own, without the AI", ()
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    const [, , ticker, quantity, side, stopLoss, takeProfit] = orders[0];
+    expect(ticker).toBe("HELD");
+    expect(quantity).toBe(5); // the whole holding
+    expect(side).toBe("SELL");
+    expect(stopLoss).toBeUndefined(); // a close protects nothing
+    expect(takeProfit).toBeUndefined();
   });
 
   it("a funded account is unaffected", async () => {
@@ -961,6 +967,198 @@ describe("running state is persisted so a restart can restore it", () => {
   it("clears the flag even with no in-memory state, so an admin can stop a bot from a previous process", async () => {
     await engine.stopBot(4242);
     expect(mocks.runningWrites).toEqual([false]);
+  });
+});
+
+const closedQuote = {
+  ticker: "HELD",
+  bid: 100,
+  offer: 100,
+  price: 100,
+  marketStatus: "CLOSED",
+  currency: "GBP",
+  minDealSize: null,
+};
+
+describe("closing orders — sized from the position, never from the balance", () => {
+  it("closes exactly the held quantity, however large the risk setting has become", async () => {
+    // The case that makes raising Risk Per Trade dangerous: a 0.2-unit (£20)
+    // long, closed after risk was raised to 50% of a £1,000 account. Sized from
+    // the balance, that "close" is a £500 sell — 5 units — and 4.8 of them
+    // become a short nobody asked for.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 0.2)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off", riskPerTradePercent: 50, maxPositionSizePercent: 50 });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][3]).toBe(0.2);
+    expect(orders[0][4]).toBe("SELL");
+  });
+
+  it("sums every deal on the ticker — the broker returns one row per deal", async () => {
+    // Buying PL twice (17 and 18 Sep) left two positions, not one. A close that
+    // took only the first would leave the second open.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 1.165), position("HELD", 1.228)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder.mock.calls[0][3]).toBeCloseTo(2.393, 9);
+  });
+
+  it("does the same in autonomous mode", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 0.2)]);
+    mocks.ai.decideTrades.mockResolvedValue([
+      { ticker: "HELD", action: "SELL", confidence: "high", reason: "cut the loss" },
+    ]);
+
+    await startLiveBot({ aiTradeMode: "autonomous", riskPerTradePercent: 50, maxPositionSizePercent: 50 });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][3]).toBe(0.2);
+  });
+
+  it("a BUY on a held SHORT is a close, and no exposure gate may block it", async () => {
+    // Previously `isBuy` alone counted as exposure-increasing, so buying back a
+    // short was refused whenever the balance couldn't be read — trapping it.
+    broker.getBrokerAccount.mockRejectedValue(new Error("broker down"));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 3, "SELL")]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][3]).toBe(3);
+    expect(orders[0][4]).toBe("BUY");
+  });
+
+  it("a SELL adding to a held short increases exposure, so the gates DO apply", async () => {
+    // The mirror of the case above. `(opensNewPosition || isBuy)` let this
+    // straight through when risk data was missing.
+    broker.getBrokerAccount.mockRejectedValue(new Error("broker down"));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 3, "SELL")]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("a close is allowed at the daily trade cap; a new position is not", async () => {
+    // A cap on churn must never trap a position. The cap counts one trade
+    // today, the limit is one: the close goes through, the new entry does not.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    ma.computeMASignal
+      .mockReturnValueOnce({ signal: "SELL", shortMa: 1, longMa: 2 }) // HELD → close
+      .mockReturnValueOnce({ signal: "BUY", shortMa: 2, longMa: 1 }); // NEW → open
+
+    await startLiveBot({ aiTradeMode: "off", maxTradesPerDay: 1 });
+    // The trades-count query is served from enabledInstruments by the db mock,
+    // so two instruments reads as two trades today — past a cap of one.
+    mocks.enabledInstruments = [
+      { ticker: "HELD", enabled: true },
+      { ticker: "NEW", enabled: true },
+    ];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][2]).toBe("HELD");
+    expect(orders[0][4]).toBe("SELL");
+  });
+});
+
+describe("closed markets — no order is sent that the broker must reject", () => {
+  it("defers a close while the market is closed, and records no failed trade", async () => {
+    // Production, 17-18 Sep: 32 SELLs of PL rejected with "PL is currently
+    // closed", one every few minutes from 20:32 until the 13:30 open.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 1.165)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    broker.getBrokerQuote.mockResolvedValue(closedQuote);
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results[0]?.tradeExecuted).toBe(false);
+  });
+
+  it("defers the autonomous-mode close too — the path that actually stormed", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 1.165)]);
+    mocks.ai.decideTrades.mockResolvedValue([
+      { ticker: "HELD", action: "SELL", confidence: "high", reason: "cut the loss" },
+    ]);
+
+    await startLiveBot({ aiTradeMode: "autonomous" });
+    broker.getBrokerQuote.mockResolvedValue(closedQuote);
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not block a close when the market allows closing but not opening", async () => {
+    // EDITS_ONLY: new positions refused, existing ones may be closed. Blocking
+    // this would trap positions in exactly the state flatten-by-close exists for.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 2)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off" });
+    // Flatten-by-close would also close this on EDITS_ONLY; either path is
+    // fine, as long as the position is closed once and in full.
+    broker.getBrokerQuote.mockResolvedValue({ ...closedQuote, marketStatus: "EDITS_ONLY" });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][3]).toBe(2);
+    expect(orders[0][4]).toBe("SELL");
+  });
+});
+
+describe("planOrder / heldByTicker", () => {
+  const cfg = () => ({ riskPerTradePercent: 1, maxPositionSizePercent: 10, tradeAmount: 20 }) as never;
+
+  it("opens are sized from the balance", () => {
+    const plan = engine.planOrder("BUY", "X", new Map(), 100, cfg(), 2000);
+    expect(plan).toEqual({ closing: false, quantity: 0.2, positionValue: 20 });
+  });
+
+  it("adding in the same direction is an open, not a close", () => {
+    const held = engine.heldByTicker([position("X", 3)]);
+    expect(engine.planOrder("BUY", "X", held, 100, cfg(), 2000).closing).toBe(false);
+  });
+
+  it("the opposite side is a close of exactly what is held", () => {
+    const held = engine.heldByTicker([position("X", 3), position("X", 1.5), position("Y", 9)]);
+    expect(engine.planOrder("SELL", "X", held, 100, cfg(), 2000)).toEqual({
+      closing: true,
+      quantity: 4.5,
+      positionValue: 450,
+    });
   });
 });
 
