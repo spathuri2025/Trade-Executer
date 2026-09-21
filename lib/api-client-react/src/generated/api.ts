@@ -52,6 +52,7 @@ import type {
   GetBacktestSweep200,
   GetCandlesParams,
   GetChartInsightParams,
+  GetLivePerformanceParams,
   GetMarketNewsParams,
   GetQuoteParams,
   GetScannerResultsParams,
@@ -69,6 +70,7 @@ import type {
   ListSignalsParams,
   ListSupportThreads200,
   ListTradesParams,
+  LivePerformance,
   MarketBrainSnapshot,
   MarketNewsList,
   MessageInput,
@@ -4397,6 +4399,91 @@ export function useGetPerformanceCoach<TData = Awaited<ReturnType<typeof getPerf
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPerformanceCoachQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetLivePerformanceUrl = (params?: GetLivePerformanceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/performance/live?${stringifiedParams}` : `/api/performance/live`
+}
+
+/**
+ * Computed from Capital.com's transaction history rather than the bot's own trade log, because take-profit, stop-loss and manual closes happen at the broker and never pass through the bot. Trade results include the spread; overnight funding and fees are netted into netResult.
+ * @summary Real trading results from the broker's own transaction history
+ */
+export const getLivePerformance = async (params?: GetLivePerformanceParams, options?: RequestInit): Promise<LivePerformance> => {
+
+  return customFetch<LivePerformance>(getGetLivePerformanceUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLivePerformanceQueryKey = (params?: GetLivePerformanceParams,) => {
+    return [
+    `/api/performance/live`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetLivePerformanceQueryOptions = <TData = Awaited<ReturnType<typeof getLivePerformance>>, TError = ErrorType<unknown>>(params?: GetLivePerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLivePerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLivePerformanceQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLivePerformance>>> = ({ signal }) => getLivePerformance(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLivePerformance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLivePerformanceQueryResult = NonNullable<Awaited<ReturnType<typeof getLivePerformance>>>
+export type GetLivePerformanceQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Real trading results from the broker's own transaction history
+ */
+
+export function useGetLivePerformance<TData = Awaited<ReturnType<typeof getLivePerformance>>, TError = ErrorType<unknown>>(
+ params?: GetLivePerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLivePerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLivePerformanceQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

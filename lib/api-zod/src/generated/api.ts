@@ -109,6 +109,13 @@ export const GetMeResponse = zod.object({
 /**
  * @summary Get current bot status and config
  */
+export const getBotStatusResponseConfigCloseBeforeSessionEndMinutesMin = 0;
+export const getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const getBotStatusResponseConfigDailyProfitTargetMin = 0;
+
+
+
 export const GetBotStatusResponse = zod.object({
   "running": zod.boolean(),
   "lastRunAt": zod.string().nullish(),
@@ -132,6 +139,8 @@ export const GetBotStatusResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "closeBeforeSessionEndMinutes": zod.number().min(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMin).max(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "dailyProfitTarget": zod.number().min(getBotStatusResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -147,6 +156,13 @@ export const GetBotStatusResponse = zod.object({
 /**
  * @summary Start the trading bot
  */
+export const startBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
+export const startBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const startBotResponseConfigDailyProfitTargetMin = 0;
+
+
+
 export const StartBotResponse = zod.object({
   "running": zod.boolean(),
   "lastRunAt": zod.string().nullish(),
@@ -170,6 +186,8 @@ export const StartBotResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "closeBeforeSessionEndMinutes": zod.number().min(startBotResponseConfigCloseBeforeSessionEndMinutesMin).max(startBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "dailyProfitTarget": zod.number().min(startBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -185,6 +203,13 @@ export const StartBotResponse = zod.object({
 /**
  * @summary Stop the trading bot
  */
+export const stopBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
+export const stopBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const stopBotResponseConfigDailyProfitTargetMin = 0;
+
+
+
 export const StopBotResponse = zod.object({
   "running": zod.boolean(),
   "lastRunAt": zod.string().nullish(),
@@ -208,6 +233,8 @@ export const StopBotResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "closeBeforeSessionEndMinutes": zod.number().min(stopBotResponseConfigCloseBeforeSessionEndMinutesMin).max(stopBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "dailyProfitTarget": zod.number().min(stopBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -223,6 +250,13 @@ export const StopBotResponse = zod.object({
 /**
  * @summary Clear a tripped daily-loss circuit breaker and restart the bot
  */
+export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
+export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const resumeBotResponseConfigDailyProfitTargetMin = 0;
+
+
+
 export const ResumeBotResponse = zod.object({
   "running": zod.boolean(),
   "lastRunAt": zod.string().nullish(),
@@ -246,6 +280,8 @@ export const ResumeBotResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "closeBeforeSessionEndMinutes": zod.number().min(resumeBotResponseConfigCloseBeforeSessionEndMinutesMin).max(resumeBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "dailyProfitTarget": zod.number().min(resumeBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -261,6 +297,13 @@ export const ResumeBotResponse = zod.object({
 /**
  * @summary Update bot strategy configuration
  */
+export const updateBotConfigBodyCloseBeforeSessionEndMinutesMin = 0;
+export const updateBotConfigBodyCloseBeforeSessionEndMinutesMax = 120;
+
+export const updateBotConfigBodyDailyProfitTargetMin = 0;
+
+
+
 export const UpdateBotConfigBody = zod.object({
   "shortPeriod": zod.number().optional(),
   "longPeriod": zod.number().optional(),
@@ -280,9 +323,18 @@ export const UpdateBotConfigBody = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigBodyCloseBeforeSessionEndMinutesMin).max(updateBotConfigBodyCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "dailyProfitTarget": zod.number().min(updateBotConfigBodyDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).optional().describe('Capital.com candle resolution the bot fetches signals at.')
 })
+
+export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin = 0;
+export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const updateBotConfigResponseConfigDailyProfitTargetMin = 0;
+
+
 
 export const UpdateBotConfigResponse = zod.object({
   "running": zod.boolean(),
@@ -307,6 +359,8 @@ export const UpdateBotConfigResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin).max(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "dailyProfitTarget": zod.number().min(updateBotConfigResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -1098,6 +1152,56 @@ export const GetPerformanceCoachResponse = zod.object({
 
 
 /**
+ * Computed from Capital.com's transaction history rather than the bot's own trade log, because take-profit, stop-loss and manual closes happen at the broker and never pass through the bot. Trade results include the spread; overnight funding and fees are netted into netResult.
+ * @summary Real trading results from the broker's own transaction history
+ */
+export const getLivePerformanceQueryDaysDefault = 30;
+
+export const GetLivePerformanceQueryParams = zod.object({
+  "days": zod.union([zod.literal(7),zod.literal(30),zod.literal(90)]).default(getLivePerformanceQueryDaysDefault)
+})
+
+export const GetLivePerformanceResponse = zod.object({
+  "currency": zod.string().nullable(),
+  "closedTrades": zod.number(),
+  "wins": zod.number(),
+  "losses": zod.number(),
+  "winRate": zod.number().nullable().describe('Wins as a share of wins + losses (0-1). A close at exactly zero counts for neither.'),
+  "averageWin": zod.number().nullable(),
+  "averageLoss": zod.number().nullable().describe('Negative.'),
+  "largestWin": zod.number().nullable(),
+  "largestLoss": zod.number().nullable(),
+  "profitFactor": zod.number().nullable().describe('Total won ÷ total lost. Null when nothing was lost.'),
+  "tradingResult": zod.number().describe('Sum of realised trade results, spread included.'),
+  "funding": zod.number().describe('Overnight funding, usually negative.'),
+  "fees": zod.number(),
+  "netResult": zod.number().describe('tradingResult + funding + fees.'),
+  "averagePerTrade": zod.number().nullable(),
+  "tradingDays": zod.number().describe('Days on which at least one trade closed.'),
+  "averagePerTradingDay": zod.number().nullable(),
+  "byDay": zod.array(zod.object({
+  "date": zod.string(),
+  "net": zod.number(),
+  "trades": zod.number()
+})),
+  "byInstrument": zod.array(zod.object({
+  "instrumentName": zod.string(),
+  "trades": zod.number(),
+  "net": zod.number()
+})),
+  "recentTrades": zod.array(zod.object({
+  "dateUtc": zod.string(),
+  "instrumentName": zod.string(),
+  "result": zod.number(),
+  "closeType": zod.enum(['take-profit', 'stop-loss', 'closed'])
+})),
+  "from": zod.string(),
+  "to": zod.string(),
+  "days": zod.number()
+})
+
+
+/**
  * @summary The caller's subscription entitlements and current usage
  */
 export const GetPlanResponse = zod.object({
@@ -1219,7 +1323,7 @@ export const ListNotificationsResponse = zod.object({
   "unreadCount": zod.number(),
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['support_reply', 'support_message', 'announcement', 'circuit_breaker', 'upgrade_handled']),
+  "type": zod.enum(['support_reply', 'support_message', 'announcement', 'circuit_breaker', 'upgrade_handled', 'profit_target']),
   "title": zod.string(),
   "body": zod.string(),
   "link": zod.string().nullable().describe('In-app path this notification points at.'),

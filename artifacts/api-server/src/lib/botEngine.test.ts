@@ -170,6 +170,8 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     minEdgeVsSpread: 3,
     maxTradesPerDay: 0,
     maxIntradayDrawdownPercent: 0,
+    closeBeforeSessionEndMinutes: 0,
+    dailyProfitTarget: 0,
     regimeFilterEnabled: false,
     barResolution: "MINUTE_5",
     ...patch,
@@ -1159,6 +1161,214 @@ describe("planOrder / heldByTicker", () => {
       quantity: 4.5,
       positionValue: 450,
     });
+  });
+});
+
+/** A US stock CFD's schedule, as Capital.com publishes it. */
+const usStockHours = {
+  mon: ["13:30 - 20:00"],
+  tue: ["13:30 - 20:00"],
+  wed: ["13:30 - 20:00"],
+  thu: ["13:30 - 20:00"],
+  fri: ["13:30 - 20:00"],
+  sat: [],
+  sun: [],
+  zone: "UTC",
+};
+
+function openQuote(ticker: string, openingHours: unknown = usStockHours) {
+  return { ticker, bid: 100, offer: 100, price: 100, marketStatus: "TRADEABLE", currency: "GBP", minDealSize: null, openingHours };
+}
+
+describe("close before the session ends", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Pin the clock. Only Date is faked, so the suite's setTimeout-based flush still runs. */
+  function at(isoUtc: string) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${isoUtc}Z`));
+  }
+
+  it("closes a held stock position in full inside the window", async () => {
+    // Monday 19:52 UTC: 8 minutes before a 20:00 close, inside a 10-minute window.
+    at("2026-09-21T19:52:00");
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([position("PL", 1.165)]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL"));
+
+    await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    const [, , ticker, quantity, side, stopLoss, takeProfit] = orders[0];
+    expect(ticker).toBe("PL");
+    expect(quantity).toBe(1.165); // the whole deal, never equity-sized
+    expect(side).toBe("SELL");
+    expect(stopLoss).toBeUndefined();
+    expect(takeProfit).toBeUndefined();
+  });
+
+  it("leaves it alone outside the window", async () => {
+    at("2026-09-21T18:00:00"); // two hours to go
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([position("PL", 1.165)]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL"));
+
+    await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when switched off, even at 19:59", async () => {
+    at("2026-09-21T19:59:00");
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([position("PL", 1.165)]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL"));
+
+    await startLiveBot({ closeBeforeSessionEndMinutes: 0 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not close when the schedule cannot be read", async () => {
+    // Unknown hours must never read as "closing now".
+    at("2026-09-21T19:55:00");
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([position("PL", 1.165)]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL", { ...usStockHours, zone: "America/New_York" }));
+
+    await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not close for an index's short nightly pause", async () => {
+    at("2026-09-21T21:55:00"); // 5 minutes before a 65-minute break
+    const indexHours = {
+      mon: ["00:00 - 22:00", "23:05 - 00:00"],
+      tue: ["00:00 - 22:00", "23:05 - 00:00"],
+      wed: ["00:00 - 22:00", "23:05 - 00:00"],
+      thu: ["00:00 - 22:00", "23:05 - 00:00"],
+      fri: ["00:00 - 22:00"],
+      sat: [],
+      sun: ["23:05 - 00:00"],
+      zone: "UTC",
+    };
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([position("US500", 2)]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("US500", indexHours));
+
+    await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("opens nothing within the window plus one cycle, and opens normally before it", async () => {
+    // 10-minute close window + 5-minute cycle = no new positions in the last 15.
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerQuote.mockResolvedValue(openQuote("NEW"));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    at("2026-09-21T19:48:00"); // 12 minutes to go
+    await startLiveBot({ aiTradeMode: "off", closeBeforeSessionEndMinutes: 10, intervalMinutes: 5 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date("2026-09-21T19:40:00Z")); // 20 minutes to go
+    await engine.runCycle(TEST_USER_ID);
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("daily profit lock", () => {
+  it("stops new positions once equity is up by the target, and says so once", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(2000)) // the day's baseline, set on the first cycle
+      .mockResolvedValue(account(2045)); // +£45, past a £40 target
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "off", dailyProfitTarget: 40 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.notify.notifyUser.mockClear();
+    mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
+
+    await engine.runCycle(TEST_USER_ID);
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    const profitNotices = mocks.notify.notifyUser.mock.calls.filter((c) => c[1]?.type === "profit_target");
+    expect(profitNotices).toHaveLength(1); // once, not every cycle
+  });
+
+  it("stays locked when equity dips back under the target — re-entering is how gains are given back", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(2000)) // baseline
+      .mockResolvedValueOnce(account(2045)) // locks
+      .mockResolvedValue(account(2010)); // dips to +£10
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "off", dailyProfitTarget: 40 });
+    mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
+    await engine.runCycle(TEST_USER_ID); // locks
+    broker.placeBrokerOrder.mockClear();
+    await engine.runCycle(TEST_USER_ID); // dipped — still locked
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("still lets a position be closed while locked", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(2000))
+      .mockResolvedValue(account(2045));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 3)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off", dailyProfitTarget: 40 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][4]).toBe("SELL");
+    expect(orders[0][3]).toBe(3);
+  });
+
+  it("does not lock below the target", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(2000))
+      .mockResolvedValue(account(2030)); // +£30 against £40
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ aiTradeMode: "off", dailyProfitTarget: 40 });
+    broker.placeBrokerOrder.mockClear();
+    mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -177,6 +177,17 @@ export interface BotConfig {
   maxTradesPerDay?: number;
   /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
   maxIntradayDrawdownPercent?: number;
+  /**
+     * Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
+     * @minimum 0
+     * @maximum 120
+     */
+  closeBeforeSessionEndMinutes?: number;
+  /**
+     * Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
+     * @minimum 0
+     */
+  dailyProfitTarget?: number;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */
@@ -307,6 +318,17 @@ export interface BotConfigInput {
   maxTradesPerDay?: number;
   /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
   maxIntradayDrawdownPercent?: number;
+  /**
+     * Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
+     * @minimum 0
+     * @maximum 120
+     */
+  closeBeforeSessionEndMinutes?: number;
+  /**
+     * Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
+     * @minimum 0
+     */
+  dailyProfitTarget?: number;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
   /** Capital.com candle resolution the bot fetches signals at. */
@@ -1250,6 +1272,7 @@ export const AppNotificationType = {
   announcement: 'announcement',
   circuit_breaker: 'circuit_breaker',
   upgrade_handled: 'upgrade_handled',
+  profit_target: 'profit_target',
 } as const;
 
 export interface AppNotification {
@@ -1605,6 +1628,82 @@ export interface PlanStatus {
   usage: PlanStatusUsage;
 }
 
+export type LivePerformanceByDayItem = {
+  date: string;
+  net: number;
+  trades: number;
+};
+
+export type LivePerformanceByInstrumentItem = {
+  instrumentName: string;
+  trades: number;
+  net: number;
+};
+
+export type LivePerformanceRecentTradesItemCloseType = typeof LivePerformanceRecentTradesItemCloseType[keyof typeof LivePerformanceRecentTradesItemCloseType];
+
+
+export const LivePerformanceRecentTradesItemCloseType = {
+  'take-profit': 'take-profit',
+  'stop-loss': 'stop-loss',
+  closed: 'closed',
+} as const;
+
+export type LivePerformanceRecentTradesItem = {
+  dateUtc: string;
+  instrumentName: string;
+  result: number;
+  closeType: LivePerformanceRecentTradesItemCloseType;
+};
+
+export interface LivePerformance {
+  /** @nullable */
+  currency: string | null;
+  closedTrades: number;
+  wins: number;
+  losses: number;
+  /**
+     * Wins as a share of wins + losses (0-1). A close at exactly zero counts for neither.
+     * @nullable
+     */
+  winRate: number | null;
+  /** @nullable */
+  averageWin: number | null;
+  /**
+     * Negative.
+     * @nullable
+     */
+  averageLoss: number | null;
+  /** @nullable */
+  largestWin: number | null;
+  /** @nullable */
+  largestLoss: number | null;
+  /**
+     * Total won ÷ total lost. Null when nothing was lost.
+     * @nullable
+     */
+  profitFactor: number | null;
+  /** Sum of realised trade results, spread included. */
+  tradingResult: number;
+  /** Overnight funding, usually negative. */
+  funding: number;
+  fees: number;
+  /** tradingResult + funding + fees. */
+  netResult: number;
+  /** @nullable */
+  averagePerTrade: number | null;
+  /** Days on which at least one trade closed. */
+  tradingDays: number;
+  /** @nullable */
+  averagePerTradingDay: number | null;
+  byDay: LivePerformanceByDayItem[];
+  byInstrument: LivePerformanceByInstrumentItem[];
+  recentTrades: LivePerformanceRecentTradesItem[];
+  from: string;
+  to: string;
+  days: number;
+}
+
 export interface PerformanceCoach {
   totalTrades: number;
   closedTrades: number;
@@ -1870,6 +1969,19 @@ export type GetChartInsightParams = {
 epic: string;
 resolution?: string;
 };
+
+export type GetLivePerformanceParams = {
+days?: GetLivePerformanceDays;
+};
+
+export type GetLivePerformanceDays = typeof GetLivePerformanceDays[keyof typeof GetLivePerformanceDays];
+
+
+export const GetLivePerformanceDays = {
+  NUMBER_7: 7,
+  NUMBER_30: 30,
+  NUMBER_90: 90,
+} as const;
 
 export type ListPlans200 = {
   plans: PlanCatalogEntry[];

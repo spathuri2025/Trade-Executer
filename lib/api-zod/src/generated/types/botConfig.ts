@@ -48,6 +48,17 @@ export interface BotConfig {
   maxTradesPerDay?: number;
   /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
   maxIntradayDrawdownPercent?: number;
+  /**
+     * Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
+     * @minimum 0
+     * @maximum 120
+     */
+  closeBeforeSessionEndMinutes?: number;
+  /**
+     * Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
+     * @minimum 0
+     */
+  dailyProfitTarget?: number;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */

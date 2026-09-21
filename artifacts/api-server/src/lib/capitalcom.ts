@@ -1,3 +1,5 @@
+import type { OpeningHours } from "./marketHours";
+import type { BrokerTransaction } from "./livePerformance";
 import { logger } from "./logger";
 import type { CapitalCredentials } from "./brokerCredentialsService";
 
@@ -469,11 +471,13 @@ export interface CapitalQuote {
    * same /markets/{epic} response, no extra request needed. null when the
    * response doesn't include a minimum (treat as "no minimum known"). */
   minDealSize: number | null;
+  /** The instrument's trading schedule, from the same response. null when absent. */
+  openingHours: OpeningHours | null;
 }
 
 export async function getCapitalQuote(userId: number, credentials: CapitalCredentials, epic: string): Promise<CapitalQuote> {
   const data = await capitalFetch(userId, credentials, `/markets/${encodeURIComponent(epic)}`) as {
-    instrument?: { currency?: string };
+    instrument?: { currency?: string; openingHours?: OpeningHours };
     snapshot?: { bid?: number; offer?: number; marketStatus?: string; updateTime?: string };
     dealingRules?: { minDealSize?: { value?: number } };
   };
@@ -494,5 +498,39 @@ export async function getCapitalQuote(userId: number, credentials: CapitalCreden
     currency: data.instrument?.currency ?? null,
     updateTime: snap.updateTime ?? null,
     minDealSize: typeof data.dealingRules?.minDealSize?.value === "number" ? data.dealingRules.minDealSize.value : null,
+    // Passed through as-is; marketHours.ts validates it and declines anything
+    // it cannot read, so no shape-checking is duplicated here.
+    openingHours: data.instrument?.openingHours ?? null,
   };
+}
+
+/** "YYYY-MM-DDTHH:MM:SS" in UTC — the format Capital.com's history endpoints take. */
+function capitalHistoryDate(d: Date): string {
+  return d.toISOString().slice(0, 19);
+}
+
+/**
+ * The account's transaction history: realised trade results, overnight funding,
+ * fees, deposits. The source of truth for what the account actually made —
+ * take-profit and stop-loss closes happen at the broker and never pass through
+ * the bot, so our own trades table cannot answer that question.
+ */
+export async function getCapitalTransactions(
+  userId: number,
+  credentials: CapitalCredentials,
+  from: Date,
+  to: Date
+): Promise<BrokerTransaction[]> {
+  const qs = new URLSearchParams({ from: capitalHistoryDate(from), to: capitalHistoryDate(to) });
+  const data = (await capitalFetch(userId, credentials, `/history/transactions?${qs}`)) as {
+    transactions?: Array<Partial<BrokerTransaction>>;
+  };
+  return (data?.transactions ?? []).map((t) => ({
+    dateUtc: t.dateUtc ?? "",
+    instrumentName: t.instrumentName ?? "",
+    transactionType: t.transactionType ?? "",
+    note: t.note ?? "",
+    size: t.size ?? "0",
+    currency: t.currency ?? "",
+  }));
 }

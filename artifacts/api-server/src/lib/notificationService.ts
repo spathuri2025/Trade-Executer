@@ -19,7 +19,8 @@ export type NotificationType =
   | "support_message"
   | "announcement"
   | "circuit_breaker"
-  | "upgrade_handled";
+  | "upgrade_handled"
+  | "profit_target";
 
 export interface NotifyInput {
   type: NotificationType;
@@ -30,7 +31,7 @@ export interface NotifyInput {
 }
 
 /**
- * Whether each type also goes out by email. All four do today, but keeping it
+ * Whether each type also goes out by email. All of them do today, but keeping it
  * explicit means adding a noisy in-app-only type later is a one-line change
  * rather than a redesign.
  */
@@ -40,6 +41,9 @@ const EMAILED_TYPES: Record<NotificationType, boolean> = {
   announcement: true,
   circuit_breaker: true,
   upgrade_handled: true,
+  // At most once a day, and it changes what the bot will do until tomorrow —
+  // worth an email, like its counterpart the circuit breaker.
+  profit_target: true,
 };
 
 function emailFooter(link?: string): string {

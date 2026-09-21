@@ -15,4 +15,5 @@ export const AppNotificationType = {
   announcement: 'announcement',
   circuit_breaker: 'circuit_breaker',
   upgrade_handled: 'upgrade_handled',
+  profit_target: 'profit_target',
 } as const;

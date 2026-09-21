@@ -14,6 +14,7 @@ import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCr
 import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
 import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
+import { minutesUntilSessionEnd, formatSessionEnd } from "./marketHours";
 import {
   acquireLease,
   renewLease,
@@ -89,6 +90,10 @@ export interface BotConfig {
   maxTradesPerDay: number;
   /** Halt when equity falls this far from its intraday peak. 0 = disabled. */
   maxIntradayDrawdownPercent: number;
+  /** Close positions this many minutes before their session ends; 0 = off. */
+  closeBeforeSessionEndMinutes: number;
+  /** Stop opening positions for the day once equity is up this much; 0 = off. */
+  dailyProfitTarget: number;
   /**
    * When true, each instrument is classified as trending or ranging (close-based
    * ADX) and routed to trend-following or mean-reversion automatically. When
@@ -118,6 +123,8 @@ const DEFAULT_CONFIG: BotConfig = {
   minEdgeVsSpread: 3,
   maxTradesPerDay: 50,
   maxIntradayDrawdownPercent: 2,
+  closeBeforeSessionEndMinutes: 0,
+  dailyProfitTarget: 0,
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
 };
@@ -136,6 +143,13 @@ interface CircuitBreakerState {
   dayStartEquity: number | null;
   /** Highest equity seen so far today — the reference for the intraday drawdown halt. */
   dayPeakEquity: number | null;
+  /**
+   * The UTC day on which the daily profit target was reached. Once set for
+   * today, the lock holds until the day changes — even if equity then dips back
+   * under the target. Re-opening on the dip is exactly how a good day gets given
+   * back, which is what the lock exists to prevent.
+   */
+  profitLockedDayKey: string | null;
 }
 
 interface BotState {
@@ -169,7 +183,15 @@ interface BotState {
 }
 
 function freshCircuitBreaker(): CircuitBreakerState {
-  return { tripped: false, reason: null, trippedAt: null, dayKey: null, dayStartEquity: null, dayPeakEquity: null };
+  return {
+    tripped: false,
+    reason: null,
+    trippedAt: null,
+    dayKey: null,
+    dayStartEquity: null,
+    dayPeakEquity: null,
+    profitLockedDayKey: null,
+  };
 }
 
 /** Per-user in-memory bot state — one isolated bot per customer, no cross-tenant sharing. */
@@ -195,6 +217,8 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     minEdgeVsSpread: row.minEdgeVsSpread,
     maxTradesPerDay: row.maxTradesPerDay,
     maxIntradayDrawdownPercent: row.maxIntradayDrawdownPercent,
+    closeBeforeSessionEndMinutes: row.closeBeforeSessionEndMinutes,
+    dailyProfitTarget: row.dailyProfitTarget,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
   };
@@ -269,6 +293,12 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
   return state;
 }
 
+/** "£40.00" for GBP, otherwise "40.00 EUR" — for messages the user reads. */
+function formatMoney(amount: number, currency: string | null): string {
+  const symbol = currency === "GBP" ? "£" : currency === "USD" ? "$" : currency === "EUR" ? "€" : null;
+  return symbol ? `${symbol}${amount.toFixed(2)}` : `${amount.toFixed(2)}${currency ? ` ${currency}` : ""}`;
+}
+
 /** UTC calendar-day key (YYYY-MM-DD) used to reset the daily-loss baseline. */
 function utcDayKey(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -295,7 +325,14 @@ async function checkEntryQuote(
   userId: number,
   credentials: UserBrokerCredentials,
   ticker: string
-): Promise<{ marketClosed: boolean; unorderable: boolean; minDealSize: number | null; spreadPct: number | null }> {
+): Promise<{
+  marketClosed: boolean;
+  unorderable: boolean;
+  minDealSize: number | null;
+  spreadPct: number | null;
+  /** Minutes until this market's session ends for a real break; null if none/unknown. */
+  minutesToSessionEnd: number | null;
+}> {
   try {
     const quote = await getBrokerQuote(userId, credentials, ticker);
     // Round-trip cost as a fraction of price. Taken from the SAME quote as the
@@ -311,6 +348,7 @@ async function checkEntryQuote(
       unorderable: quote.marketStatus !== null && UNORDERABLE_STATUSES.has(quote.marketStatus),
       minDealSize: quote.minDealSize,
       spreadPct: Number.isFinite(rawSpread) && rawSpread >= 0 ? rawSpread : null,
+      minutesToSessionEnd: minutesUntilSessionEnd(quote.openingHours),
     };
   } catch (err) {
     logger.warn({ userId, ticker, err }, "Could not check market status/min size — allowing trade (fail-open)");
@@ -319,7 +357,7 @@ async function checkEntryQuote(
     // precisely the mistake the fast engine exists to avoid.
     // unorderable false: one order that the broker may reject is better than
     // stranding a close because a quote lookup blipped.
-    return { marketClosed: false, unorderable: false, minDealSize: null, spreadPct: null };
+    return { marketClosed: false, unorderable: false, minDealSize: null, spreadPct: null, minutesToSessionEnd: null };
   }
 }
 
@@ -952,6 +990,40 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
     }
   }
 
+  // No new positions this close to a session end. The window is the close
+  // window PLUS one cycle: open at 11 minutes to close with a 10-minute window
+  // and the pre-close pass shuts it 5 minutes later, paying the spread twice for
+  // a position that existed only to be closed.
+  const noOpenWithinMinutes =
+    cfg.closeBeforeSessionEndMinutes > 0 ? cfg.closeBeforeSessionEndMinutes + cfg.intervalMinutes : 0;
+  const tooCloseToSessionEnd = (minutes: number | null): boolean =>
+    noOpenWithinMinutes > 0 && minutes !== null && minutes <= noOpenWithinMinutes;
+
+  // Daily profit lock. Once equity is up by the target against the day's start,
+  // no new positions for the rest of the UTC day; closes still go through, so
+  // an open position can always be exited. Measured on the same baseline as the
+  // daily-loss breaker, and like it, the baseline resets if the process
+  // restarts mid-day — a deploy re-measures the day from the restart.
+  let profitLocked = false;
+  if (state.running && cfg.dailyProfitTarget > 0 && account !== null && account.total !== null) {
+    const cb = state.circuitBreaker;
+    const todayKey = utcDayKey(new Date());
+    if (cb.profitLockedDayKey === todayKey) {
+      profitLocked = true;
+    } else if (cb.dayKey === todayKey && cb.dayStartEquity !== null && account.total - cb.dayStartEquity >= cfg.dailyProfitTarget) {
+      cb.profitLockedDayKey = todayKey;
+      profitLocked = true;
+      const gain = formatMoney(account.total - cb.dayStartEquity, account.currency);
+      logger.info({ userId, gain, target: cfg.dailyProfitTarget }, "Daily profit target reached — no new positions today");
+      await notifyUser(userId, {
+        type: "profit_target",
+        title: `Today's profit target is reached: up ${gain}`,
+        body: `No new positions will be opened for the rest of the day (UTC). Open positions keep their stop-loss and take-profit, and can still be closed. Trading resumes tomorrow.`,
+        link: "/performance",
+      });
+    }
+  }
+
   // Daily churn cap. Counted ONCE per cycle rather than per candidate: we place
   // the orders, so trades_table rows for the UTC day are an exact count, and at
   // one-minute cycles a per-candidate query would be a needless hammering of
@@ -1040,6 +1112,52 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
     // If the close failed, the position stays in rawPositions and this same
     // check will retry it next cycle — identical retry behavior to any other
     // trade failure, no bespoke handling needed.
+  }
+
+  // Close-before-session-end: an opt-in risk control, like flatten-by-close,
+  // and for the same reason run once here regardless of aiTradeMode.
+  //
+  // What it protects against is the overnight (and weekend) gap. A stop-loss is
+  // an order that fires at the next available price, and when a market reopens
+  // that price can be far past the stop — a 2% stop can fill as a 6% loss. The
+  // only way to be protected from a gap is not to be holding through it.
+  //
+  // Each deal is closed at its own size (never equity-sized — see planOrder).
+  // One quote per ticker per cycle, shared by that ticker's deals.
+  if (cfg.closeBeforeSessionEndMinutes > 0 && positionsFetchOk) {
+    const minutesByTicker = new Map<string, number | null>();
+    for (const pos of [...rawPositions]) {
+      if (!minutesByTicker.has(pos.ticker)) {
+        try {
+          const q = await getBrokerQuote(userId, credentials, pos.ticker);
+          minutesByTicker.set(pos.ticker, minutesUntilSessionEnd(q.openingHours));
+        } catch (err) {
+          // Unknown schedule means no action: a lookup failure must never be
+          // mistaken for an imminent close.
+          logger.warn({ userId, ticker: pos.ticker, err }, "Could not read market hours — not closing before session end");
+          minutesByTicker.set(pos.ticker, null);
+        }
+      }
+      const minutes = minutesByTicker.get(pos.ticker) ?? null;
+      if (minutes === null || minutes > cfg.closeBeforeSessionEndMinutes) continue;
+
+      const closeAt = formatSessionEnd(minutes);
+      logger.info({ userId, ticker: pos.ticker, minutes, closeAt }, "Closing before the session ends");
+      const closed = await placeAndRecord({
+        userId,
+        credentials,
+        ticker: pos.ticker,
+        side: pos.direction === "BUY" ? "SELL" : "BUY",
+        quantity: pos.quantity,
+        positionValue: pos.quantity * pos.currentPrice,
+        currentPrice: pos.currentPrice,
+        cfg,
+        dryRun,
+        aiReason: `Closed before the market closes at ${closeAt}, so it isn't held through the overnight gap.`,
+        isClose: true,
+      });
+      if (closed) rawPositions = rawPositions.filter((p) => p !== pos);
+    }
   }
 
   // Held size per ticker and direction, from the post-flatten set: what a close
@@ -1240,6 +1358,10 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
           // attempted — and the same decision simply runs again next cycle.
           aiReason = `Waiting: ${c.ticker}'s market is closed, so no order can be placed until it reopens. ${decision.reason}`;
           logger.info({ userId, ticker: c.ticker, side: decision.action, closing }, "Order deferred — market closed to all orders");
+        } else if (exposureIncreasing && profitLocked) {
+          aiReason = `Skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC). ${decision.reason}`;
+        } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
+          aiReason = `Skipped: ${c.ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight. ${decision.reason}`;
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit. ${decision.reason}`;
         } else if (exposureIncreasing && !clearsCostHurdle(cfg, c.expectedMovePct, entryCheck.spreadPct)) {
@@ -1414,6 +1536,10 @@ export async function runCycle(userId: number): Promise<Array<{ ticker: string; 
         if (entryCheck.unorderable) {
           aiReason = `Waiting: ${ticker}'s market is closed, so no order can be placed until it reopens.`;
           logger.info({ userId, ticker, side: signal, closing }, "Order deferred — market closed to all orders");
+        } else if (exposureIncreasing && profitLocked) {
+          aiReason = `Trade skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC).`;
+        } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
+          aiReason = `Trade skipped: ${ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight.`;
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Trade skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit.`;
           logger.info({ userId, ticker, limit: cfg.maxTradesPerDay }, "Entry skipped — daily trade cap");

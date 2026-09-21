@@ -1196,6 +1196,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/PerformanceCoach"
 
+  /performance/live:
+    get:
+      operationId: getLivePerformance
+      tags: [performance]
+      summary: Real trading results from the broker's own transaction history
+      description: >-
+        Computed from Capital.com's transaction history rather than the bot's
+        own trade log, because take-profit, stop-loss and manual closes happen
+        at the broker and never pass through the bot. Trade results include the
+        spread; overnight funding and fees are netted into netResult.
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [7, 30, 90]
+            default: 30
+      responses:
+        "200":
+          description: Live results for the period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivePerformance"
+
   /plan:
     get:
       operationId: getPlan
@@ -1984,6 +2010,15 @@ components:
         maxIntradayDrawdownPercent:
           type: number
           description: Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables.
+        closeBeforeSessionEndMinutes:
+          type: integer
+          minimum: 0
+          maximum: 120
+          description: Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
+        dailyProfitTarget:
+          type: number
+          minimum: 0
+          description: Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
         regimeFilterEnabled:
           type: boolean
           description: When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.
@@ -2047,6 +2082,15 @@ components:
         maxIntradayDrawdownPercent:
           type: number
           description: Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables.
+        closeBeforeSessionEndMinutes:
+          type: integer
+          minimum: 0
+          maximum: 120
+          description: Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
+        dailyProfitTarget:
+          type: number
+          minimum: 0
+          description: Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
         regimeFilterEnabled:
           type: boolean
           description: Enable automatic trending/ranging routing between trend-following and mean-reversion.
@@ -3127,7 +3171,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [support_reply, support_message, announcement, circuit_breaker, upgrade_handled]
+          enum: [support_reply, support_message, announcement, circuit_breaker, upgrade_handled, profit_target]
         title:
           type: string
         body:
@@ -3496,6 +3540,97 @@ components:
               type: integer
             aiQueriesToday:
               type: integer
+
+    LivePerformance:
+      type: object
+      required: [currency, closedTrades, wins, losses, winRate, averageWin, averageLoss, largestWin, largestLoss, profitFactor, tradingResult, funding, fees, netResult, averagePerTrade, tradingDays, averagePerTradingDay, byDay, byInstrument, recentTrades, from, to, days]
+      properties:
+        currency:
+          type: ["string", "null"]
+        closedTrades:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        winRate:
+          type: ["number", "null"]
+          description: Wins as a share of wins + losses (0-1). A close at exactly zero counts for neither.
+        averageWin:
+          type: ["number", "null"]
+        averageLoss:
+          type: ["number", "null"]
+          description: Negative.
+        largestWin:
+          type: ["number", "null"]
+        largestLoss:
+          type: ["number", "null"]
+        profitFactor:
+          type: ["number", "null"]
+          description: Total won ÷ total lost. Null when nothing was lost.
+        tradingResult:
+          type: number
+          description: Sum of realised trade results, spread included.
+        funding:
+          type: number
+          description: Overnight funding, usually negative.
+        fees:
+          type: number
+        netResult:
+          type: number
+          description: tradingResult + funding + fees.
+        averagePerTrade:
+          type: ["number", "null"]
+        tradingDays:
+          type: integer
+          description: Days on which at least one trade closed.
+        averagePerTradingDay:
+          type: ["number", "null"]
+        byDay:
+          type: array
+          items:
+            type: object
+            required: [date, net, trades]
+            properties:
+              date:
+                type: string
+              net:
+                type: number
+              trades:
+                type: integer
+        byInstrument:
+          type: array
+          items:
+            type: object
+            required: [instrumentName, trades, net]
+            properties:
+              instrumentName:
+                type: string
+              trades:
+                type: integer
+              net:
+                type: number
+        recentTrades:
+          type: array
+          items:
+            type: object
+            required: [dateUtc, instrumentName, result, closeType]
+            properties:
+              dateUtc:
+                type: string
+              instrumentName:
+                type: string
+              result:
+                type: number
+              closeType:
+                type: string
+                enum: [take-profit, stop-loss, closed]
+        from:
+          type: string
+        to:
+          type: string
+        days:
+          type: integer
 
     PerformanceCoach:
       type: object

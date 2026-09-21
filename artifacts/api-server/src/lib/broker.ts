@@ -1,3 +1,5 @@
+import type { OpeningHours } from "./marketHours";
+import type { BrokerTransaction } from "./livePerformance";
 import {
   getPositions as t212GetPositions,
   getAccountInfo,
@@ -14,6 +16,7 @@ import {
   getCapitalMarketUniverse,
   type CapitalMarketSummary,
   getCapitalQuote,
+  getCapitalTransactions,
   placeCapitalOrder,
   type Candle,
 } from "./capitalcom";
@@ -227,6 +230,8 @@ export interface NormalizedQuote {
    * units as an order's quantity. null when unknown/not applicable — callers
    * treat null as "no minimum known", i.e. fail open. */
   minDealSize: number | null;
+  /** Trading schedule, where the broker publishes one (Capital.com). null otherwise. */
+  openingHours: OpeningHours | null;
 }
 
 export async function getBrokerQuote(userId: number, credentials: UserBrokerCredentials, ticker: string): Promise<NormalizedQuote> {
@@ -240,6 +245,7 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
       marketStatus: q.marketStatus,
       currency: q.currency,
       minDealSize: q.minDealSize,
+      openingHours: q.openingHours,
     };
   }
 
@@ -253,7 +259,7 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
   if (!last || !(last > 0)) {
     throw new Error(`No live quote available for ${ticker} on Trading 212`);
   }
-  return { ticker, bid: last, offer: last, price: last, marketStatus: null, currency: null, minDealSize: null };
+  return { ticker, bid: last, offer: last, price: last, marketStatus: null, currency: null, minDealSize: null, openingHours: null };
 }
 
 export interface StopLossParams {
@@ -302,4 +308,21 @@ export async function placeBrokerOrder(
   }
   const result = await t212PlaceOrder(credentials.trading212, ticker, quantity, side);
   return { id: result.id };
+}
+
+/**
+ * The account's transaction history from the broker. null where the broker
+ * doesn't expose one (Trading 212's Invest API has no equivalent here), so the
+ * caller can say so plainly instead of showing an empty, misleading page.
+ */
+export async function getBrokerTransactions(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  from: Date,
+  to: Date
+): Promise<BrokerTransaction[] | null> {
+  if (credentials.broker === "capitalcom") {
+    return getCapitalTransactions(userId, credentials.capital, from, to);
+  }
+  return null;
 }

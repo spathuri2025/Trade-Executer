@@ -7,6 +7,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import PerformanceCoach from "@/components/PerformanceCoach";
+import { LivePerformance } from "@/components/LivePerformance";
 import { BacktestSweep } from "@/components/BacktestSweep";
 import {
   ResponsiveContainer,
@@ -249,6 +250,10 @@ export default function Performance() {
 
   return (
     <div className="space-y-6 md:space-y-8">
+      {/* Real results from the broker — first, because it answers the question
+          the rest of this page only approaches: is the bot making money? */}
+      <LivePerformance />
+
       {/* ── AI Performance Coach (behavioural analysis of real trade history) ── */}
       <PerformanceCoach />
 

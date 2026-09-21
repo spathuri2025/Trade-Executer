@@ -55,6 +55,20 @@ export const botConfigTable = pgTable("bot_config", {
    * tighter, and what a fast engine needs. 0 = disabled.
    */
   maxIntradayDrawdownPercent: real("max_intraday_drawdown_percent").notNull().default(2),
+  /**
+   * Close positions this many minutes before their market's session ends, and
+   * open nothing new that close to it. Avoids holding through an overnight or
+   * weekend gap, where a price can jump straight past a stop-loss. Only a
+   * session end followed by a real break counts — not a short daily pause.
+   * 0 = disabled (the default, so existing users' behaviour is unchanged).
+   */
+  closeBeforeSessionEndMinutes: integer("close_before_session_end_minutes").notNull().default(0),
+  /**
+   * Stop opening new positions for the rest of the UTC day once equity is up
+   * this much from the day's start, in account currency. Closes still go
+   * through. 0 = disabled.
+   */
+  dailyProfitTarget: real("daily_profit_target").notNull().default(0),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
   /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */

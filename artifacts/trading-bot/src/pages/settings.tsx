@@ -106,6 +106,8 @@ export default function Settings() {
     minEdgeVsSpread: 3,
     maxTradesPerDay: 50,
     maxIntradayDrawdownPercent: 2,
+    closeBeforeSessionEndMinutes: 0,
+    dailyProfitTarget: 0,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
   });
@@ -131,6 +133,8 @@ export default function Settings() {
         minEdgeVsSpread: botStatus.config.minEdgeVsSpread ?? 3,
         maxTradesPerDay: botStatus.config.maxTradesPerDay ?? 50,
         maxIntradayDrawdownPercent: botStatus.config.maxIntradayDrawdownPercent ?? 2,
+        closeBeforeSessionEndMinutes: botStatus.config.closeBeforeSessionEndMinutes ?? 0,
+        dailyProfitTarget: botStatus.config.dailyProfitTarget ?? 0,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
@@ -897,6 +901,57 @@ export default function Settings() {
                   min={1}
                   data-testid="input-interval-minutes"
                 />
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              <div>
+                <p className="text-sm font-medium">Protecting your day</p>
+                <p className="text-xs text-muted-foreground">
+                  Both are off at 0. Neither creates profit; they limit how a day can go wrong.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label htmlFor="close-before-end" className="text-sm font-medium">
+                    Close before market close (minutes)
+                  </label>
+                  <Input
+                    id="close-before-end"
+                    type="number"
+                    value={config.closeBeforeSessionEndMinutes}
+                    onChange={(e) => setConfig({ ...config, closeBeforeSessionEndMinutes: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0}
+                    max={120}
+                    step={1}
+                    data-testid="input-close-before-session-end"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Closes positions this long before a market shuts overnight or for the weekend, so nothing
+                    is held through the gap — where a price can jump past your stop-loss. Also stops new
+                    positions that close to the bell. Short daily pauses don&rsquo;t count.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="daily-profit-target" className="text-sm font-medium">
+                    Daily profit target
+                  </label>
+                  <Input
+                    id="daily-profit-target"
+                    type="number"
+                    value={config.dailyProfitTarget}
+                    onChange={(e) => setConfig({ ...config, dailyProfitTarget: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0}
+                    step={1}
+                    data-testid="input-daily-profit-target"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Once the account is up this much on the day, no new positions until tomorrow (UTC) — so a
+                    good day isn&rsquo;t given back. Open positions keep their exits and can still close.
+                  </p>
+                </div>
               </div>
             </div>
 
