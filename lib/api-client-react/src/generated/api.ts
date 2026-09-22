@@ -105,7 +105,8 @@ import type {
   TradeIntelligenceReport,
   UpgradeRequestCreated,
   UpgradeRequestInput,
-  UpgradeRequestQueue
+  UpgradeRequestQueue,
+  WatchdogTestAlertResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -5392,6 +5393,78 @@ export const useSendAdminSupportReply = <TError = ErrorType<AssistantError>,
         TContext
       > => {
       return useMutation(getSendAdminSupportReplyMutationOptions(options));
+    }
+
+export const getSendWatchdogTestAlertUrl = () => {
+
+
+
+
+  return `/api/admin/watchdog/test-alert`
+}
+
+/**
+ * Proves outage alerts actually arrive, before an outage needs them. Uses the same recipients (ALERT_EMAIL plus admins) and the same email path as a real alert.
+
+ * @summary Send a test outage alert through the real alert path
+ */
+export const sendWatchdogTestAlert = async ( options?: RequestInit): Promise<WatchdogTestAlertResult> => {
+
+  return customFetch<WatchdogTestAlertResult>(getSendWatchdogTestAlertUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSendWatchdogTestAlertMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendWatchdogTestAlert>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendWatchdogTestAlert>>, TError,void, TContext> => {
+
+const mutationKey = ['sendWatchdogTestAlert'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendWatchdogTestAlert>>, void> = () => {
+
+
+          return  sendWatchdogTestAlert(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendWatchdogTestAlertMutationResult = NonNullable<Awaited<ReturnType<typeof sendWatchdogTestAlert>>>
+
+    export type SendWatchdogTestAlertMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a test outage alert through the real alert path
+ */
+export const useSendWatchdogTestAlert = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendWatchdogTestAlert>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendWatchdogTestAlert>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSendWatchdogTestAlertMutationOptions(options));
     }
 
 export const getListAuditLogUrl = () => {

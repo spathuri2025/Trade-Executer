@@ -29,6 +29,7 @@ import {
 import { AdminCustomerDetail } from "@/components/AdminCustomerDetail";
 import { AdminSupportPanel, AdminAnnouncementsPanel } from "@/components/AdminSupportPanel";
 import { AdminAuditLog } from "@/components/AdminAuditLog";
+import { AdminOutageAlerts } from "@/components/AdminOutageAlerts";
 import { useToast } from "@/hooks/use-toast";
 import { Ban, CheckCircle2, Trash2 } from "lucide-react";
 
@@ -211,6 +212,7 @@ export default function Admin() {
       {/* Communication centre — support inbox + announcements */}
       <AdminSupportPanel />
       <AdminAnnouncementsPanel />
+      <AdminOutageAlerts />
       <AdminAuditLog />
 
       {isLoading ? (

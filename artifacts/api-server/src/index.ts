@@ -10,6 +10,7 @@ import {
 import { resumeRunningScanners, standDownAllScanners, scansInFlight } from "./lib/scannerEngine";
 import { releaseAllLeases, INSTANCE_ID } from "./lib/engineLease";
 import { gracefulShutdown } from "./lib/shutdown";
+import { startWatchdog, stopWatchdog } from "./lib/watchdogRuntime";
 
 const rawPort = process.env["PORT"];
 
@@ -48,6 +49,10 @@ const server = app.listen(port, (err) => {
   // sweep is what picks them up once that process exits — without it a deploy
   // would leave every bot stopped with nothing ever trying again.
   startAdoptionSweep();
+
+  // Tells a human when trading has stopped — see lib/watchdog.ts. Started here,
+  // not in app.ts, so tests importing the app never send alerts.
+  startWatchdog();
 });
 
 /**
@@ -63,7 +68,12 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal, instanceId: INSTANCE_ID }, "Shutting down");
 
   const result = await gracefulShutdown({
-    stopAdopting: stopAdoptionSweep,
+    stopAdopting: () => {
+      stopAdoptionSweep();
+      // A deliberate shutdown is not an outage; don't let the watchdog of a
+      // process that's leaving report one.
+      stopWatchdog();
+    },
     standDownEngines: async () => (await standDownAllBots()) + (await standDownAllScanners()),
     stopServer: () => server.close(),
     inFlight: () => cyclesInFlight() + scansInFlight(),

@@ -1412,6 +1412,19 @@ export const SendAdminSupportReplyBody = zod.object({
 
 
 /**
+ * Proves outage alerts actually arrive, before an outage needs them. Uses the same recipients (ALERT_EMAIL plus admins) and the same email path as a real alert.
+
+ * @summary Send a test outage alert through the real alert path
+ */
+export const SendWatchdogTestAlertResponse = zod.object({
+  "running": zod.boolean().describe('False when the watchdog isn\'t running in this process.'),
+  "recipients": zod.array(zod.string()),
+  "sent": zod.number().describe('Emails accepted by the email provider.'),
+  "alertEmailConfigured": zod.boolean().describe('Whether ALERT_EMAIL is set. Without it, an outage that starts before the app has seen the database can alert nobody.')
+})
+
+
+/**
  * Read-only by design. There is deliberately no endpoint to edit or delete entries: a log an admin can rewrite answers nothing.
 
  * @summary Admin audit trail — who did what, to whom, and when

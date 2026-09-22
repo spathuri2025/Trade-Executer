@@ -21,6 +21,7 @@ import { evictCapitalStream } from "../lib/capitalStream";
 import { notifyUser, broadcastAnnouncement } from "../lib/notificationService";
 import { recordAudit, listAudit, lookupEmail } from "../lib/auditService";
 import { getEffectivePlan } from "../lib/planService";
+import { sendWatchdogTestAlert } from "../lib/watchdogRuntime";
 
 const router: IRouter = Router();
 // Scoped to /admin paths, NOT router.use(requireAdmin) bare. This router is
@@ -40,6 +41,16 @@ function parseUserId(raw: string | string[]): number | null {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
+
+router.post("/admin/watchdog/test-alert", async (_req, res): Promise<void> => {
+  const result = await sendWatchdogTestAlert();
+  res.json({
+    running: result !== null,
+    recipients: result?.recipients ?? [],
+    sent: result?.sent ?? 0,
+    alertEmailConfigured: Boolean(process.env["ALERT_EMAIL"]),
+  });
+});
 
 router.get("/admin/customers", async (_req, res): Promise<void> => {
   const [users, subscriptions, tradeCounts, signalCounts, lastTrades, lastSignals] = await Promise.all([

@@ -202,3 +202,4 @@ export * from './upgradeRequestQueue';
 export * from './upgradeRequestQueueRequestsItem';
 export * from './upgradeTrigger';
 export * from './userAiBrief';
+export * from './watchdogTestAlertResult';

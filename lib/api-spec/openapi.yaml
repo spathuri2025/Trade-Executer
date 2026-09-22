@@ -1474,6 +1474,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/AssistantError"
 
+  /admin/watchdog/test-alert:
+    post:
+      operationId: sendWatchdogTestAlert
+      tags: [admin]
+      summary: Send a test outage alert through the real alert path
+      description: >
+        Proves outage alerts actually arrive, before an outage needs them. Uses
+        the same recipients (ALERT_EMAIL plus admins) and the same email path as
+        a real alert.
+      responses:
+        "200":
+          description: What was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchdogTestAlertResult"
+
   /admin/audit-log:
     get:
       operationId: listAuditLog
@@ -3540,6 +3557,24 @@ components:
               type: integer
             aiQueriesToday:
               type: integer
+
+    WatchdogTestAlertResult:
+      type: object
+      required: [running, recipients, sent, alertEmailConfigured]
+      properties:
+        running:
+          type: boolean
+          description: False when the watchdog isn't running in this process.
+        recipients:
+          type: array
+          items:
+            type: string
+        sent:
+          type: integer
+          description: Emails accepted by the email provider.
+        alertEmailConfigured:
+          type: boolean
+          description: Whether ALERT_EMAIL is set. Without it, an outage that starts before the app has seen the database can alert nobody.
 
     LivePerformance:
       type: object

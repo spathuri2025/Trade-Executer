@@ -1628,6 +1628,16 @@ export interface PlanStatus {
   usage: PlanStatusUsage;
 }
 
+export interface WatchdogTestAlertResult {
+  /** False when the watchdog isn't running in this process. */
+  running: boolean;
+  recipients: string[];
+  /** Emails accepted by the email provider. */
+  sent: number;
+  /** Whether ALERT_EMAIL is set. Without it, an outage that starts before the app has seen the database can alert nobody. */
+  alertEmailConfigured: boolean;
+}
+
 export type LivePerformanceByDayItem = {
   date: string;
   net: number;
