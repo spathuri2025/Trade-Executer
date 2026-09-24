@@ -92,6 +92,10 @@ export interface BotConfig {
   maxIntradayDrawdownPercent: number;
   /** Close positions this many minutes before their session ends; 0 = off. */
   closeBeforeSessionEndMinutes: number;
+  /** Ceiling on total exposure to one instrument, percent of account value; 0 = off. */
+  maxInstrumentExposurePercent: number;
+  /** Ceiling on total exposure across all instruments, percent of account value; 0 = off. */
+  maxTotalExposurePercent: number;
   /** Stop opening positions for the day once equity is up this much; 0 = off. */
   dailyProfitTarget: number;
   /**
@@ -124,6 +128,8 @@ const DEFAULT_CONFIG: BotConfig = {
   maxTradesPerDay: 50,
   maxIntradayDrawdownPercent: 2,
   closeBeforeSessionEndMinutes: 0,
+  maxInstrumentExposurePercent: 0,
+  maxTotalExposurePercent: 0,
   dailyProfitTarget: 0,
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
@@ -218,6 +224,8 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxTradesPerDay: row.maxTradesPerDay,
     maxIntradayDrawdownPercent: row.maxIntradayDrawdownPercent,
     closeBeforeSessionEndMinutes: row.closeBeforeSessionEndMinutes,
+    maxInstrumentExposurePercent: row.maxInstrumentExposurePercent,
+    maxTotalExposurePercent: row.maxTotalExposurePercent,
     dailyProfitTarget: row.dailyProfitTarget,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
@@ -1206,6 +1214,15 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
   // this cycle can actually close. Kept current as orders execute below.
   const held = heldByTicker(rawPositions);
 
+  // Exposure now, kept current as orders execute — so a cap can't be walked
+  // past by several orders inside one cycle, which is exactly how the SMCI
+  // short was built (0.36 units at a time, every cycle, for two days).
+  const exposure = exposureByTicker(rawPositions);
+  const exposureCap = (percent: number): number =>
+    percent > 0 && accountBalance !== null && accountBalance > 0 ? (accountBalance * percent) / 100 : Infinity;
+  const instrumentCap = exposureCap(cfg.maxInstrumentExposurePercent);
+  const totalCap = exposureCap(cfg.maxTotalExposurePercent);
+
   const positions: PositionSnapshot[] = rawPositions.map((p) => ({
     ticker: p.ticker,
     quantity: p.quantity,
@@ -1224,8 +1241,17 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
   // live positions list. Reducing trades (a SELL on a held long) stay allowed
   // since they only shrink exposure.
   const riskDataUnavailable =
-    (account === null && (cfg.maxPositionSizePercent > 0 || cfg.maxDailyLossPercent > 0)) ||
-    (!positionsFetchOk && cfg.maxConcurrentPositions > 0);
+    (account === null &&
+      (cfg.maxPositionSizePercent > 0 ||
+        cfg.maxDailyLossPercent > 0 ||
+        cfg.maxInstrumentExposurePercent > 0 ||
+        cfg.maxTotalExposurePercent > 0)) ||
+    // Without the position list, exposure is unknown — and an exposure cap you
+    // cannot measure is not a cap.
+    (!positionsFetchOk &&
+      (cfg.maxConcurrentPositions > 0 ||
+        cfg.maxInstrumentExposurePercent > 0 ||
+        cfg.maxTotalExposurePercent > 0));
 
   // Equity that cannot fund a position. Distinct from riskDataUnavailable —
   // there the balance is UNKNOWN; here it is known and unusable.
@@ -1404,6 +1430,19 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
           aiReason = `Skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC). ${decision.reason}`;
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Skipped: ${c.ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight. ${decision.reason}`;
+        } else if (exposureIncreasing && (exposure.byTicker.get(c.ticker) ?? 0) + positionValue > instrumentCap) {
+          aiReason =
+            `Skipped: this would take ${c.ticker} past your per-instrument exposure limit — ` +
+            `${exposureWords(exposure.byTicker.get(c.ticker) ?? 0, positionValue, instrumentCap, account?.currency ?? null)}. ${decision.reason}`;
+          logger.warn(
+            { userId, ticker: c.ticker, current: exposure.byTicker.get(c.ticker) ?? 0, adding: positionValue, cap: instrumentCap },
+            "Entry skipped — per-instrument exposure limit"
+          );
+        } else if (exposureIncreasing && exposure.total + positionValue > totalCap) {
+          aiReason =
+            `Skipped: this would take your total exposure past its limit — ` +
+            `${exposureWords(exposure.total, positionValue, totalCap, account?.currency ?? null)}. ${decision.reason}`;
+          logger.warn({ userId, ticker: c.ticker, total: exposure.total, adding: positionValue, cap: totalCap }, "Entry skipped — total exposure limit");
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit. ${decision.reason}`;
         } else if (exposureIncreasing && !clearsCostHurdle(cfg, c.expectedMovePct, entryCheck.spreadPct)) {
@@ -1470,7 +1509,7 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
             if (opensNewPosition) liveTickers.add(c.ticker);
-            recordExecution(held, liveTickers, c.ticker, decision.action, quantity, closing);
+            recordExecution(held, liveTickers, c.ticker, decision.action, quantity, closing, exposure, positionValue);
           }
         }
       }
@@ -1582,6 +1621,19 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
           aiReason = `Trade skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC).`;
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Trade skipped: ${ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight.`;
+        } else if (exposureIncreasing && (exposure.byTicker.get(ticker) ?? 0) + positionValue > instrumentCap) {
+          aiReason =
+            `Trade skipped: this would take ${ticker} past your per-instrument exposure limit — ` +
+            `${exposureWords(exposure.byTicker.get(ticker) ?? 0, positionValue, instrumentCap, account?.currency ?? null)}.`;
+          logger.warn(
+            { userId, ticker, current: exposure.byTicker.get(ticker) ?? 0, adding: positionValue, cap: instrumentCap },
+            "Entry skipped — per-instrument exposure limit"
+          );
+        } else if (exposureIncreasing && exposure.total + positionValue > totalCap) {
+          aiReason =
+            `Trade skipped: this would take your total exposure past its limit — ` +
+            `${exposureWords(exposure.total, positionValue, totalCap, account?.currency ?? null)}.`;
+          logger.warn({ userId, ticker, total: exposure.total, adding: positionValue, cap: totalCap }, "Entry skipped — total exposure limit");
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Trade skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit.`;
           logger.info({ userId, ticker, limit: cfg.maxTradesPerDay }, "Entry skipped — daily trade cap");
@@ -1641,7 +1693,7 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
             if (opensNewPosition) liveTickers.add(ticker);
-            recordExecution(held, liveTickers, ticker, signal, quantity, closing);
+            recordExecution(held, liveTickers, ticker, signal, quantity, closing, exposure, positionValue);
           }
         }
       }
@@ -1686,6 +1738,12 @@ export function sizePosition(
   return { positionValue, quantity: positionValue / currentPrice };
 }
 
+/** Money terms for a skip message: "£500 of a £500 limit". */
+function exposureWords(current: number, adding: number, cap: number, currency: string | null): string {
+  const m = (n: number) => formatMoney(n, currency);
+  return `${m(current)} already, ${m(adding)} more, against a ${m(cap)} limit`;
+}
+
 /**
  * Update this cycle's view of what is held after an order executes, so a later
  * decision in the same cycle sees the truth: a closed position is no longer
@@ -1697,8 +1755,15 @@ function recordExecution(
   ticker: string,
   side: "BUY" | "SELL",
   quantity: number,
-  closing: boolean
+  closing: boolean,
+  exposure?: { byTicker: Map<string, number>; total: number },
+  positionValue?: number
 ): void {
+  if (exposure && positionValue !== undefined) {
+    const delta = closing ? -(exposure.byTicker.get(ticker) ?? 0) : positionValue;
+    exposure.byTicker.set(ticker, Math.max(0, (exposure.byTicker.get(ticker) ?? 0) + delta));
+    exposure.total = Math.max(0, exposure.total + delta);
+  }
   const h = held.get(ticker) ?? { long: 0, short: 0 };
   if (closing) {
     if (side === "SELL") h.long = 0;
@@ -1710,6 +1775,24 @@ function recordExecution(
   }
   held.set(ticker, h);
   if (h.long === 0 && h.short === 0) liveTickers.delete(ticker);
+}
+
+/**
+ * What each instrument is worth to the account right now, and the total.
+ *
+ * Exposure is the ABSOLUTE notional: a 39-unit short is 39 units of risk, the
+ * same as a 39-unit long. Every deal on a ticker is summed, because the risk of
+ * being wrong about SMCI does not care that it arrived as 108 small orders.
+ */
+export function exposureByTicker(positions: NormalizedPosition[]): { byTicker: Map<string, number>; total: number } {
+  const byTicker = new Map<string, number>();
+  let total = 0;
+  for (const p of positions) {
+    const notional = Math.abs(p.quantity * p.currentPrice);
+    byTicker.set(p.ticker, (byTicker.get(p.ticker) ?? 0) + notional);
+    total += notional;
+  }
+  return { byTicker, total };
 }
 
 /** Held size per ticker, split by direction. */

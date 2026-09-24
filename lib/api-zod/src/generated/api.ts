@@ -109,6 +109,11 @@ export const GetMeResponse = zod.object({
 /**
  * @summary Get current bot status and config
  */
+export const getBotStatusResponseConfigMaxInstrumentExposurePercentMin = 0;
+export const getBotStatusResponseConfigMaxInstrumentExposurePercentMax = 100;
+
+export const getBotStatusResponseConfigMaxTotalExposurePercentMin = 0;
+
 export const getBotStatusResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
@@ -139,6 +144,8 @@ export const GetBotStatusResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "maxInstrumentExposurePercent": zod.number().min(getBotStatusResponseConfigMaxInstrumentExposurePercentMin).max(getBotStatusResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
+  "maxTotalExposurePercent": zod.number().min(getBotStatusResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMin).max(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(getBotStatusResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
@@ -156,6 +163,11 @@ export const GetBotStatusResponse = zod.object({
 /**
  * @summary Start the trading bot
  */
+export const startBotResponseConfigMaxInstrumentExposurePercentMin = 0;
+export const startBotResponseConfigMaxInstrumentExposurePercentMax = 100;
+
+export const startBotResponseConfigMaxTotalExposurePercentMin = 0;
+
 export const startBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const startBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
@@ -186,6 +198,8 @@ export const StartBotResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "maxInstrumentExposurePercent": zod.number().min(startBotResponseConfigMaxInstrumentExposurePercentMin).max(startBotResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
+  "maxTotalExposurePercent": zod.number().min(startBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(startBotResponseConfigCloseBeforeSessionEndMinutesMin).max(startBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(startBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
@@ -203,6 +217,11 @@ export const StartBotResponse = zod.object({
 /**
  * @summary Stop the trading bot
  */
+export const stopBotResponseConfigMaxInstrumentExposurePercentMin = 0;
+export const stopBotResponseConfigMaxInstrumentExposurePercentMax = 100;
+
+export const stopBotResponseConfigMaxTotalExposurePercentMin = 0;
+
 export const stopBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const stopBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
@@ -233,6 +252,8 @@ export const StopBotResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "maxInstrumentExposurePercent": zod.number().min(stopBotResponseConfigMaxInstrumentExposurePercentMin).max(stopBotResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
+  "maxTotalExposurePercent": zod.number().min(stopBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(stopBotResponseConfigCloseBeforeSessionEndMinutesMin).max(stopBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(stopBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
@@ -250,6 +271,11 @@ export const StopBotResponse = zod.object({
 /**
  * @summary Clear a tripped daily-loss circuit breaker and restart the bot
  */
+export const resumeBotResponseConfigMaxInstrumentExposurePercentMin = 0;
+export const resumeBotResponseConfigMaxInstrumentExposurePercentMax = 100;
+
+export const resumeBotResponseConfigMaxTotalExposurePercentMin = 0;
+
 export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
@@ -280,6 +306,8 @@ export const ResumeBotResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "maxInstrumentExposurePercent": zod.number().min(resumeBotResponseConfigMaxInstrumentExposurePercentMin).max(resumeBotResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
+  "maxTotalExposurePercent": zod.number().min(resumeBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(resumeBotResponseConfigCloseBeforeSessionEndMinutesMin).max(resumeBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(resumeBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
@@ -297,6 +325,11 @@ export const ResumeBotResponse = zod.object({
 /**
  * @summary Update bot strategy configuration
  */
+export const updateBotConfigBodyMaxInstrumentExposurePercentMin = 0;
+export const updateBotConfigBodyMaxInstrumentExposurePercentMax = 100;
+
+export const updateBotConfigBodyMaxTotalExposurePercentMin = 0;
+
 export const updateBotConfigBodyCloseBeforeSessionEndMinutesMin = 0;
 export const updateBotConfigBodyCloseBeforeSessionEndMinutesMax = 120;
 
@@ -323,11 +356,18 @@ export const UpdateBotConfigBody = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "maxInstrumentExposurePercent": zod.number().min(updateBotConfigBodyMaxInstrumentExposurePercentMin).max(updateBotConfigBodyMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
+  "maxTotalExposurePercent": zod.number().min(updateBotConfigBodyMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigBodyCloseBeforeSessionEndMinutesMin).max(updateBotConfigBodyCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(updateBotConfigBodyDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).optional().describe('Capital.com candle resolution the bot fetches signals at.')
 })
+
+export const updateBotConfigResponseConfigMaxInstrumentExposurePercentMin = 0;
+export const updateBotConfigResponseConfigMaxInstrumentExposurePercentMax = 100;
+
+export const updateBotConfigResponseConfigMaxTotalExposurePercentMin = 0;
 
 export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax = 120;
@@ -359,6 +399,8 @@ export const UpdateBotConfigResponse = zod.object({
   "minEdgeVsSpread": zod.number().optional().describe('In scalp mode, how many times the expected move must exceed the live round-trip spread before an order is placed. 0 disables the check.'),
   "maxTradesPerDay": zod.number().optional().describe('Hard cap on orders placed per UTC day. 0 = unlimited.'),
   "maxIntradayDrawdownPercent": zod.number().optional().describe('Halts the engine when equity falls this far from its intraday PEAK (not the day\'s open). 0 disables.'),
+  "maxInstrumentExposurePercent": zod.number().min(updateBotConfigResponseConfigMaxInstrumentExposurePercentMin).max(updateBotConfigResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
+  "maxTotalExposurePercent": zod.number().min(updateBotConfigResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin).max(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(updateBotConfigResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),

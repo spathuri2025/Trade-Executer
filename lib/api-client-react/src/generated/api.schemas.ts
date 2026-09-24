@@ -178,6 +178,17 @@ export interface BotConfig {
   /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
   maxIntradayDrawdownPercent?: number;
   /**
+     * Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.
+     * @minimum 0
+     * @maximum 100
+     */
+  maxInstrumentExposurePercent?: number;
+  /**
+     * Ceiling on total exposure across all instruments, same units. 0 disables.
+     * @minimum 0
+     */
+  maxTotalExposurePercent?: number;
+  /**
      * Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
      * @minimum 0
      * @maximum 120
@@ -318,6 +329,17 @@ export interface BotConfigInput {
   maxTradesPerDay?: number;
   /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
   maxIntradayDrawdownPercent?: number;
+  /**
+     * Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.
+     * @minimum 0
+     * @maximum 100
+     */
+  maxInstrumentExposurePercent?: number;
+  /**
+     * Ceiling on total exposure across all instruments, same units. 0 disables.
+     * @minimum 0
+     */
+  maxTotalExposurePercent?: number;
   /**
      * Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
      * @minimum 0

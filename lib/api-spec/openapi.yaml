@@ -2027,6 +2027,15 @@ components:
         maxIntradayDrawdownPercent:
           type: number
           description: Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables.
+        maxInstrumentExposurePercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.
+        maxTotalExposurePercent:
+          type: number
+          minimum: 0
+          description: Ceiling on total exposure across all instruments, same units. 0 disables.
         closeBeforeSessionEndMinutes:
           type: integer
           minimum: 0
@@ -2099,6 +2108,15 @@ components:
         maxIntradayDrawdownPercent:
           type: number
           description: Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables.
+        maxInstrumentExposurePercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.
+        maxTotalExposurePercent:
+          type: number
+          minimum: 0
+          description: Ceiling on total exposure across all instruments, same units. 0 disables.
         closeBeforeSessionEndMinutes:
           type: integer
           minimum: 0

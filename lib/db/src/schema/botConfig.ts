@@ -64,6 +64,19 @@ export const botConfigTable = pgTable("bot_config", {
    */
   closeBeforeSessionEndMinutes: integer("close_before_session_end_minutes").notNull().default(0),
   /**
+   * Ceiling on TOTAL exposure to one instrument, as a percent of account value,
+   * counting every open position in it and both directions.
+   *
+   * maxPositionSizePercent caps a single ORDER, which is not the same thing: on
+   * 22-23 Sep 2026 the engine sold SMCI 0.36 units at a time, 108 orders, into
+   * a 39-unit short worth ~80% of the account. Every existing limit was obeyed
+   * — the concurrent-position cap counts distinct instruments, so adding to one
+   * already held is free. 0 = disabled.
+   */
+  maxInstrumentExposurePercent: real("max_instrument_exposure_percent").notNull().default(0),
+  /** Ceiling on total exposure across all instruments, same units. 0 = disabled. */
+  maxTotalExposurePercent: real("max_total_exposure_percent").notNull().default(0),
+  /**
    * Stop opening new positions for the rest of the UTC day once equity is up
    * this much from the day's start, in account currency. Closes still go
    * through. 0 = disabled.

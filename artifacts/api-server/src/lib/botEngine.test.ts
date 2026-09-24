@@ -171,6 +171,8 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxTradesPerDay: 0,
     maxIntradayDrawdownPercent: 0,
     closeBeforeSessionEndMinutes: 0,
+    maxInstrumentExposurePercent: 0,
+    maxTotalExposurePercent: 0,
     dailyProfitTarget: 0,
     regimeFilterEnabled: false,
     barResolution: "MINUTE_5",
@@ -1369,6 +1371,119 @@ describe("daily profit lock", () => {
     await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("exposure caps — the SMCI accumulation", () => {
+  it("blocks the order that would take one instrument past its cap, however small the order", async () => {
+    // 22-23 Sep: 108 sells of ~0.36 units each built a 39-unit SMCI short worth
+    // ~80% of the account. Every order passed every limit: the concurrent-position
+    // cap counts distinct instruments, and the size cap applies per order.
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    // £480 of SMCI already held, short. A 25% cap on £2,000 is £500.
+    broker.getBrokerPositions.mockResolvedValue([position("SMCI", 12, "SELL")]); // 12 × 40 = £480
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off", maxInstrumentExposurePercent: 25, riskPerTradePercent: 5 });
+    mocks.enabledInstruments = [{ ticker: "SMCI", enabled: true }];
+    const results = await engine.runCycle(TEST_USER_ID);
+
+    // £480 + £100 would be £580, past the £500 limit.
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(results[0]?.tradeExecuted).toBe(false);
+  });
+
+  it("counts a short exactly like a long — exposure is what you'd lose being wrong", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([position("SMCI", 12, "SELL")]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    // A BUY here CLOSES the short, so it must still be allowed.
+    await startLiveBot({ aiTradeMode: "off", maxInstrumentExposurePercent: 25, riskPerTradePercent: 5 });
+    mocks.enabledInstruments = [{ ticker: "SMCI", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][3]).toBe(12); // the whole short, closed
+  });
+
+  it("sums every deal on the ticker, not just the biggest", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    // Three separate deals — how Capital.com actually reports them.
+    broker.getBrokerPositions.mockResolvedValue([
+      position("SMCI", 4, "SELL"),
+      position("SMCI", 4, "SELL"),
+      position("SMCI", 4, "SELL"),
+    ]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off", maxInstrumentExposurePercent: 25, riskPerTradePercent: 5 });
+    mocks.enabledInstruments = [{ ticker: "SMCI", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("cannot be walked past by several orders inside one cycle", async () => {
+    // Nothing held, £2,000 account, 25% cap = £500, each order £200.
+    // Two fit; the third must not.
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({
+      aiTradeMode: "off",
+      maxTotalExposurePercent: 25,
+      riskPerTradePercent: 10,
+      maxPositionSizePercent: 10, // or the default 5% cap would size each order at £100
+      maxConcurrentPositions: 0,
+    });
+    mocks.enabledInstruments = [
+      { ticker: "AAA", enabled: true },
+      { ticker: "BBB", enabled: true },
+      { ticker: "CCC", enabled: true },
+    ];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks new exposure when the position list is unavailable — an unmeasurable cap is no cap", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockRejectedValue(new Error("broker down"));
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off", maxInstrumentExposurePercent: 25, maxConcurrentPositions: 0 });
+    mocks.enabledInstruments = [{ ticker: "SMCI", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("is off at 0, so nothing changes for anyone who hasn't set it", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(2000));
+    broker.getBrokerPositions.mockResolvedValue([position("SMCI", 40, "SELL")]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ aiTradeMode: "off", maxInstrumentExposurePercent: 0, maxTotalExposurePercent: 0 });
+    mocks.enabledInstruments = [{ ticker: "SMCI", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("exposureByTicker", () => {
+  it("sums both directions as absolute notional", () => {
+    const e = engine.exposureByTicker([
+      position("SMCI", 12, "SELL"),
+      position("SMCI", 3, "BUY"),
+      position("GOLD", 2, "BUY"),
+    ]);
+    expect(e.byTicker.get("SMCI")).toBe(1500); // (12 + 3) × 100
+    expect(e.byTicker.get("GOLD")).toBe(200);
+    expect(e.total).toBe(1700);
   });
 });
 

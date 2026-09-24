@@ -107,6 +107,8 @@ export default function Settings() {
     maxTradesPerDay: 50,
     maxIntradayDrawdownPercent: 2,
     closeBeforeSessionEndMinutes: 0,
+    maxInstrumentExposurePercent: 0,
+    maxTotalExposurePercent: 0,
     dailyProfitTarget: 0,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
@@ -134,6 +136,8 @@ export default function Settings() {
         maxTradesPerDay: botStatus.config.maxTradesPerDay ?? 50,
         maxIntradayDrawdownPercent: botStatus.config.maxIntradayDrawdownPercent ?? 2,
         closeBeforeSessionEndMinutes: botStatus.config.closeBeforeSessionEndMinutes ?? 0,
+        maxInstrumentExposurePercent: botStatus.config.maxInstrumentExposurePercent ?? 0,
+        maxTotalExposurePercent: botStatus.config.maxTotalExposurePercent ?? 0,
         dailyProfitTarget: botStatus.config.dailyProfitTarget ?? 0,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
@@ -855,6 +859,38 @@ export default function Settings() {
                     {config.maxDailyLossPercent > 0
                       ? `If the account drops ${config.maxDailyLossPercent}% in a day, the engine stops until you resume it.`
                       : "Daily-loss circuit breaker disabled (not recommended)."}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Max Exposure Per Instrument (%)</label>
+                  <Input
+                    type="number"
+                    value={config.maxInstrumentExposurePercent}
+                    onChange={(e) => setConfig({ ...config, maxInstrumentExposurePercent: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0} max={100} step={1}
+                    data-testid="input-max-instrument-exposure"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {config.maxInstrumentExposurePercent > 0
+                      ? `Everything held in one instrument, long and short together, may not exceed ${config.maxInstrumentExposurePercent}% of the account.`
+                      : "No limit on how much of the account one instrument can become (not recommended)."}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Max Total Exposure (%)</label>
+                  <Input
+                    type="number"
+                    value={config.maxTotalExposurePercent}
+                    onChange={(e) => setConfig({ ...config, maxTotalExposurePercent: Number(e.target.value) })}
+                    className="font-mono"
+                    min={0} step={1}
+                    data-testid="input-max-total-exposure"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {config.maxTotalExposurePercent > 0
+                      ? `Everything held across all instruments may not exceed ${config.maxTotalExposurePercent}% of the account.`
+                      : "No limit on total exposure (not recommended)."}
                   </p>
                 </div>
                 <div className="space-y-2">
