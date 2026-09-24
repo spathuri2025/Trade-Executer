@@ -2148,6 +2148,11 @@ components:
           minimum: 0
           maximum: 120
           description: Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
+        noOpenAfterSessionStartMinutes:
+          type: integer
+          minimum: 0
+          maximum: 240
+          description: Open no new positions for this many minutes after an instrument's session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.
         dailyProfitTarget:
           type: number
           minimum: 0
@@ -2253,6 +2258,11 @@ components:
           minimum: 0
           maximum: 120
           description: Close positions this many minutes before their market's session ends (only a session end followed by a break of two hours or more, e.g. a stock's overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.
+        noOpenAfterSessionStartMinutes:
+          type: integer
+          minimum: 0
+          maximum: 240
+          description: Open no new positions for this many minutes after an instrument's session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.
         dailyProfitTarget:
           type: number
           minimum: 0

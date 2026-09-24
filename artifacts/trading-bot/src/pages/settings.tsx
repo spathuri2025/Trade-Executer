@@ -117,6 +117,7 @@ export default function Settings() {
     reentryCooldownMinutes: 5,
     onePositionPerInstrument: true,
     maxNetDirectionalPercent: 0,
+    noOpenAfterSessionStartMinutes: 0,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
   });
@@ -152,6 +153,7 @@ export default function Settings() {
         reentryCooldownMinutes: botStatus.config.reentryCooldownMinutes ?? 5,
         onePositionPerInstrument: botStatus.config.onePositionPerInstrument ?? true,
         maxNetDirectionalPercent: botStatus.config.maxNetDirectionalPercent ?? 0,
+        noOpenAfterSessionStartMinutes: botStatus.config.noOpenAfterSessionStartMinutes ?? 0,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
@@ -732,6 +734,24 @@ export default function Settings() {
               Counted from your broker&rsquo;s own closed trades, so stop-losses count too. The earliest
               sign that conditions have turned — the limits above only notice once the money is gone.
               0 disables.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="opening-window">Settle after the open (min)</Label>
+            <Input
+              id="opening-window"
+              type="number"
+              min="0"
+              max="240"
+              value={config.noOpenAfterSessionStartMinutes}
+              onChange={(e) => setConfig({ ...config, noOpenAfterSessionStartMinutes: Number(e.target.value) })}
+              data-testid="input-opening-window"
+            />
+            <p className="text-xs text-muted-foreground">
+              No new positions for this long after a market opens. A 21-period average of 5-minute bars is 105
+              minutes of history, so at the opening bell every bar in it is from yesterday — the averages walk
+              yesterday&rsquo;s path while the price gaps, and the crossover fires in the direction the price has
+              just left. Closes are never held back. 0 disables.
             </p>
           </div>
           <div className="space-y-1.5">

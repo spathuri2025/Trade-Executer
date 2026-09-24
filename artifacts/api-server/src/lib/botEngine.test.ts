@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   equityBaselines: [] as Array<Record<string, unknown>>,
   /** Every row written to the trades table, in order — opens and closes alike. */
   tradeInserts: [] as Array<Record<string, unknown>>,
+  /** Every row written to the signals table — carries the reason a trade was skipped. */
+  signalInserts: [] as Array<Record<string, unknown>>,
   /** Every `running` value written via persistRunning, in order. */
   runningWrites: [] as boolean[],
   broker: {
@@ -93,6 +95,7 @@ vi.mock("@workspace/db", () => ({
         // read this rather than one of the two broker mocks, so a test says
         // what happened rather than which mechanism carried it.
         if (table?.__name === "trades") mocks.tradeInserts.push(values);
+        if (table?.__name === "signals") mocks.signalInserts.push(values);
         return insertResult();
       },
     }),
@@ -227,6 +230,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxTradesPerDay: 0,
     maxIntradayDrawdownPercent: 0,
     closeBeforeSessionEndMinutes: 0,
+    noOpenAfterSessionStartMinutes: 0,
     activeProfileId: null,
     maxInstrumentExposurePercent: 0,
     maxTotalExposurePercent: 0,
@@ -255,7 +259,25 @@ beforeEach(async () => {
   mocks.recentTrades = [];
   mocks.equityBaselines = [];
   mocks.tradeInserts = [];
+  mocks.signalInserts = [];
   mocks.runningWrites = [];
+  // mockReset, not just clearAllMocks: clearing resets call history but leaves
+  // any queued mockReturnValueOnce/mockResolvedValueOnce values in place. A
+  // test that queues two and consumes one leaks the leftover into whatever runs
+  // next, which showed up as an opening-window test passing alone and failing
+  // in the suite — its BUY signal was a stale HOLD from an earlier test. Every
+  // mock reset here is given its default again immediately below.
+  broker.getBrokerAccount.mockReset();
+  broker.getBrokerPositions.mockReset();
+  broker.getBrokerPriceHistory.mockReset();
+  broker.getBrokerQuote.mockReset();
+  broker.placeBrokerOrder.mockReset();
+  broker.getBrokerTransactions.mockReset();
+  broker.closeBrokerPosition.mockReset();
+  ma.computeMASignal.mockReset();
+  mocks.credentials.getUserBrokerCredentials.mockReset();
+  mocks.plan.getPlanLimits.mockReset();
+
   broker.getBrokerAccount.mockResolvedValue(defaultAccount);
   broker.getBrokerPositions.mockResolvedValue([]);
   broker.getBrokerPriceHistory.mockResolvedValue(defaultPrices);
@@ -1845,6 +1867,98 @@ const usStockHours = {
 function openQuote(ticker: string, openingHours: unknown = usStockHours) {
   return { ticker, bid: 100, offer: 100, price: 100, marketStatus: "TRADEABLE", currency: "GBP", minDealSize: null, openingHours };
 }
+
+describe("the opening window — no new positions while the averages are yesterday's", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function at(isoUtc: string) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${isoUtc}Z`));
+  }
+
+  it("refuses a new position minutes after the open", async () => {
+    // Monday 13:36 UTC, six minutes into a 13:30 open — the exact moment the
+    // AI guard was refusing every signal on 24 Sep 2026.
+    at("2026-09-21T13:36:00");
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL"));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ noOpenAfterSessionStartMinutes: 30 });
+    mocks.enabledInstruments = [{ ticker: "PL", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(0);
+  });
+
+  it("allows one once the window has passed", async () => {
+    at("2026-09-21T14:05:00"); // 35 minutes in
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL"));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ noOpenAfterSessionStartMinutes: 30 });
+    mocks.enabledInstruments = [{ ticker: "PL", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+
+  it("never blocks a CLOSE inside the window", async () => {
+    // A gate on new exposure must not trap an exit, however volatile the open.
+    at("2026-09-21T13:36:00");
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([position("PL", 3)]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL"));
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ noOpenAfterSessionStartMinutes: 30 });
+    mocks.enabledInstruments = [{ ticker: "PL", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+    expect(traded()[0]!.side).toBe("SELL");
+  });
+
+  it("is off at zero", async () => {
+    at("2026-09-21T13:31:00");
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL"));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ noOpenAfterSessionStartMinutes: 0 });
+    mocks.enabledInstruments = [{ ticker: "PL", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+
+  it("does not hold back a market with no readable open", async () => {
+    // Unknown must never block: an unreadable schedule taking an instrument
+    // dark all day is a worse failure than one trade at a bad moment.
+    at("2026-09-21T13:36:00");
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockResolvedValue(openQuote("PL", null));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ noOpenAfterSessionStartMinutes: 30 });
+    mocks.enabledInstruments = [{ ticker: "PL", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+});
 
 describe("close before the session ends", () => {
   afterEach(() => {

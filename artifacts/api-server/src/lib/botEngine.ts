@@ -25,7 +25,7 @@ import { summariseTransactions, parseUtc } from "./livePerformance";
 import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
 import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
-import { minutesUntilSessionEnd, formatSessionEnd } from "./marketHours";
+import { minutesUntilSessionEnd, minutesSinceSessionStart, formatSessionEnd } from "./marketHours";
 import {
   rollMarks,
   hardLimitBreach,
@@ -111,6 +111,8 @@ export interface BotConfig {
   maxIntradayDrawdownPercent: number;
   /** Close positions this many minutes before their session ends; 0 = off. */
   closeBeforeSessionEndMinutes: number;
+  /** Open nothing new for this many minutes after an instrument's session opens; 0 = off. */
+  noOpenAfterSessionStartMinutes: number;
   /** Which trading mode (profile) is applied. Display only; the engine reads the fields above. */
   activeProfileId: number | null;
   /** Ceiling on total exposure to one instrument, percent of account value; 0 = off. */
@@ -161,6 +163,7 @@ const DEFAULT_CONFIG: BotConfig = {
   maxTradesPerDay: 50,
   maxIntradayDrawdownPercent: 2,
   closeBeforeSessionEndMinutes: 0,
+  noOpenAfterSessionStartMinutes: 0,
   activeProfileId: null,
   maxInstrumentExposurePercent: 0,
   maxTotalExposurePercent: 0,
@@ -399,6 +402,7 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxTradesPerDay: row.maxTradesPerDay,
     maxIntradayDrawdownPercent: row.maxIntradayDrawdownPercent,
     closeBeforeSessionEndMinutes: row.closeBeforeSessionEndMinutes,
+    noOpenAfterSessionStartMinutes: row.noOpenAfterSessionStartMinutes,
     activeProfileId: row.activeProfileId,
     maxInstrumentExposurePercent: row.maxInstrumentExposurePercent,
     maxTotalExposurePercent: row.maxTotalExposurePercent,
@@ -541,6 +545,8 @@ async function checkEntryQuote(
   spreadPct: number | null;
   /** Minutes until this market's session ends for a real break; null if none/unknown. */
   minutesToSessionEnd: number | null;
+  /** Minutes since this market's session opened after a real break; null if none/unknown. */
+  minutesSinceSessionOpen: number | null;
 }> {
   try {
     const quote = await getBrokerQuote(userId, credentials, ticker);
@@ -559,6 +565,7 @@ async function checkEntryQuote(
       minStopDistancePercent: quote.minStopDistancePercent,
       spreadPct: Number.isFinite(rawSpread) && rawSpread >= 0 ? rawSpread : null,
       minutesToSessionEnd: minutesUntilSessionEnd(quote.openingHours),
+      minutesSinceSessionOpen: minutesSinceSessionStart(quote.openingHours),
     };
   } catch (err) {
     logger.warn({ userId, ticker, err }, "Could not check market status/min size — allowing trade (fail-open)");
@@ -574,6 +581,7 @@ async function checkEntryQuote(
       minStopDistancePercent: null,
       spreadPct: null,
       minutesToSessionEnd: null,
+      minutesSinceSessionOpen: null,
     };
   }
 }
@@ -1346,6 +1354,15 @@ async function runCycleUnlocked(
   const tooCloseToSessionEnd = (minutes: number | null): boolean =>
     noOpenWithinMinutes > 0 && minutes !== null && minutes <= noOpenWithinMinutes;
 
+  // The mirror at the other end of the session. A 21-period average of
+  // 5-minute bars is 105 minutes of history, so at an opening bell every bar
+  // behind it is from yesterday: the averages walk yesterday's path while the
+  // price gaps, and the crossover fires in the direction the price has just
+  // left. Measured at the US open on 24 Sep 2026 — five signals in six minutes,
+  // all five refused by the AI guard, SPCX's two moving averages 0.047% apart.
+  const tooSoonAfterSessionOpen = (minutes: number | null): boolean =>
+    cfg.noOpenAfterSessionStartMinutes > 0 && minutes !== null && minutes < cfg.noOpenAfterSessionStartMinutes;
+
   // Daily profit lock. Once equity is up by the target against the day's start,
   // no new positions for the rest of the UTC day; closes still go through, so
   // an open position can always be exited. Measured on the same baseline as the
@@ -1784,6 +1801,15 @@ async function runCycleUnlocked(
           logger.info({ userId, ticker: c.ticker, side: decision.action }, "Entry skipped — one position per instrument");
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Skipped: ${c.ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight. ${decision.reason}`;
+        } else if (exposureIncreasing && tooSoonAfterSessionOpen(entryCheck.minutesSinceSessionOpen)) {
+          aiReason =
+            `Skipped: ${c.ticker}'s market opened ${Math.round(entryCheck.minutesSinceSessionOpen ?? 0)} minutes ago, ` +
+            `inside your ${cfg.noOpenAfterSessionStartMinutes}-minute settling window — the averages are still made of ` +
+            `yesterday's bars. ${decision.reason}`;
+          logger.info(
+            { userId, ticker: c.ticker, sinceOpen: entryCheck.minutesSinceSessionOpen, window: cfg.noOpenAfterSessionStartMinutes },
+            "Entry skipped — inside the opening window"
+          );
         } else if (exposureIncreasing && (exposure.byTicker.get(c.ticker) ?? 0) + positionValue > instrumentCap) {
           aiReason =
             `Skipped: this would take ${c.ticker} past your per-instrument exposure limit — ` +
@@ -2001,6 +2027,14 @@ async function runCycleUnlocked(
           logger.info({ userId, ticker, side: signal }, "Entry skipped — one position per instrument");
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Trade skipped: ${ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight.`;
+        } else if (exposureIncreasing && tooSoonAfterSessionOpen(entryCheck.minutesSinceSessionOpen)) {
+          aiReason =
+            `Trade skipped: ${ticker}'s market opened ${Math.round(entryCheck.minutesSinceSessionOpen ?? 0)} minutes ago, ` +
+            `inside your ${cfg.noOpenAfterSessionStartMinutes}-minute settling window — the averages are still made of yesterday's bars.`;
+          logger.info(
+            { userId, ticker, sinceOpen: entryCheck.minutesSinceSessionOpen, window: cfg.noOpenAfterSessionStartMinutes },
+            "Entry skipped — inside the opening window"
+          );
         } else if (exposureIncreasing && (exposure.byTicker.get(ticker) ?? 0) + positionValue > instrumentCap) {
           aiReason =
             `Trade skipped: this would take ${ticker} past your per-instrument exposure limit — ` +

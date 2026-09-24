@@ -64,6 +64,17 @@ export const botConfigTable = pgTable("bot_config", {
    */
   closeBeforeSessionEndMinutes: integer("close_before_session_end_minutes").notNull().default(0),
   /**
+   * Open no new positions for this many minutes after an instrument's session
+   * opens. 0 = disabled. The mirror of closeBeforeSessionEndMinutes.
+   *
+   * At the US open on 24 Sep 2026 the strategy produced five signals in six
+   * minutes and the AI guard refused every one, always on the same grounds: the
+   * moving averages were almost touching (0.047% apart on SPCX) and the price
+   * had already left them behind. A 21-period average of 5-minute bars is 105
+   * minutes of history, so at the bell every bar in it is from yesterday.
+   */
+  noOpenAfterSessionStartMinutes: integer("no_open_after_session_start_minutes").notNull().default(0),
+  /**
    * Ceiling on TOTAL exposure to one instrument, as a percent of account value,
    * counting every open position in it and both directions.
    *

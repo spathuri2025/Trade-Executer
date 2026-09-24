@@ -121,6 +121,9 @@ export const getBotStatusResponseConfigMaxTotalExposurePercentMin = 0;
 export const getBotStatusResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
+export const getBotStatusResponseConfigNoOpenAfterSessionStartMinutesMin = 0;
+export const getBotStatusResponseConfigNoOpenAfterSessionStartMinutesMax = 240;
+
 export const getBotStatusResponseConfigDailyProfitTargetMin = 0;
 
 export const getBotStatusResponseConfigEquityFloorMin = 0;
@@ -163,6 +166,7 @@ export const GetBotStatusResponse = zod.object({
   "maxInstrumentExposurePercent": zod.number().min(getBotStatusResponseConfigMaxInstrumentExposurePercentMin).max(getBotStatusResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
   "maxTotalExposurePercent": zod.number().min(getBotStatusResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMin).max(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "noOpenAfterSessionStartMinutes": zod.number().min(getBotStatusResponseConfigNoOpenAfterSessionStartMinutesMin).max(getBotStatusResponseConfigNoOpenAfterSessionStartMinutesMax).optional().describe('Open no new positions for this many minutes after an instrument\'s session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.'),
   "dailyProfitTarget": zod.number().min(getBotStatusResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "equityFloor": zod.number().min(getBotStatusResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(getBotStatusResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
@@ -192,6 +196,9 @@ export const startBotResponseConfigMaxTotalExposurePercentMin = 0;
 
 export const startBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const startBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const startBotResponseConfigNoOpenAfterSessionStartMinutesMin = 0;
+export const startBotResponseConfigNoOpenAfterSessionStartMinutesMax = 240;
 
 export const startBotResponseConfigDailyProfitTargetMin = 0;
 
@@ -235,6 +242,7 @@ export const StartBotResponse = zod.object({
   "maxInstrumentExposurePercent": zod.number().min(startBotResponseConfigMaxInstrumentExposurePercentMin).max(startBotResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
   "maxTotalExposurePercent": zod.number().min(startBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(startBotResponseConfigCloseBeforeSessionEndMinutesMin).max(startBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "noOpenAfterSessionStartMinutes": zod.number().min(startBotResponseConfigNoOpenAfterSessionStartMinutesMin).max(startBotResponseConfigNoOpenAfterSessionStartMinutesMax).optional().describe('Open no new positions for this many minutes after an instrument\'s session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.'),
   "dailyProfitTarget": zod.number().min(startBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "equityFloor": zod.number().min(startBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(startBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
@@ -264,6 +272,9 @@ export const stopBotResponseConfigMaxTotalExposurePercentMin = 0;
 
 export const stopBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const stopBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const stopBotResponseConfigNoOpenAfterSessionStartMinutesMin = 0;
+export const stopBotResponseConfigNoOpenAfterSessionStartMinutesMax = 240;
 
 export const stopBotResponseConfigDailyProfitTargetMin = 0;
 
@@ -307,6 +318,7 @@ export const StopBotResponse = zod.object({
   "maxInstrumentExposurePercent": zod.number().min(stopBotResponseConfigMaxInstrumentExposurePercentMin).max(stopBotResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
   "maxTotalExposurePercent": zod.number().min(stopBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(stopBotResponseConfigCloseBeforeSessionEndMinutesMin).max(stopBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "noOpenAfterSessionStartMinutes": zod.number().min(stopBotResponseConfigNoOpenAfterSessionStartMinutesMin).max(stopBotResponseConfigNoOpenAfterSessionStartMinutesMax).optional().describe('Open no new positions for this many minutes after an instrument\'s session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.'),
   "dailyProfitTarget": zod.number().min(stopBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "equityFloor": zod.number().min(stopBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(stopBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
@@ -336,6 +348,9 @@ export const resumeBotResponseConfigMaxTotalExposurePercentMin = 0;
 
 export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const resumeBotResponseConfigNoOpenAfterSessionStartMinutesMin = 0;
+export const resumeBotResponseConfigNoOpenAfterSessionStartMinutesMax = 240;
 
 export const resumeBotResponseConfigDailyProfitTargetMin = 0;
 
@@ -379,6 +394,7 @@ export const ResumeBotResponse = zod.object({
   "maxInstrumentExposurePercent": zod.number().min(resumeBotResponseConfigMaxInstrumentExposurePercentMin).max(resumeBotResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
   "maxTotalExposurePercent": zod.number().min(resumeBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(resumeBotResponseConfigCloseBeforeSessionEndMinutesMin).max(resumeBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "noOpenAfterSessionStartMinutes": zod.number().min(resumeBotResponseConfigNoOpenAfterSessionStartMinutesMin).max(resumeBotResponseConfigNoOpenAfterSessionStartMinutesMax).optional().describe('Open no new positions for this many minutes after an instrument\'s session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.'),
   "dailyProfitTarget": zod.number().min(resumeBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "equityFloor": zod.number().min(resumeBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(resumeBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
@@ -408,6 +424,9 @@ export const updateBotConfigBodyMaxTotalExposurePercentMin = 0;
 
 export const updateBotConfigBodyCloseBeforeSessionEndMinutesMin = 0;
 export const updateBotConfigBodyCloseBeforeSessionEndMinutesMax = 120;
+
+export const updateBotConfigBodyNoOpenAfterSessionStartMinutesMin = 0;
+export const updateBotConfigBodyNoOpenAfterSessionStartMinutesMax = 240;
 
 export const updateBotConfigBodyDailyProfitTargetMin = 0;
 
@@ -446,6 +465,7 @@ export const UpdateBotConfigBody = zod.object({
   "maxInstrumentExposurePercent": zod.number().min(updateBotConfigBodyMaxInstrumentExposurePercentMin).max(updateBotConfigBodyMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
   "maxTotalExposurePercent": zod.number().min(updateBotConfigBodyMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigBodyCloseBeforeSessionEndMinutesMin).max(updateBotConfigBodyCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "noOpenAfterSessionStartMinutes": zod.number().min(updateBotConfigBodyNoOpenAfterSessionStartMinutesMin).max(updateBotConfigBodyNoOpenAfterSessionStartMinutesMax).optional().describe('Open no new positions for this many minutes after an instrument\'s session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.'),
   "dailyProfitTarget": zod.number().min(updateBotConfigBodyDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "equityFloor": zod.number().min(updateBotConfigBodyEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(updateBotConfigBodyMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
@@ -464,6 +484,9 @@ export const updateBotConfigResponseConfigMaxTotalExposurePercentMin = 0;
 
 export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax = 120;
+
+export const updateBotConfigResponseConfigNoOpenAfterSessionStartMinutesMin = 0;
+export const updateBotConfigResponseConfigNoOpenAfterSessionStartMinutesMax = 240;
 
 export const updateBotConfigResponseConfigDailyProfitTargetMin = 0;
 
@@ -507,6 +530,7 @@ export const UpdateBotConfigResponse = zod.object({
   "maxInstrumentExposurePercent": zod.number().min(updateBotConfigResponseConfigMaxInstrumentExposurePercentMin).max(updateBotConfigResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
   "maxTotalExposurePercent": zod.number().min(updateBotConfigResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin).max(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "noOpenAfterSessionStartMinutes": zod.number().min(updateBotConfigResponseConfigNoOpenAfterSessionStartMinutesMin).max(updateBotConfigResponseConfigNoOpenAfterSessionStartMinutesMax).optional().describe('Open no new positions for this many minutes after an instrument\'s session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.'),
   "dailyProfitTarget": zod.number().min(updateBotConfigResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "equityFloor": zod.number().min(updateBotConfigResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(updateBotConfigResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
@@ -1394,6 +1418,9 @@ export const activateTradingProfileResponseConfigMaxTotalExposurePercentMin = 0;
 export const activateTradingProfileResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const activateTradingProfileResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
+export const activateTradingProfileResponseConfigNoOpenAfterSessionStartMinutesMin = 0;
+export const activateTradingProfileResponseConfigNoOpenAfterSessionStartMinutesMax = 240;
+
 export const activateTradingProfileResponseConfigDailyProfitTargetMin = 0;
 
 export const activateTradingProfileResponseConfigEquityFloorMin = 0;
@@ -1435,6 +1462,7 @@ export const ActivateTradingProfileResponse = zod.object({
   "maxInstrumentExposurePercent": zod.number().min(activateTradingProfileResponseConfigMaxInstrumentExposurePercentMin).max(activateTradingProfileResponseConfigMaxInstrumentExposurePercentMax).optional().describe('Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.'),
   "maxTotalExposurePercent": zod.number().min(activateTradingProfileResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(activateTradingProfileResponseConfigCloseBeforeSessionEndMinutesMin).max(activateTradingProfileResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
+  "noOpenAfterSessionStartMinutes": zod.number().min(activateTradingProfileResponseConfigNoOpenAfterSessionStartMinutesMin).max(activateTradingProfileResponseConfigNoOpenAfterSessionStartMinutesMax).optional().describe('Open no new positions for this many minutes after an instrument\'s session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.'),
   "dailyProfitTarget": zod.number().min(activateTradingProfileResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
   "equityFloor": zod.number().min(activateTradingProfileResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(activateTradingProfileResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),

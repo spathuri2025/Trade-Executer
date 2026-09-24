@@ -60,6 +60,12 @@ export interface BotConfigInput {
      */
   closeBeforeSessionEndMinutes?: number;
   /**
+     * Open no new positions for this many minutes after an instrument's session opens (counting only an open that follows a break of two hours or more). The mirror of closeBeforeSessionEndMinutes. A 21-period average of 5-minute bars is 105 minutes of history, so at an opening bell every bar in it is from the previous session; the averages lag while the price gaps. Closes are never blocked. 0 disables.
+     * @minimum 0
+     * @maximum 240
+     */
+  noOpenAfterSessionStartMinutes?: number;
+  /**
      * Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
      * @minimum 0
      */

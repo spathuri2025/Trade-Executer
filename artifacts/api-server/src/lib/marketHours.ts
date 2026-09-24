@@ -47,12 +47,20 @@ function utcDayStart(t: number): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
-/** Every trading interval from one day before `now` to eight days after, merged. */
+/**
+ * Every trading interval from three days before `now` to eight days after,
+ * merged.
+ *
+ * Three days back, not one: a Monday session is preceded by the weekend, and
+ * with a one-day lookback the Saturday and Sunday are empty, so Monday's open
+ * had nothing before it and read as the edge of the window rather than as a
+ * genuine open. Looking back to Friday gives it the preceding session it needs.
+ */
 function intervalsAround(hours: OpeningHours, now: number): Interval[] | null {
   const raw: Interval[] = [];
-  const firstDay = utcDayStart(now) - DAY_MS;
+  const firstDay = utcDayStart(now) - 3 * DAY_MS;
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 12; i++) {
     const dayStart = firstDay + i * DAY_MS;
     const key = DAYS[new Date(dayStart).getUTCDay()];
     const windows = hours[key];
@@ -119,6 +127,49 @@ export function minutesUntilSessionEnd(
   if (gapMinutes < MIN_SESSION_GAP_MINUTES) return null;
 
   return (current.end - t) / 60_000;
+}
+
+/**
+ * Minutes since the market's current session began — counting only a start
+ * preceded by a break of at least MIN_SESSION_GAP_MINUTES.
+ *
+ * The mirror of minutesUntilSessionEnd, and it exists for a measured reason. At
+ * the US open on 24 Sep 2026 the strategy produced five signals in six minutes
+ * and the AI guard refused all five, every time on the same grounds: the two
+ * moving averages were almost touching (SPCX 148.49 against 148.42, 0.047%
+ * apart) and the price had already left them behind. A 21-period average of
+ * 5-minute bars is 105 minutes of history, so at the opening bell every one of
+ * those bars is from yesterday. The averages walk yesterday's path while the
+ * price gaps, and the crossover fires in the direction the price has just
+ * abandoned.
+ *
+ * Returns null on the same terms as its mirror: no schedule, a non-UTC zone, an
+ * unreadable window, a market currently shut, a 24/7 market, or a preceding
+ * pause too short to be a real open. Null means "nothing to act on".
+ */
+export function minutesSinceSessionStart(
+  hours: OpeningHours | null | undefined,
+  now: Date = new Date()
+): number | null {
+  if (!hours || typeof hours !== "object") return null;
+  if (hours.zone !== undefined && (typeof hours.zone !== "string" || hours.zone.toUpperCase() !== "UTC")) return null;
+
+  const t = now.getTime();
+  const intervals = intervalsAround(hours, t);
+  if (!intervals || intervals.length === 0) return null;
+
+  const idx = intervals.findIndex((iv) => iv.start <= t && t < iv.end);
+  if (idx === -1) return null;
+
+  const current = intervals[idx];
+  const prev = intervals[idx - 1];
+  // Nothing before it inside the window we looked at: either a 24/7 market or
+  // an edge created by how far back we looked, neither of which is an open.
+  if (!prev) return null;
+  const gapMinutes = (current.start - prev.end) / 60_000;
+  if (gapMinutes < MIN_SESSION_GAP_MINUTES) return null;
+
+  return (t - current.start) / 60_000;
 }
 
 /** The session end as a clock time, for messages the user reads: "20:00 UTC". */
