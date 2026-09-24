@@ -245,6 +245,8 @@ export interface NormalizedQuote {
    * units as an order's quantity. null when unknown/not applicable — callers
    * treat null as "no minimum known", i.e. fail open. */
   minDealSize: number | null;
+  /** Minimum stop-loss/take-profit distance from the price, as a percent. null when unknown. */
+  minStopDistancePercent: number | null;
   /** Trading schedule, where the broker publishes one (Capital.com). null otherwise. */
   openingHours: OpeningHours | null;
 }
@@ -260,6 +262,7 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
       marketStatus: q.marketStatus,
       currency: q.currency,
       minDealSize: q.minDealSize,
+      minStopDistancePercent: q.minStopDistancePercent,
       openingHours: q.openingHours,
     };
   }
@@ -274,7 +277,17 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
   if (!last || !(last > 0)) {
     throw new Error(`No live quote available for ${ticker} on Trading 212`);
   }
-  return { ticker, bid: last, offer: last, price: last, marketStatus: null, currency: null, minDealSize: null, openingHours: null };
+  return {
+    ticker,
+    bid: last,
+    offer: last,
+    price: last,
+    marketStatus: null,
+    currency: null,
+    minDealSize: null,
+    minStopDistancePercent: null,
+    openingHours: null,
+  };
 }
 
 export interface StopLossParams {

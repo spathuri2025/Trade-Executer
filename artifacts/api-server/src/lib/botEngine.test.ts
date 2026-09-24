@@ -267,6 +267,7 @@ beforeEach(async () => {
     marketStatus: "TRADEABLE",
     currency: "GBP",
     minDealSize: null,
+    minStopDistancePercent: null,
   });
   broker.placeBrokerOrder.mockResolvedValue({ id: "order-1" });
   // No closed trades by default, so the losing-streak breaker never trips in
@@ -472,6 +473,7 @@ describe("zero equity — the risk layer refuses on its own, without the AI", ()
       marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
+      minStopDistancePercent: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -930,6 +932,107 @@ describe("repeat guard — the same instruction is not sent twice", () => {
   });
 });
 
+describe("exit distance below the broker's minimum", () => {
+  /**
+   * 24 Sep 2026: an ORCL buy was rejected with
+   * `error.invalid.stoploss.maxvalue: 139.87` — the scalp profile asked for a
+   * 0.3% stop on an instrument requiring about 0.57%. It then succeeded on the
+   * retry a minute later at a slightly different price, so the rule was never
+   * visible, just intermittently expensive in wasted orders.
+   */
+  const tightQuote = (minStopDistancePercent: number | null) => ({
+    ticker: "ORCL",
+    bid: 100,
+    offer: 100,
+    price: 100,
+    marketStatus: "TRADEABLE",
+    currency: "GBP",
+    minDealSize: null,
+    minStopDistancePercent,
+    openingHours: null,
+  });
+
+  it("does not send an order the broker would reject", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockResolvedValue(tightQuote(0.57));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ stopLossPercent: 0.3, takeProfitPercent: 0.3 });
+    mocks.enabledInstruments = [{ ticker: "ORCL", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(0);
+  });
+
+  it("sends it when the configured stop clears the minimum", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockResolvedValue(tightQuote(0.2));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ stopLossPercent: 0.3, takeProfitPercent: 0.3 });
+    mocks.enabledInstruments = [{ ticker: "ORCL", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+
+  it("fails open when the broker doesn't publish a minimum", async () => {
+    // An unreadable rule must not stop trading — the broker rejecting one order
+    // is a smaller cost than an instrument silently going dark.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockResolvedValue(tightQuote(null));
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ stopLossPercent: 0.3, takeProfitPercent: 0.3 });
+    mocks.enabledInstruments = [{ ticker: "ORCL", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+
+  it("never blocks a close, which carries no stop or take-profit at all", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([position("ORCL", 2)]);
+    broker.getBrokerQuote.mockResolvedValue(tightQuote(0.57));
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ stopLossPercent: 0.3, takeProfitPercent: 0.3 });
+    mocks.enabledInstruments = [{ ticker: "ORCL", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+    expect(traded()[0]!.side).toBe("SELL");
+  });
+});
+
+describe("exitTooTightForBroker", () => {
+  it("names the stop-loss when it is the one too close", () => {
+    const r = engine.exitTooTightForBroker({ stopLossPercent: 0.3, takeProfitPercent: 3 }, 0.57);
+    expect(r).toEqual({ which: "stop-loss", configured: 0.3, required: 0.57 });
+  });
+
+  it("catches a take-profit that is too close even when the stop is fine", () => {
+    // One minimum applies to both levels, and either one rejects the order.
+    const r = engine.exitTooTightForBroker({ stopLossPercent: 2, takeProfitPercent: 0.3 }, 0.57);
+    expect(r?.which).toBe("take-profit");
+  });
+
+  it("passes when both clear the minimum", () => {
+    expect(engine.exitTooTightForBroker({ stopLossPercent: 1, takeProfitPercent: 1 }, 0.57)).toBeNull();
+  });
+
+  it("ignores a level that is switched off", () => {
+    expect(engine.exitTooTightForBroker({ stopLossPercent: 0, takeProfitPercent: 0 }, 0.57)).toBeNull();
+  });
+
+  it("passes when the minimum is unknown", () => {
+    expect(engine.exitTooTightForBroker({ stopLossPercent: 0.01, takeProfitPercent: 0.01 }, null)).toBeNull();
+  });
+});
+
 describe("net direction limit — correlated positions are one bet", () => {
   it("counts three shorts as one directional position, not three small ones", () => {
     const e = engine.exposureByTicker([
@@ -1320,6 +1423,7 @@ describe("flatten-by-close", () => {
       marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
+      minStopDistancePercent: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -1348,6 +1452,7 @@ describe("flatten-by-close", () => {
       marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
+      minStopDistancePercent: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -1374,6 +1479,7 @@ describe("flatten-by-close", () => {
       marketStatus: "CLOSED",
       currency: "GBP",
       minDealSize: null,
+      minStopDistancePercent: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -1439,6 +1545,7 @@ describe("flatten-by-close", () => {
       marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
+      minStopDistancePercent: null,
     });
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
@@ -1458,6 +1565,7 @@ describe("flatten-by-close", () => {
       marketStatus: "EDITS_ONLY",
       currency: "GBP",
       minDealSize: null,
+      minStopDistancePercent: null,
     });
     mocks.enabledInstruments = [];
 

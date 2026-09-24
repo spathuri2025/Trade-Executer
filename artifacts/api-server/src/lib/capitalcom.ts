@@ -498,15 +498,55 @@ export interface CapitalQuote {
    * same /markets/{epic} response, no extra request needed. null when the
    * response doesn't include a minimum (treat as "no minimum known"). */
   minDealSize: number | null;
+  /**
+   * How far from the price a stop-loss or take-profit must sit, as a percent.
+   * null when the broker doesn't say. See minStopDistancePercent() for why this
+   * is normalised to a percent rather than passed through.
+   */
+  minStopDistancePercent: number | null;
   /** The instrument's trading schedule, from the same response. null when absent. */
   openingHours: OpeningHours | null;
+}
+
+/**
+ * Capital.com's minimum stop/take-profit distance, always as a percent.
+ *
+ * It arrives as either a PERCENTAGE or a number of POINTS, and the caller
+ * compares it against a percentage setting, so the conversion belongs here
+ * rather than at each use. Points need the current price to mean anything, so
+ * without one the answer is null — unknown, not zero.
+ *
+ * Why it matters: on 24 Sep 2026 an ORCL buy was rejected with
+ * `error.invalid.stoploss.maxvalue: 139.87` because the scalp profile asked for
+ * a 0.3% stop on an instrument that requires about 0.57%. It succeeded on the
+ * retry a minute later at a slightly different price, which is worse than
+ * failing outright: the rule was never visible, just intermittent.
+ */
+export function minStopDistancePercent(
+  rule: { unit?: string; value?: number } | undefined,
+  price: number | null
+): number | null {
+  const value = rule?.value;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  if (rule?.unit === "PERCENTAGE") return value;
+  if (rule?.unit === "POINTS") {
+    if (price === null || !(price > 0)) return null;
+    return (value / price) * 100;
+  }
+  // An unrecognised unit is not a reason to guess: an over-tight guess blocks
+  // trades that are fine, an under-tight one lets through orders the broker
+  // rejects. Unknown is the honest answer and the caller fails open.
+  return null;
 }
 
 export async function getCapitalQuote(userId: number, credentials: CapitalCredentials, epic: string): Promise<CapitalQuote> {
   const data = await capitalFetch(userId, credentials, `/markets/${encodeURIComponent(epic)}`) as {
     instrument?: { currency?: string; openingHours?: OpeningHours };
     snapshot?: { bid?: number; offer?: number; marketStatus?: string; updateTime?: string };
-    dealingRules?: { minDealSize?: { value?: number } };
+    dealingRules?: {
+      minDealSize?: { value?: number };
+      minStopOrProfitDistance?: { unit?: string; value?: number };
+    };
   };
   const snap = data?.snapshot;
   // A missing snapshot means the epic itself is bad or the market lookup failed —
@@ -525,6 +565,10 @@ export async function getCapitalQuote(userId: number, credentials: CapitalCreden
     currency: data.instrument?.currency ?? null,
     updateTime: snap.updateTime ?? null,
     minDealSize: typeof data.dealingRules?.minDealSize?.value === "number" ? data.dealingRules.minDealSize.value : null,
+    minStopDistancePercent: minStopDistancePercent(
+      data.dealingRules?.minStopOrProfitDistance,
+      typeof snap.offer === "number" ? snap.offer : null
+    ),
     // Passed through as-is; marketHours.ts validates it and declines anything
     // it cannot read, so no shape-checking is duplicated here.
     openingHours: data.instrument?.openingHours ?? null,

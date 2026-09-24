@@ -536,6 +536,8 @@ async function checkEntryQuote(
   marketClosed: boolean;
   unorderable: boolean;
   minDealSize: number | null;
+  /** The broker's minimum stop/take-profit distance, percent; null when unknown. */
+  minStopDistancePercent: number | null;
   spreadPct: number | null;
   /** Minutes until this market's session ends for a real break; null if none/unknown. */
   minutesToSessionEnd: number | null;
@@ -554,6 +556,7 @@ async function checkEntryQuote(
       // produced 32 rejected sells overnight on 17-18 Sep.
       unorderable: quote.marketStatus !== null && UNORDERABLE_STATUSES.has(quote.marketStatus),
       minDealSize: quote.minDealSize,
+      minStopDistancePercent: quote.minStopDistancePercent,
       spreadPct: Number.isFinite(rawSpread) && rawSpread >= 0 ? rawSpread : null,
       minutesToSessionEnd: minutesUntilSessionEnd(quote.openingHours),
     };
@@ -564,7 +567,14 @@ async function checkEntryQuote(
     // precisely the mistake the fast engine exists to avoid.
     // unorderable false: one order that the broker may reject is better than
     // stranding a close because a quote lookup blipped.
-    return { marketClosed: false, unorderable: false, minDealSize: null, spreadPct: null, minutesToSessionEnd: null };
+    return {
+      marketClosed: false,
+      unorderable: false,
+      minDealSize: null,
+      minStopDistancePercent: null,
+      spreadPct: null,
+      minutesToSessionEnd: null,
+    };
   }
 }
 
@@ -1792,6 +1802,15 @@ async function runCycleUnlocked(
             `Skipped: the account is already ${directionWords(exposure.net, account?.currency ?? null)} and this would ` +
             `push it past your net direction limit of ${formatMoney(netCap, account?.currency ?? null)}. ${decision.reason}`;
           logger.warn({ userId, ticker: c.ticker, net: exposure.net, adding: positionValue, isBuy, cap: netCap }, "Entry skipped — net direction limit");
+        } else if (exposureIncreasing && exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)) {
+          const tight = exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)!;
+          aiReason =
+            `Skipped: ${c.ticker} needs a ${tight.which} at least ${tight.required.toFixed(2)}% away and yours is ` +
+            `${tight.configured}%, so the broker would reject the order. ${decision.reason}`;
+          logger.info(
+            { userId, ticker: c.ticker, which: tight.which, configured: tight.configured, required: tight.required },
+            "Entry skipped — exit distance below the broker's minimum"
+          );
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit. ${decision.reason}`;
         } else if (exposureIncreasing && !clearsCostHurdle(cfg, c.expectedMovePct, entryCheck.spreadPct)) {
@@ -2000,6 +2019,15 @@ async function runCycleUnlocked(
             `Trade skipped: the account is already ${directionWords(exposure.net, account?.currency ?? null)} and this ` +
             `would push it past your net direction limit of ${formatMoney(netCap, account?.currency ?? null)}.`;
           logger.warn({ userId, ticker, net: exposure.net, adding: positionValue, isBuy, cap: netCap }, "Entry skipped — net direction limit");
+        } else if (exposureIncreasing && exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)) {
+          const tight = exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)!;
+          aiReason =
+            `Trade skipped: ${ticker} needs a ${tight.which} at least ${tight.required.toFixed(2)}% away and yours is ` +
+            `${tight.configured}%, so the broker would reject the order.`;
+          logger.info(
+            { userId, ticker, which: tight.which, configured: tight.configured, required: tight.required },
+            "Entry skipped — exit distance below the broker's minimum"
+          );
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Trade skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit.`;
           logger.info({ userId, ticker, limit: cfg.maxTradesPerDay }, "Entry skipped — daily trade cap");
@@ -2214,6 +2242,35 @@ export function breachesNetDirectional(net: number, positionValue: number, isBuy
 
 const isBuySide = (side: "BUY" | "SELL"): boolean => side === "BUY";
 
+/**
+ * The configured exit distance the broker would refuse, if any.
+ *
+ * Both the stop-loss and the take-profit are sent with an opening order, and
+ * Capital.com applies one minimum distance to both. If either is closer than
+ * that minimum the whole order is rejected — so the order is not worth sending.
+ *
+ * Widening the stop to fit was the alternative, and it is the wrong trade:
+ * accepting a 0.6% stop on a strategy taking 0.3% profits inverts the risk and
+ * reward of every trade on that instrument, quietly. Skipping trades an
+ * instrument cannot support honestly is the smaller cost.
+ *
+ * Returns null when nothing is breached, or when the minimum is unknown — an
+ * unreadable rule must not stop trading.
+ */
+export function exitTooTightForBroker(
+  cfg: { stopLossPercent: number; takeProfitPercent: number },
+  minStopDistancePercent: number | null
+): { which: "stop-loss" | "take-profit"; configured: number; required: number } | null {
+  if (minStopDistancePercent === null || !(minStopDistancePercent > 0)) return null;
+  if (cfg.stopLossPercent > 0 && cfg.stopLossPercent < minStopDistancePercent) {
+    return { which: "stop-loss", configured: cfg.stopLossPercent, required: minStopDistancePercent };
+  }
+  if (cfg.takeProfitPercent > 0 && cfg.takeProfitPercent < minStopDistancePercent) {
+    return { which: "take-profit", configured: cfg.takeProfitPercent, required: minStopDistancePercent };
+  }
+  return null;
+}
+
 /** Held size per ticker, split by direction. */
 export type HeldPositions = Map<string, { long: number; short: number }>;
 
@@ -2377,7 +2434,11 @@ async function placeAndRecord(args: {
           price: String(currentPrice),
           total: String(deal.quantity * currentPrice),
           status: "FAILED",
-          aiReason: `${aiReason ? `${aiReason} ` : ""}Close failed: ${msg}`,
+          // errorMessage, not aiReason: every other failure in this file records
+          // the broker's words here, and a failed close that hid them somewhere
+          // else would be invisible to anyone looking for why a trade failed.
+          errorMessage: msg,
+          aiReason: aiReason ?? null,
           aiConfidence: aiConfidence ?? null,
         });
         logger.error({ userId, ticker, dealId: deal.dealId, err: msg }, "Could not close position by deal id");
