@@ -119,6 +119,14 @@ export const getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
 export const getBotStatusResponseConfigDailyProfitTargetMin = 0;
 
+export const getBotStatusResponseConfigEquityFloorMin = 0;
+
+export const getBotStatusResponseConfigMaxWeeklyLossPercentMin = 0;
+
+export const getBotStatusResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const getBotStatusResponseConfigReentryCooldownMinutesMin = 0;
+
 
 
 export const GetBotStatusResponse = zod.object({
@@ -149,6 +157,11 @@ export const GetBotStatusResponse = zod.object({
   "maxTotalExposurePercent": zod.number().min(getBotStatusResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMin).max(getBotStatusResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(getBotStatusResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
+  "equityFloor": zod.number().min(getBotStatusResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
+  "maxWeeklyLossPercent": zod.number().min(getBotStatusResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
+  "maxConsecutiveLosses": zod.number().min(getBotStatusResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "reentryCooldownMinutes": zod.number().min(getBotStatusResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.'),
+  "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -173,6 +186,14 @@ export const startBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const startBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
 export const startBotResponseConfigDailyProfitTargetMin = 0;
+
+export const startBotResponseConfigEquityFloorMin = 0;
+
+export const startBotResponseConfigMaxWeeklyLossPercentMin = 0;
+
+export const startBotResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const startBotResponseConfigReentryCooldownMinutesMin = 0;
 
 
 
@@ -204,6 +225,11 @@ export const StartBotResponse = zod.object({
   "maxTotalExposurePercent": zod.number().min(startBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(startBotResponseConfigCloseBeforeSessionEndMinutesMin).max(startBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(startBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
+  "equityFloor": zod.number().min(startBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
+  "maxWeeklyLossPercent": zod.number().min(startBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
+  "maxConsecutiveLosses": zod.number().min(startBotResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "reentryCooldownMinutes": zod.number().min(startBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.'),
+  "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -228,6 +254,14 @@ export const stopBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const stopBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
 export const stopBotResponseConfigDailyProfitTargetMin = 0;
+
+export const stopBotResponseConfigEquityFloorMin = 0;
+
+export const stopBotResponseConfigMaxWeeklyLossPercentMin = 0;
+
+export const stopBotResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const stopBotResponseConfigReentryCooldownMinutesMin = 0;
 
 
 
@@ -259,6 +293,11 @@ export const StopBotResponse = zod.object({
   "maxTotalExposurePercent": zod.number().min(stopBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(stopBotResponseConfigCloseBeforeSessionEndMinutesMin).max(stopBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(stopBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
+  "equityFloor": zod.number().min(stopBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
+  "maxWeeklyLossPercent": zod.number().min(stopBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
+  "maxConsecutiveLosses": zod.number().min(stopBotResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "reentryCooldownMinutes": zod.number().min(stopBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.'),
+  "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -283,6 +322,14 @@ export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const resumeBotResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
 export const resumeBotResponseConfigDailyProfitTargetMin = 0;
+
+export const resumeBotResponseConfigEquityFloorMin = 0;
+
+export const resumeBotResponseConfigMaxWeeklyLossPercentMin = 0;
+
+export const resumeBotResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const resumeBotResponseConfigReentryCooldownMinutesMin = 0;
 
 
 
@@ -314,6 +361,11 @@ export const ResumeBotResponse = zod.object({
   "maxTotalExposurePercent": zod.number().min(resumeBotResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(resumeBotResponseConfigCloseBeforeSessionEndMinutesMin).max(resumeBotResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(resumeBotResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
+  "equityFloor": zod.number().min(resumeBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
+  "maxWeeklyLossPercent": zod.number().min(resumeBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
+  "maxConsecutiveLosses": zod.number().min(resumeBotResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "reentryCooldownMinutes": zod.number().min(resumeBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.'),
+  "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -338,6 +390,14 @@ export const updateBotConfigBodyCloseBeforeSessionEndMinutesMin = 0;
 export const updateBotConfigBodyCloseBeforeSessionEndMinutesMax = 120;
 
 export const updateBotConfigBodyDailyProfitTargetMin = 0;
+
+export const updateBotConfigBodyEquityFloorMin = 0;
+
+export const updateBotConfigBodyMaxWeeklyLossPercentMin = 0;
+
+export const updateBotConfigBodyMaxConsecutiveLossesMin = 0;
+
+export const updateBotConfigBodyReentryCooldownMinutesMin = 0;
 
 
 
@@ -364,6 +424,11 @@ export const UpdateBotConfigBody = zod.object({
   "maxTotalExposurePercent": zod.number().min(updateBotConfigBodyMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigBodyCloseBeforeSessionEndMinutesMin).max(updateBotConfigBodyCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(updateBotConfigBodyDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
+  "equityFloor": zod.number().min(updateBotConfigBodyEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
+  "maxWeeklyLossPercent": zod.number().min(updateBotConfigBodyMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
+  "maxConsecutiveLosses": zod.number().min(updateBotConfigBodyMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "reentryCooldownMinutes": zod.number().min(updateBotConfigBodyReentryCooldownMinutesMin).optional().describe('Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.'),
+  "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).optional().describe('Capital.com candle resolution the bot fetches signals at.')
 })
@@ -377,6 +442,14 @@ export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin = 0;
 export const updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax = 120;
 
 export const updateBotConfigResponseConfigDailyProfitTargetMin = 0;
+
+export const updateBotConfigResponseConfigEquityFloorMin = 0;
+
+export const updateBotConfigResponseConfigMaxWeeklyLossPercentMin = 0;
+
+export const updateBotConfigResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const updateBotConfigResponseConfigReentryCooldownMinutesMin = 0;
 
 
 
@@ -408,6 +481,11 @@ export const UpdateBotConfigResponse = zod.object({
   "maxTotalExposurePercent": zod.number().min(updateBotConfigResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMin).max(updateBotConfigResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(updateBotConfigResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
+  "equityFloor": zod.number().min(updateBotConfigResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
+  "maxWeeklyLossPercent": zod.number().min(updateBotConfigResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
+  "maxConsecutiveLosses": zod.number().min(updateBotConfigResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "reentryCooldownMinutes": zod.number().min(updateBotConfigResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.'),
+  "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -1290,6 +1368,14 @@ export const activateTradingProfileResponseConfigCloseBeforeSessionEndMinutesMax
 
 export const activateTradingProfileResponseConfigDailyProfitTargetMin = 0;
 
+export const activateTradingProfileResponseConfigEquityFloorMin = 0;
+
+export const activateTradingProfileResponseConfigMaxWeeklyLossPercentMin = 0;
+
+export const activateTradingProfileResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const activateTradingProfileResponseConfigReentryCooldownMinutesMin = 0;
+
 
 
 export const ActivateTradingProfileResponse = zod.object({
@@ -1319,6 +1405,11 @@ export const ActivateTradingProfileResponse = zod.object({
   "maxTotalExposurePercent": zod.number().min(activateTradingProfileResponseConfigMaxTotalExposurePercentMin).optional().describe('Ceiling on total exposure across all instruments, same units. 0 disables.'),
   "closeBeforeSessionEndMinutes": zod.number().min(activateTradingProfileResponseConfigCloseBeforeSessionEndMinutesMin).max(activateTradingProfileResponseConfigCloseBeforeSessionEndMinutesMax).optional().describe('Close positions this many minutes before their market\'s session ends (only a session end followed by a break of two hours or more, e.g. a stock\'s overnight close or the weekend), and open nothing new within that window plus one cycle. 0 disables.'),
   "dailyProfitTarget": zod.number().min(activateTradingProfileResponseConfigDailyProfitTargetMin).optional().describe('Once equity is up this much (account currency) from the day\'s start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.'),
+  "equityFloor": zod.number().min(activateTradingProfileResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
+  "maxWeeklyLossPercent": zod.number().min(activateTradingProfileResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
+  "maxConsecutiveLosses": zod.number().min(activateTradingProfileResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "reentryCooldownMinutes": zod.number().min(activateTradingProfileResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.'),
+  "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 })

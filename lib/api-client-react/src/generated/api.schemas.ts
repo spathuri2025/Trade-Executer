@@ -204,6 +204,28 @@ export interface BotConfig {
      * @minimum 0
      */
   dailyProfitTarget?: number;
+  /**
+     * The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.
+     * @minimum 0
+     */
+  equityFloor?: number;
+  /**
+     * Halts the engine when equity falls this far below the week's opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.
+     * @minimum 0
+     */
+  maxWeeklyLossPercent?: number;
+  /**
+     * Halts the engine after this many closed trades in a row lost money, counted from the broker's own history. Resuming resets the count. 0 disables.
+     * @minimum 0
+     */
+  maxConsecutiveLosses?: number;
+  /**
+     * Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+     * @minimum 0
+     */
+  reentryCooldownMinutes?: number;
+  /** When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected. */
+  onePositionPerInstrument?: boolean;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */
@@ -356,6 +378,28 @@ export interface BotConfigInput {
      * @minimum 0
      */
   dailyProfitTarget?: number;
+  /**
+     * The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.
+     * @minimum 0
+     */
+  equityFloor?: number;
+  /**
+     * Halts the engine when equity falls this far below the week's opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.
+     * @minimum 0
+     */
+  maxWeeklyLossPercent?: number;
+  /**
+     * Halts the engine after this many closed trades in a row lost money, counted from the broker's own history. Resuming resets the count. 0 disables.
+     * @minimum 0
+     */
+  maxConsecutiveLosses?: number;
+  /**
+     * Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+     * @minimum 0
+     */
+  reentryCooldownMinutes?: number;
+  /** When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected. */
+  onePositionPerInstrument?: boolean;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
   /** Capital.com candle resolution the bot fetches signals at. */

@@ -111,6 +111,11 @@ export default function Settings() {
     maxInstrumentExposurePercent: 0,
     maxTotalExposurePercent: 0,
     dailyProfitTarget: 0,
+    equityFloor: 0,
+    maxWeeklyLossPercent: 5,
+    maxConsecutiveLosses: 6,
+    reentryCooldownMinutes: 5,
+    onePositionPerInstrument: true,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
   });
@@ -140,6 +145,11 @@ export default function Settings() {
         maxInstrumentExposurePercent: botStatus.config.maxInstrumentExposurePercent ?? 0,
         maxTotalExposurePercent: botStatus.config.maxTotalExposurePercent ?? 0,
         dailyProfitTarget: botStatus.config.dailyProfitTarget ?? 0,
+        equityFloor: botStatus.config.equityFloor ?? 0,
+        maxWeeklyLossPercent: botStatus.config.maxWeeklyLossPercent ?? 5,
+        maxConsecutiveLosses: botStatus.config.maxConsecutiveLosses ?? 6,
+        reentryCooldownMinutes: botStatus.config.reentryCooldownMinutes ?? 5,
+        onePositionPerInstrument: botStatus.config.onePositionPerInstrument ?? true,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
@@ -656,6 +666,103 @@ export default function Settings() {
               than Max Daily Loss, which only measures from the day&rsquo;s open. 0 disables.
             </p>
           </div>
+      </CollapsibleSection>
+
+      {/* Loss limits — the guards that bound what the account can lose */}
+      <CollapsibleSection
+        id="settings.lossLimits"
+        title="Loss Limits"
+        defaultOpen={false}
+        description={
+          <>
+            What stops the bot. Each one halts trading and stays halted until you resume it — nothing here
+            restarts on its own. Open positions keep the stop-loss and take-profit they were opened with,
+            and can always be closed.
+          </>
+        }
+        contentClassName="space-y-5"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="equity-floor">Account floor (&pound;)</Label>
+            <Input
+              id="equity-floor"
+              type="number"
+              step="50"
+              min="0"
+              value={config.equityFloor}
+              onChange={(e) => setConfig({ ...config, equityFloor: Number(e.target.value) })}
+              data-testid="input-equity-floor"
+            />
+            <p className="text-xs text-muted-foreground">
+              The bot stops if equity reaches this figure. Every other limit here is a percentage of a
+              baseline that re-bases each day, so an account can fall a long way in small compliant steps —
+              this is the only one that does not move. 0 disables it.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="max-weekly-loss">Max weekly loss (%)</Label>
+            <Input
+              id="max-weekly-loss"
+              type="number"
+              step="0.5"
+              min="0"
+              value={config.maxWeeklyLossPercent}
+              onChange={(e) => setConfig({ ...config, maxWeeklyLossPercent: Number(e.target.value) })}
+              data-testid="input-max-weekly-loss"
+            />
+            <p className="text-xs text-muted-foreground">
+              Measured from Monday&rsquo;s opening equity. Five days each losing 1.9% break no daily limit
+              and still cost 9%. Resuming does <em>not</em> hand back a fresh weekly allowance. 0 disables.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="max-consecutive-losses">Stop after losses in a row</Label>
+            <Input
+              id="max-consecutive-losses"
+              type="number"
+              min="0"
+              value={config.maxConsecutiveLosses}
+              onChange={(e) => setConfig({ ...config, maxConsecutiveLosses: Number(e.target.value) })}
+              data-testid="input-max-consecutive-losses"
+            />
+            <p className="text-xs text-muted-foreground">
+              Counted from your broker&rsquo;s own closed trades, so stop-losses count too. The earliest
+              sign that conditions have turned — the limits above only notice once the money is gone.
+              0 disables.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="reentry-cooldown">Re-entry cooldown (min)</Label>
+            <Input
+              id="reentry-cooldown"
+              type="number"
+              min="0"
+              value={config.reentryCooldownMinutes}
+              onChange={(e) => setConfig({ ...config, reentryCooldownMinutes: Number(e.target.value) })}
+              data-testid="input-reentry-cooldown"
+            />
+            <p className="text-xs text-muted-foreground">
+              How long before the same instrument can be bought again. Never blocks a close. 0 disables.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">One position per instrument</p>
+            <p className="text-xs text-muted-foreground max-w-md">
+              Refuses an order that would add to a position you already hold. With this off, a position can
+              be built one compliant order at a time — which is how a 39-unit short reached about 80% of the
+              account in September while breaking no limit at all.
+            </p>
+          </div>
+          <Switch
+            checked={config.onePositionPerInstrument}
+            onCheckedChange={(checked) => setConfig({ ...config, onePositionPerInstrument: checked })}
+            data-testid="switch-one-position-per-instrument"
+          />
+        </div>
       </CollapsibleSection>
 
       {/* Market regime filter */}

@@ -2137,6 +2137,25 @@ components:
           type: number
           minimum: 0
           description: Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
+        equityFloor:
+          type: number
+          minimum: 0
+          description: The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.
+        maxWeeklyLossPercent:
+          type: number
+          minimum: 0
+          description: Halts the engine when equity falls this far below the week's opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.
+        maxConsecutiveLosses:
+          type: integer
+          minimum: 0
+          description: Halts the engine after this many closed trades in a row lost money, counted from the broker's own history. Resuming resets the count. 0 disables.
+        reentryCooldownMinutes:
+          type: integer
+          minimum: 0
+          description: Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+        onePositionPerInstrument:
+          type: boolean
+          description: When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.
         regimeFilterEnabled:
           type: boolean
           description: When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.
@@ -2218,6 +2237,25 @@ components:
           type: number
           minimum: 0
           description: Once equity is up this much (account currency) from the day's start, no new positions for the rest of the UTC day. Closes still go through. 0 disables.
+        equityFloor:
+          type: number
+          minimum: 0
+          description: The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.
+        maxWeeklyLossPercent:
+          type: number
+          minimum: 0
+          description: Halts the engine when equity falls this far below the week's opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.
+        maxConsecutiveLosses:
+          type: integer
+          minimum: 0
+          description: Halts the engine after this many closed trades in a row lost money, counted from the broker's own history. Resuming resets the count. 0 disables.
+        reentryCooldownMinutes:
+          type: integer
+          minimum: 0
+          description: Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+        onePositionPerInstrument:
+          type: boolean
+          description: When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.
         regimeFilterEnabled:
           type: boolean
           description: Enable automatic trending/ranging routing between trend-following and mean-reversion.

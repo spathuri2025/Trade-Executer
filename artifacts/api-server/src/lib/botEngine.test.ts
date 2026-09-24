@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
    * which table was passed to `.from()`.
    */
   botConfigRows: [] as Array<Record<string, unknown>>,
+  /** Rows the trades table returns: the daily cap and the re-entry cooldown both read it. */
+  recentTrades: [] as Array<{ ticker: string; executedAt: Date }>,
+  /** Persisted equity baselines, as a restarted process would load them. */
+  equityBaselines: [] as Array<Record<string, unknown>>,
   /** Every `running` value written via persistRunning, in order. */
   runningWrites: [] as boolean[],
   broker: {
@@ -26,6 +30,7 @@ const mocks = vi.hoisted(() => ({
     getBrokerPriceHistory: vi.fn(),
     getBrokerQuote: vi.fn(),
     placeBrokerOrder: vi.fn(),
+    getBrokerTransactions: vi.fn(),
   },
   ma: { computeMASignal: vi.fn() },
   ai: { reviewSignal: vi.fn(), decideTrades: vi.fn() },
@@ -66,8 +71,15 @@ vi.mock("@workspace/db", () => ({
   db: {
     select: () => ({
       from: (table: { __name?: string }) => ({
-        where: () =>
-          Promise.resolve(table?.__name === "bot_config" ? mocks.botConfigRows : mocks.enabledInstruments),
+        where: () => {
+          // Tables the engine reads for its own bookkeeping answer separately:
+          // returning the instrument list for every table made the trade-cap
+          // and cooldown queries count instruments.
+          if (table?.__name === "bot_config") return Promise.resolve(mocks.botConfigRows);
+          if (table?.__name === "trades") return Promise.resolve(mocks.recentTrades);
+          if (table?.__name === "equity_baselines") return Promise.resolve(mocks.equityBaselines);
+          return Promise.resolve(mocks.enabledInstruments);
+        },
       }),
     }),
     insert: () => ({ values: () => insertResult() }),
@@ -84,6 +96,7 @@ vi.mock("@workspace/db", () => ({
   instrumentsTable: { __name: "instruments" },
   tradesTable: { __name: "trades" },
   signalsTable: { __name: "signals" },
+  equityBaselinesTable: { __name: "equity_baselines", userId: "user_id" },
   botConfigTable: { __name: "bot_config", userId: "user_id", running: "running" },
 }));
 
@@ -146,6 +159,16 @@ function position(
   };
 }
 
+/** The ISO week key the engine uses, so a test baseline lands in the current week. */
+function utcWeekKeyOf(d: Date): string {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
 function account(total: number): NormalizedAccount {
   return { cash: total, invested: 0, result: 0, total, currency: "GBP" };
 }
@@ -175,6 +198,11 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxInstrumentExposurePercent: 0,
     maxTotalExposurePercent: 0,
     dailyProfitTarget: 0,
+    equityFloor: 0,
+    maxWeeklyLossPercent: 0,
+    maxConsecutiveLosses: 0,
+    reentryCooldownMinutes: 0,
+    onePositionPerInstrument: false,
     regimeFilterEnabled: false,
     barResolution: "MINUTE_5",
     ...patch,
@@ -190,6 +218,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.enabledInstruments = [];
   mocks.botConfigRows = [];
+  mocks.recentTrades = [];
+  mocks.equityBaselines = [];
   mocks.runningWrites = [];
   broker.getBrokerAccount.mockResolvedValue(defaultAccount);
   broker.getBrokerPositions.mockResolvedValue([]);
@@ -204,6 +234,9 @@ beforeEach(async () => {
     minDealSize: null,
   });
   broker.placeBrokerOrder.mockResolvedValue({ id: "order-1" });
+  // No closed trades by default, so the losing-streak breaker never trips in
+  // tests that are about something else.
+  broker.getBrokerTransactions.mockResolvedValue([]);
   // Full entitlements by default so every pre-existing test — all written
   // before plans existed — keeps exercising the same paths unchanged. Tests
   // that care about the paywall override this explicitly.
@@ -759,6 +792,298 @@ describe("daily-loss circuit breaker", () => {
   });
 });
 
+describe("one position per instrument", () => {
+  it("refuses a BUY in an instrument already held long", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ onePositionPerInstrument: true, maxConcurrentPositions: 0 });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("still allows the SELL that closes that position", async () => {
+    // The whole point: a gate on NEW exposure must never trap an exit.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ onePositionPerInstrument: true });
+    mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    const orders = broker.placeBrokerOrder.mock.calls;
+    expect(orders).toHaveLength(1);
+    expect(orders[0][4]).toBe("SELL");
+  });
+
+  it("opens a position in an instrument that is not held", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("HELD", 5)]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ onePositionPerInstrument: true });
+    mocks.enabledInstruments = [{ ticker: "FRESH", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+  });
+});
+
+describe("re-entry cooldown", () => {
+  /**
+   * The 24 Sep 2026 duplicate: a second cycle 10 seconds after the first bought
+   * GOLD and US500 again. The broker's position list had not caught up, so the
+   * open-position check could not see the first fill — only our own order log
+   * could, which is what the cooldown reads.
+   */
+  it("refuses a second entry seconds after the first, with the position not yet reported", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([]); // broker still shows nothing
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ reentryCooldownMinutes: 5, onePositionPerInstrument: true });
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date(Date.now() - 10_000) }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("allows the entry once the cooldown has passed", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ reentryCooldownMinutes: 5 });
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date(Date.now() - 6 * 60_000) }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+  });
+
+  it("never blocks a close, however recently the instrument traded", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([position("GOLD", 5)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ reentryCooldownMinutes: 60 });
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date() }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+  });
+
+  it("does not hold back a different instrument", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ reentryCooldownMinutes: 5 });
+    mocks.enabledInstruments = [{ ticker: "SILVER", enabled: true }];
+    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date() }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+  });
+});
+
+describe("equity floor and the weekly loss limit", () => {
+  it("halts at the equity floor even on a day that has lost nothing", async () => {
+    // Every percentage limit here re-bases daily. Only the floor is absolute,
+    // so this is the case no other limit catches: a flat day below the floor.
+    broker.getBrokerAccount.mockResolvedValue(account(4400));
+
+    await startLiveBot({ equityFloor: 4500, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/floor/i);
+    expect(status.running).toBe(false);
+  });
+
+  it("halts on the weekly loss when every daily limit is still satisfied", async () => {
+    // Monday opened at 5000; today is a later day in the same week and equity
+    // is 4740 — 5.2% down on the week, but flat today.
+    mocks.equityBaselines = [
+      {
+        dayKey: null,
+        dayStartEquity: null,
+        dayPeakEquity: null,
+        weekKey: utcWeekKeyOf(new Date()),
+        weekStartEquity: 5000,
+        profitLockedDayKey: null,
+        lossStreakResetAt: null,
+      },
+    ];
+    broker.getBrokerAccount.mockResolvedValue(account(4740));
+
+    await startLiveBot({ maxWeeklyLossPercent: 5, maxDailyLossPercent: 3, maxIntradayDrawdownPercent: 2 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/week/i);
+  });
+
+  it("keeps measuring the day from the PERSISTED baseline after a restart", async () => {
+    // The hole this closes: a deploy used to re-open the day at whatever equity
+    // the new process first saw, so an account already down could lose the full
+    // daily limit a second time.
+    const today = new Date().toISOString().slice(0, 10);
+    mocks.equityBaselines = [
+      {
+        dayKey: today,
+        dayStartEquity: 1000,
+        dayPeakEquity: 1000,
+        weekKey: utcWeekKeyOf(new Date()),
+        weekStartEquity: 1000,
+        profitLockedDayKey: null,
+        lossStreakResetAt: null,
+      },
+    ];
+    broker.getBrokerAccount.mockResolvedValue(account(960)); // 4% down on the day
+
+    await startLiveBot({ maxDailyLossPercent: 3, maxIntradayDrawdownPercent: 0, maxWeeklyLossPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.dayStartEquity).toBe(1000);
+  });
+
+  it("a resume does NOT hand back a fresh weekly allowance", async () => {
+    mocks.equityBaselines = [
+      {
+        dayKey: null,
+        dayStartEquity: null,
+        dayPeakEquity: null,
+        weekKey: utcWeekKeyOf(new Date()),
+        weekStartEquity: 5000,
+        profitLockedDayKey: null,
+        lossStreakResetAt: null,
+      },
+    ];
+    broker.getBrokerAccount.mockResolvedValue(account(4740));
+
+    await startLiveBot({ maxWeeklyLossPercent: 5, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(true);
+
+    await engine.resumeBot(TEST_USER_ID);
+    await flush();
+    await engine.runCycle(TEST_USER_ID);
+
+    // Still below the week's limit, so it halts again rather than granting
+    // another 5% — a limit any click can clear bounds nothing.
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(true);
+  });
+});
+
+describe("losing-streak breaker", () => {
+  /** A closed trade as Capital.com reports it: `size` is the realised result. */
+  const close = (minutesAgo: number, size: string) => ({
+    dateUtc: new Date(Date.now() - minutesAgo * 60_000).toISOString().slice(0, 19),
+    instrumentName: "GOLD",
+    transactionType: "TRADE",
+    note: "Trade closed",
+    size,
+    currency: "GBP",
+  });
+
+  it("halts after the configured run of losing closes", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerTransactions.mockResolvedValue([
+      close(50, "2.10"), // a win, further back
+      close(40, "-0.80"),
+      close(30, "-1.20"),
+      close(20, "-0.40"),
+    ]);
+
+    await startLiveBot({ maxConsecutiveLosses: 3, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/row/i);
+    expect(status.running).toBe(false);
+  });
+
+  it("does not halt when the streak is broken by a win", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerTransactions.mockResolvedValue([
+      close(40, "-0.80"),
+      close(30, "-1.20"),
+      close(20, "0.90"), // most recent close won
+    ]);
+
+    await startLiveBot({ maxConsecutiveLosses: 2, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+  });
+
+  it("a resume does not re-trip on the same losses", async () => {
+    // Those closes stay in the broker's history for days. Without a reset mark
+    // the bot would halt again on its very next cycle and could never restart.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerTransactions.mockResolvedValue([
+      close(40, "-0.80"),
+      close(30, "-1.20"),
+      close(20, "-0.40"),
+    ]);
+
+    await startLiveBot({ maxConsecutiveLosses: 3, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(true);
+
+    await engine.resumeBot(TEST_USER_ID);
+    await flush();
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+  });
+
+  it("does not halt on an unreadable history", async () => {
+    // An unknown streak must never stop a bot: the equity limits still bound
+    // the loss, and a halt here would be caused by the broker being slow.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerTransactions.mockRejectedValue(new Error("broker down"));
+
+    await startLiveBot({ maxConsecutiveLosses: 2, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+  });
+});
+
+describe("settings changes do not fire an extra cycle", () => {
+  it("re-arms on the existing cadence instead of trading immediately", async () => {
+    // 24 Sep 2026: switching trading mode at 11:09:10 restarted the bot, which
+    // cycled at once — 10 seconds after the 11:09:00 cycle — and bought GOLD
+    // and US500 a second time.
+    broker.getBrokerAccount.mockResolvedValue(account(1000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ intervalMinutes: 5 });
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+
+    // A settings save moments later must not place a second order.
+    await engine.updateConfig(TEST_USER_ID, { takeProfitPercent: 0.4 });
+    await flush();
+    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+  });
+});
+
 describe("flatten-by-close", () => {
   it("closes a held long position when its market is restricted but still orderable", async () => {
     // Positions are set up before startLiveBot(), but the default
@@ -1076,8 +1401,11 @@ describe("closing orders — sized from the position, never from the balance", (
       .mockReturnValueOnce({ signal: "BUY", shortMa: 2, longMa: 1 }); // NEW → open
 
     await startLiveBot({ aiTradeMode: "off", maxTradesPerDay: 1 });
-    // The trades-count query is served from enabledInstruments by the db mock,
-    // so two instruments reads as two trades today — past a cap of one.
+    // Two orders already executed today, past a cap of one.
+    mocks.recentTrades = [
+      { ticker: "HELD", executedAt: new Date() },
+      { ticker: "NEW", executedAt: new Date() },
+    ];
     mocks.enabledInstruments = [
       { ticker: "HELD", enabled: true },
       { ticker: "NEW", enabled: true },

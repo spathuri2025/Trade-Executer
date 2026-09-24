@@ -1,4 +1,12 @@
-import { db, instrumentsTable, tradesTable, signalsTable, botConfigTable, type BotConfigRow } from "@workspace/db";
+import {
+  db,
+  instrumentsTable,
+  tradesTable,
+  signalsTable,
+  botConfigTable,
+  equityBaselinesTable,
+  type BotConfigRow,
+} from "@workspace/db";
 import { and, eq, gte, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import {
@@ -9,12 +17,22 @@ import {
   getBrokerQuote,
   getBrokerCandles,
   type NormalizedPosition,
+  getBrokerTransactions,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
+import { summariseTransactions, parseUtc } from "./livePerformance";
 import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
 import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
 import { minutesUntilSessionEnd, formatSessionEnd } from "./marketHours";
+import {
+  rollMarks,
+  hardLimitBreach,
+  trailingLossStreak,
+  withinCooldown,
+  utcWeekKey,
+  type EquityMarks,
+} from "./riskGuards";
 import {
   acquireLease,
   renewLease,
@@ -100,6 +118,16 @@ export interface BotConfig {
   maxTotalExposurePercent: number;
   /** Stop opening positions for the day once equity is up this much; 0 = off. */
   dailyProfitTarget: number;
+  /** Absolute equity below which the bot must not trade at all; 0 = off. */
+  equityFloor: number;
+  /** Halt when equity falls this far below the week's opening equity; 0 = off. */
+  maxWeeklyLossPercent: number;
+  /** Halt after this many losing closes in a row; 0 = off. */
+  maxConsecutiveLosses: number;
+  /** Minimum minutes between opening positions in the same instrument; 0 = off. */
+  reentryCooldownMinutes: number;
+  /** Refuse a same-side order in an instrument already held. */
+  onePositionPerInstrument: boolean;
   /**
    * When true, each instrument is classified as trending or ranging (close-based
    * ADX) and routed to trend-following or mean-reversion automatically. When
@@ -134,6 +162,11 @@ const DEFAULT_CONFIG: BotConfig = {
   maxInstrumentExposurePercent: 0,
   maxTotalExposurePercent: 0,
   dailyProfitTarget: 0,
+  equityFloor: 0,
+  maxWeeklyLossPercent: 5,
+  maxConsecutiveLosses: 6,
+  reentryCooldownMinutes: 5,
+  onePositionPerInstrument: true,
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
 };
@@ -144,12 +177,17 @@ const DEFAULT_CONFIG: BotConfig = {
  * `dayKey` is the UTC calendar day the baseline was captured for; `dayStartEquity`
  * is the account total equity at the start of that day, used as the loss baseline.
  */
-interface CircuitBreakerState {
+interface CircuitBreakerState extends EquityMarks {
   tripped: boolean;
   reason: string | null;
   trippedAt: Date | null;
   dayKey: string | null;
   dayStartEquity: number | null;
+  /** ISO week the weekly baseline belongs to, and the equity it opened at. */
+  weekKey: string | null;
+  weekStartEquity: number | null;
+  /** Closes before this instant do not count towards the losing streak. */
+  lossStreakResetAt: Date | null;
   /** Highest equity seen so far today — the reference for the intraday drawdown halt. */
   dayPeakEquity: number | null;
   /**
@@ -189,6 +227,12 @@ interface BotState {
   starting: boolean;
   /** Keeps the ownership lease alive while this process runs the bot. */
   leaseHandle: ReturnType<typeof setInterval> | null;
+  /**
+   * When the last cycle STARTED, kept separately from lastRunAt (which records
+   * when one finished, for the UI). Used to refuse a cycle that arrives too soon
+   * after the previous one — see MIN_CYCLE_GAP_MS.
+   */
+  lastCycleStartedAt: Date | null;
 }
 
 function freshCircuitBreaker(): CircuitBreakerState {
@@ -199,8 +243,132 @@ function freshCircuitBreaker(): CircuitBreakerState {
     dayKey: null,
     dayStartEquity: null,
     dayPeakEquity: null,
+    weekKey: null,
+    weekStartEquity: null,
+    lossStreakResetAt: null,
     profitLockedDayKey: null,
   };
+}
+
+/**
+ * Loads the persisted equity baselines into a fresh breaker.
+ *
+ * Without this every deploy re-opened the day at whatever equity the new
+ * process first saw, so an account already down could lose the daily limit
+ * again before the day ended. A tripped breaker is NOT restored here: that
+ * lives in `bot_config.running`, which stopBot already persists, and a halted
+ * bot stays halted because it is not resumed, not because a flag says so.
+ */
+async function loadEquityMarks(userId: number): Promise<CircuitBreakerState> {
+  const breaker = freshCircuitBreaker();
+  try {
+    const [row] = await db.select().from(equityBaselinesTable).where(eq(equityBaselinesTable.userId, userId));
+    if (row) {
+      breaker.dayKey = row.dayKey;
+      breaker.dayStartEquity = row.dayStartEquity;
+      breaker.dayPeakEquity = row.dayPeakEquity;
+      breaker.weekKey = row.weekKey;
+      breaker.weekStartEquity = row.weekStartEquity;
+      breaker.profitLockedDayKey = row.profitLockedDayKey;
+      breaker.lossStreakResetAt = row.lossStreakResetAt;
+    }
+  } catch (err) {
+    // Fail open with fresh marks rather than refusing to run. A lost baseline
+    // costs one day of measurement; a bot that will not start costs the ability
+    // to close open positions.
+    logger.error({ err, userId }, "Could not load equity baselines — measuring from this cycle");
+  }
+  return breaker;
+}
+
+/**
+ * Writes the baselines back. Never throws: a failed write must not abort a
+ * cycle that may be trying to close a position.
+ */
+async function persistEquityMarks(userId: number, cb: CircuitBreakerState): Promise<void> {
+  const marks = {
+    dayKey: cb.dayKey,
+    dayStartEquity: cb.dayStartEquity,
+    dayPeakEquity: cb.dayPeakEquity,
+    weekKey: cb.weekKey,
+    weekStartEquity: cb.weekStartEquity,
+    profitLockedDayKey: cb.profitLockedDayKey,
+    lossStreakResetAt: cb.lossStreakResetAt,
+  };
+  try {
+    await db
+      .insert(equityBaselinesTable)
+      .values({ userId, ...marks, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: equityBaselinesTable.userId,
+        set: { ...marks, updatedAt: new Date() },
+      });
+  } catch (err) {
+    logger.error({ err, userId }, "Could not persist equity baselines");
+  }
+}
+
+/**
+ * Trips a breaker, stops the bot and tells the user — the one path every risk
+ * halt goes through.
+ *
+ * Order matters: the flag is set before the bot is stopped, so a cycle already
+ * in flight sees a tripped breaker and refuses to trade even if it reaches the
+ * order path before stopBot's timers are cleared.
+ */
+async function haltTrading(userId: number, state: BotState, reason: string, title: string): Promise<void> {
+  const cb = state.circuitBreaker;
+  cb.tripped = true;
+  cb.trippedAt = new Date();
+  cb.reason = reason;
+  await stopBot(userId);
+  // A halted bot the user doesn't know about is the worst silent state this
+  // product has. notifyUser never throws, so it cannot break the halt itself;
+  // the body is the same wording the user sees in the app, no internal detail.
+  await notifyUser(userId, { type: "circuit_breaker", title, body: reason, link: "/settings" });
+}
+
+/**
+ * How many of the account's most recent closes lost money, in a row.
+ *
+ * Cached for a minute: at one-minute scalp cycles this would otherwise be an
+ * extra broker call every cycle, and a streak cannot change without a close.
+ * Returns null when the history can't be read — an unknown streak must not halt
+ * a bot, and the equity limits still bound the loss either way.
+ */
+const lossStreakCache = new Map<number, { at: number; streak: number }>();
+const LOSS_STREAK_TTL_MS = 60_000;
+
+async function consecutiveLossStreak(
+  userId: number,
+  credentials: UserBrokerCredentials
+): Promise<number | null> {
+  const cached = lossStreakCache.get(userId);
+  if (cached && Date.now() - cached.at < LOSS_STREAK_TTL_MS) return cached.streak;
+
+  try {
+    const to = new Date();
+    // Three days back: long enough to hold a streak that spans a weekend, short
+    // enough that the response stays small.
+    const from = new Date(to.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const rows = await getBrokerTransactions(userId, credentials, from, to);
+    // Trading 212 has no transaction history endpoint, so there is nothing to
+    // count and the streak stays unknown rather than falsely zero.
+    if (rows === null) return null;
+    const resetAt = botStates.get(userId)?.circuitBreaker.lossStreakResetAt ?? null;
+    const closes = summariseTransactions(rows)
+      .recentTrades.filter((t) => resetAt === null || parseUtc(t.dateUtc) > resetAt)
+      // summariseTransactions returns newest first; the streak counts backwards
+      // from the most recent, so oldest-first is what trailingLossStreak wants.
+      .slice()
+      .reverse();
+    const streak = trailingLossStreak(closes);
+    lossStreakCache.set(userId, { at: Date.now(), streak });
+    return streak;
+  } catch (err) {
+    logger.warn({ err, userId }, "Could not read trade history for the losing-streak breaker");
+    return null;
+  }
 }
 
 /** Per-user in-memory bot state — one isolated bot per customer, no cross-tenant sharing. */
@@ -231,6 +399,11 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxInstrumentExposurePercent: row.maxInstrumentExposurePercent,
     maxTotalExposurePercent: row.maxTotalExposurePercent,
     dailyProfitTarget: row.dailyProfitTarget,
+    equityFloor: row.equityFloor,
+    maxWeeklyLossPercent: row.maxWeeklyLossPercent,
+    maxConsecutiveLosses: row.maxConsecutiveLosses,
+    reentryCooldownMinutes: row.reentryCooldownMinutes,
+    onePositionPerInstrument: row.onePositionPerInstrument,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
   };
@@ -269,7 +442,14 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
   const existing = botStates.get(userId);
   if (existing) return existing;
 
-  const [row] = await db.select().from(botConfigTable).where(eq(botConfigTable.userId, userId));
+  // Both reads together: the baselines must be in place before the first cycle
+  // can measure a loss against them, and loading them afterwards would leave a
+  // window in which a restarted bot measured the day from its restart — the
+  // exact hole persisting them closes.
+  const [[row], breaker] = await Promise.all([
+    db.select().from(botConfigTable).where(eq(botConfigTable.userId, userId)),
+    loadEquityMarks(userId),
+  ]);
 
   // Another caller may have created the state while this one awaited the read.
   // Returning theirs keeps ONE state object per user: two would mean the timers
@@ -288,11 +468,12 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
     lastRunAt: null,
     nextRunAt: null,
     config,
-    circuitBreaker: freshCircuitBreaker(),
+    circuitBreaker: breaker,
     intervalHandle: null,
     pendingStartHandle: null,
     starting: false,
     leaseHandle: null,
+    lastCycleStartedAt: null,
   };
   // Published to the map BEFORE the persistConfig await below, so the `raced`
   // check above is the only window a concurrent caller can be in. Awaiting
@@ -511,14 +692,34 @@ export function peekBotRunning(userId: number): boolean {
 }
 
 /**
- * Clears a tripped daily-loss circuit breaker and restarts the bot. This is the
- * ONLY way to resume after the breaker trips — the engine never auto-resumes.
- * Resets the loss baseline so the breaker measures from the resume point onward.
+ * Clears a tripped circuit breaker and restarts the bot. This is the ONLY way
+ * to resume after a halt — the engine never auto-resumes.
+ *
+ * What a resume does and does not reset is the whole design:
+ * - The DAY re-bases, so the daily limits measure from the resume point. That
+ *   is what makes resuming useful at all.
+ * - The WEEK does NOT. Re-basing it would let a resume grant another full
+ *   weekly allowance, and a limit that any click can clear bounds nothing.
+ * - The losing streak resets, because the closes that caused the halt are still
+ *   in the broker's history and would trip it again on the next cycle.
+ * - The equity floor cannot be reset by anything here: it is an absolute number
+ *   and an account below it halts again next cycle, by design. Lower the floor
+ *   or add funds.
  */
 export async function resumeBot(userId: number) {
   const state = await getOrCreateBotState(userId);
-  state.circuitBreaker = freshCircuitBreaker();
-  logger.info({ userId }, "Circuit breaker cleared — resuming bot");
+  const cb = state.circuitBreaker;
+  cb.tripped = false;
+  cb.reason = null;
+  cb.trippedAt = null;
+  cb.dayKey = null;
+  cb.dayStartEquity = null;
+  cb.dayPeakEquity = null;
+  cb.profitLockedDayKey = null;
+  cb.lossStreakResetAt = new Date();
+  lossStreakCache.delete(userId);
+  await persistEquityMarks(userId, cb);
+  logger.info({ userId, weekStartEquity: cb.weekStartEquity }, "Circuit breaker cleared — resuming bot");
   return startBot(userId);
 }
 
@@ -528,8 +729,19 @@ export async function updateConfig(userId: number, patch: Partial<BotConfig>) {
   await persistConfig(userId, state.config);
 
   if (state.running) {
+    // Restart on the EXISTING cadence, not from zero.
+    //
+    // startBot's default is an immediate first cycle, which is right for a
+    // start and wrong for a restart: on 24 Sep 2026 switching trading mode at
+    // 11:09:10 fired a cycle 10 seconds after the 11:09:00 one, and GOLD and
+    // US500 were each bought a second time. Holding the first cycle back by
+    // whatever is left of the interval keeps a settings save from being a
+    // trading decision.
+    const intervalMs = state.config.intervalMinutes * 60 * 1000;
+    const sinceLast = state.lastCycleStartedAt ? Date.now() - state.lastCycleStartedAt.getTime() : null;
+    const delay = sinceLast === null ? 0 : Math.max(0, intervalMs - sinceLast);
     await stopBot(userId);
-    await startBot(userId);
+    await startBot(userId, { firstCycleDelayMs: delay });
   }
 
   return getBotStatus(userId);
@@ -577,8 +789,8 @@ function armCycleTimers(userId: number, state: BotState, delayMs: number): void 
   }
 
   if (delayMs <= 0) {
-    void runCycle(userId);
-    state.intervalHandle = setInterval(() => void runCycle(userId), ms);
+    void runCycle(userId, { scheduled: true });
+    state.intervalHandle = setInterval(() => void runCycle(userId, { scheduled: true }), ms);
     state.nextRunAt = new Date(Date.now() + ms);
     return;
   }
@@ -588,8 +800,8 @@ function armCycleTimers(userId: number, state: BotState, delayMs: number): void 
     state.pendingStartHandle = null;
     // Stopped (or suspended) while we were waiting — do not trade.
     if (!state.running) return;
-    void runCycle(userId);
-    state.intervalHandle = setInterval(() => void runCycle(userId), ms);
+    void runCycle(userId, { scheduled: true });
+    state.intervalHandle = setInterval(() => void runCycle(userId, { scheduled: true }), ms);
     state.nextRunAt = new Date(Date.now() + ms);
   }, delayMs);
 }
@@ -691,6 +903,12 @@ export async function stopBot(
   }
   state.running = false;
   state.nextRunAt = null;
+  // A stopped bot's last cycle must not throttle its next start: the gap guard
+  // exists to stop a RUNNING bot cycling twice, and a stop-then-start is a
+  // deliberate act. updateConfig, the one path that restarts a running bot,
+  // computes its own delay before calling this — that is what preserves the
+  // cadence there.
+  state.lastCycleStartedAt = null;
 
   if (opts.keepRunningFlag) {
     // We lost the lease rather than being told to stop. The new owner holds it;
@@ -881,16 +1099,35 @@ export function cyclesInFlight(): number {
   return cyclesInFlightCount;
 }
 
-export async function runCycle(userId: number): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
+/**
+ * Closest two cycles may legitimately run. Anything closer is a duplicate: a
+ * re-armed timer, a manual cycle landing on a scheduled one, or a start racing
+ * a restore.
+ */
+const MIN_CYCLE_GAP_MS = 60_000;
+
+/**
+ * `scheduled` marks a cycle the ENGINE started — a timer, a restart, a resume.
+ * Those must respect the cadence, because a duplicate among them is always a
+ * bug. A cycle a person asked for is not throttled: they can see what they
+ * clicked, and refusing it silently would look broken.
+ */
+export async function runCycle(
+  userId: number,
+  opts: { scheduled?: boolean } = {}
+): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
   cyclesInFlightCount += 1;
   try {
-    return await runCycleUnlocked(userId);
+    return await runCycleUnlocked(userId, opts.scheduled === true);
   } finally {
     cyclesInFlightCount -= 1;
   }
 }
 
-async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
+async function runCycleUnlocked(
+  userId: number,
+  scheduled: boolean
+): Promise<Array<{ ticker: string; signal: string; tradeExecuted: boolean }>> {
   const results: Array<{ ticker: string; signal: string; tradeExecuted: boolean }> = [];
 
   const credentials = await getUserBrokerCredentials(userId);
@@ -900,6 +1137,20 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
   }
 
   const state = await getOrCreateBotState(userId);
+
+  // Defence in depth behind updateConfig's cadence-preserving restart: whatever
+  // arms a cycle, a running bot never trades twice in quick succession. The gap
+  // is half the interval, capped at a minute, so it can never swallow a
+  // legitimate cycle — only one that arrived far too early.
+  const gapMs = Math.min(MIN_CYCLE_GAP_MS, (state.config.intervalMinutes * 60 * 1000) / 2);
+  if (scheduled && state.running && state.lastCycleStartedAt && Date.now() - state.lastCycleStartedAt.getTime() < gapMs) {
+    logger.warn(
+      { userId, sinceLastMs: Date.now() - state.lastCycleStartedAt.getTime(), gapMs },
+      "Cycle skipped — another cycle ran moments ago"
+    );
+    return results;
+  }
+  state.lastCycleStartedAt = new Date();
   state.lastRunAt = new Date();
   if (state.running) {
     const ms = state.config.intervalMinutes * 60 * 1000;
@@ -979,17 +1230,38 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
   }
   if (state.running && account !== null && account.total !== null) {
     const cb = state.circuitBreaker;
-    const todayKey = utcDayKey(new Date());
-    // Peak first: a new high this cycle must raise the bar before the drawdown
-    // check below measures against it.
-    if (cb.dayKey === todayKey && (cb.dayPeakEquity === null || account.total > cb.dayPeakEquity)) {
-      cb.dayPeakEquity = account.total;
+    const equity = account.total;
+    const now = new Date();
+    const beforeRoll = { dayKey: cb.dayKey, weekKey: cb.weekKey, peak: cb.dayPeakEquity };
+
+    // Roll the baselines first: a new high this cycle must raise the bar before
+    // the drawdown check measures against it, and a new day or week must open
+    // its baseline before anything is measured against the old one.
+    Object.assign(cb, rollMarks(cb, equity, now));
+    if (beforeRoll.dayKey !== cb.dayKey || beforeRoll.weekKey !== cb.weekKey || beforeRoll.peak !== cb.dayPeakEquity) {
+      // Not awaited: this is bookkeeping, and a slow write must not delay an
+      // order. persistEquityMarks never throws.
+      void persistEquityMarks(userId, cb);
     }
-    if (cb.dayKey !== todayKey || cb.dayStartEquity === null) {
-      cb.dayKey = todayKey;
-      cb.dayStartEquity = account.total;
-      cb.dayPeakEquity = account.total;
-    } else if (
+
+    // The limits that are not day-scoped come first. An account under its floor
+    // must stop whatever today's numbers say — that is what makes the floor the
+    // only limit that means "never below this".
+    const hard = hardLimitBreach(cb, equity, {
+      equityFloor: cfg.equityFloor,
+      maxWeeklyLossPercent: cfg.maxWeeklyLossPercent,
+    });
+
+    if (hard) {
+      logger.error(
+        { userId, code: hard.code, equity, floor: cfg.equityFloor, weekStart: cb.weekStartEquity },
+        "Hard risk limit TRIPPED — stopping bot"
+      );
+      await haltTrading(userId, state, hard.reason, "Your trading bot was stopped by a risk limit");
+      return results;
+    }
+
+    if (
       // Intraday drawdown: measured from the day's PEAK, not its open, so a
       // morning gain followed by a slide still halts. The day-start breaker
       // below cannot see that — an account up 5% then down 4% is still "up"
@@ -998,49 +1270,46 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
       cfg.maxIntradayDrawdownPercent > 0 &&
       cb.dayPeakEquity !== null &&
       cb.dayPeakEquity > 0 &&
-      ((cb.dayPeakEquity - account.total) / cb.dayPeakEquity) * 100 >= cfg.maxIntradayDrawdownPercent
+      ((cb.dayPeakEquity - equity) / cb.dayPeakEquity) * 100 >= cfg.maxIntradayDrawdownPercent
     ) {
-      const ddPct = ((cb.dayPeakEquity - account.total) / cb.dayPeakEquity) * 100;
+      const ddPct = ((cb.dayPeakEquity - equity) / cb.dayPeakEquity) * 100;
       const reason = `Equity fell ${ddPct.toFixed(2)}% from today's peak, past the ${cfg.maxIntradayDrawdownPercent}% intraday limit. Trading is halted until you resume it.`;
-      cb.tripped = true;
-      cb.trippedAt = new Date();
-      cb.reason = reason;
       logger.error(
-        { userId, ddPct, limit: cfg.maxIntradayDrawdownPercent, peak: cb.dayPeakEquity, total: account.total },
+        { userId, ddPct, limit: cfg.maxIntradayDrawdownPercent, peak: cb.dayPeakEquity, total: equity },
         "Intraday drawdown limit TRIPPED — stopping bot"
       );
-      await stopBot(userId);
-      await notifyUser(userId, {
-        type: "circuit_breaker",
-        title: "Your trading bot was stopped by the intraday drawdown limit",
-        body: reason,
-        link: "/settings",
-      });
+      await haltTrading(userId, state, reason, "Your trading bot was stopped by the intraday drawdown limit");
       return results;
-    } else if (cfg.maxDailyLossPercent > 0 && cb.dayStartEquity > 0) {
-      const lossPct = ((cb.dayStartEquity - account.total) / cb.dayStartEquity) * 100;
+    }
+
+    if (cfg.maxDailyLossPercent > 0 && cb.dayStartEquity !== null && cb.dayStartEquity > 0) {
+      const lossPct = ((cb.dayStartEquity - equity) / cb.dayStartEquity) * 100;
       if (lossPct >= cfg.maxDailyLossPercent) {
         const tripReason = `Daily loss of ${lossPct.toFixed(2)}% reached the ${cfg.maxDailyLossPercent}% limit. Trading is halted until you resume it.`;
-        cb.tripped = true;
-        cb.trippedAt = new Date();
-        cb.reason = tripReason;
         logger.error(
-          { userId, lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: account.total },
+          { userId, lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: equity },
           "Daily-loss circuit breaker TRIPPED — stopping bot"
         );
-        await stopBot(userId);
-        // A halted bot the user doesn't know about is the worst silent state
-        // this product has — this is the one notification that must not be
-        // missed. notifyUser never throws, so it cannot break the halt itself;
-        // the body reuses the user-facing reason string, no internal detail.
-        await notifyUser(userId, {
-          type: "circuit_breaker",
-          title: "Your trading bot was stopped by the daily-loss limit",
-          body: tripReason,
-          link: "/settings",
-        });
+        await haltTrading(userId, state, tripReason, "Your trading bot was stopped by the daily-loss limit");
         return results;
       }
+    }
+  }
+
+  // Losing-streak breaker. The equity limits above only notice a problem once
+  // the money is gone; a run of losses is the earliest evidence that conditions
+  // have turned against the strategy. Counted from the BROKER's history because
+  // most closes are stop-losses that never pass through the bot, so our own
+  // trades table would miss them.
+  if (state.running && !dryRun && cfg.maxConsecutiveLosses > 0) {
+    const streak = await consecutiveLossStreak(userId, credentials);
+    if (streak !== null && streak >= cfg.maxConsecutiveLosses) {
+      const reason =
+        `${streak} trades in a row closed at a loss, reaching your limit of ${cfg.maxConsecutiveLosses}. ` +
+        `Trading is halted until you resume it — a losing streak this long usually means conditions have changed, not that the next trade is due to win.`;
+      logger.error({ userId, streak, limit: cfg.maxConsecutiveLosses }, "Losing-streak breaker TRIPPED — stopping bot");
+      await haltTrading(userId, state, reason, "Your trading bot was stopped after a run of losing trades");
+      return results;
     }
   }
 
@@ -1082,6 +1351,36 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
   // the orders, so trades_table rows for the UTC day are an exact count, and at
   // one-minute cycles a per-candidate query would be a needless hammering of
   // the database. A cap reached mid-cycle simply blocks the rest of it.
+  // When each instrument was last ordered, for the re-entry cooldown. Read from
+  // our own order log rather than the broker's positions because the positions
+  // list lags a fill by seconds — which is exactly how GOLD and US500 were each
+  // bought twice within 11 seconds on 24 Sep 2026.
+  const lastOrderByTicker = new Map<string, Date>();
+  if (cfg.reentryCooldownMinutes > 0) {
+    try {
+      const since = new Date(Date.now() - cfg.reentryCooldownMinutes * 60_000);
+      const recent = await db
+        .select({ ticker: tradesTable.ticker, executedAt: tradesTable.executedAt })
+        .from(tradesTable)
+        .where(
+          and(
+            eq(tradesTable.userId, userId),
+            gte(tradesTable.executedAt, since),
+            inArray(tradesTable.status, ["FILLED", "DRY_RUN"])
+          )
+        );
+      for (const r of recent) {
+        const prev = lastOrderByTicker.get(r.ticker);
+        if (!prev || r.executedAt > prev) lastOrderByTicker.set(r.ticker, r.executedAt);
+      }
+    } catch (err) {
+      // Fail OPEN deliberately: an unreadable order log must not stop the bot
+      // closing positions. The pyramiding gate below needs no database and
+      // still holds.
+      logger.warn({ err, userId }, "Could not read recent orders — re-entry cooldown not enforced this cycle");
+    }
+  }
+
   let tradesToday = 0;
   let atTradeCap = false;
   if (cfg.maxTradesPerDay > 0) {
@@ -1432,6 +1731,12 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
           logger.info({ userId, ticker: c.ticker, side: decision.action, closing }, "Order deferred — market closed to all orders");
         } else if (exposureIncreasing && profitLocked) {
           aiReason = `Skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC). ${decision.reason}`;
+        } else if (exposureIncreasing && cfg.onePositionPerInstrument && !opensNewPosition) {
+          aiReason = `Skipped: there is already an open position in ${c.ticker}, and adding to it is off. ${decision.reason}`;
+          logger.info({ userId, ticker: c.ticker, side: decision.action }, "Entry skipped — one position per instrument");
+        } else if (exposureIncreasing && withinCooldown(lastOrderByTicker.get(c.ticker) ?? null, new Date(), cfg.reentryCooldownMinutes)) {
+          aiReason = `Skipped: ${c.ticker} was traded within the last ${cfg.reentryCooldownMinutes} minutes. ${decision.reason}`;
+          logger.info({ userId, ticker: c.ticker, side: decision.action, cooldown: cfg.reentryCooldownMinutes }, "Entry skipped — re-entry cooldown");
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Skipped: ${c.ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight. ${decision.reason}`;
         } else if (exposureIncreasing && (exposure.byTicker.get(c.ticker) ?? 0) + positionValue > instrumentCap) {
@@ -1623,6 +1928,12 @@ async function runCycleUnlocked(userId: number): Promise<Array<{ ticker: string;
           logger.info({ userId, ticker, side: signal, closing }, "Order deferred — market closed to all orders");
         } else if (exposureIncreasing && profitLocked) {
           aiReason = `Trade skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC).`;
+        } else if (exposureIncreasing && cfg.onePositionPerInstrument && !opensNewPosition) {
+          aiReason = `Trade skipped: there is already an open position in ${ticker}, and adding to it is off.`;
+          logger.info({ userId, ticker, side: signal }, "Entry skipped — one position per instrument");
+        } else if (exposureIncreasing && withinCooldown(lastOrderByTicker.get(ticker) ?? null, new Date(), cfg.reentryCooldownMinutes)) {
+          aiReason = `Trade skipped: ${ticker} was traded within the last ${cfg.reentryCooldownMinutes} minutes.`;
+          logger.info({ userId, ticker, side: signal, cooldown: cfg.reentryCooldownMinutes }, "Entry skipped — re-entry cooldown");
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Trade skipped: ${ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight.`;
         } else if (exposureIncreasing && (exposure.byTicker.get(ticker) ?? 0) + positionValue > instrumentCap) {

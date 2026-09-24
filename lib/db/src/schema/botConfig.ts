@@ -84,6 +84,50 @@ export const botConfigTable = pgTable("bot_config", {
    * through. 0 = disabled.
    */
   dailyProfitTarget: real("daily_profit_target").notNull().default(0),
+  /**
+   * The account must never trade below this equity, in account currency.
+   *
+   * Every other loss limit here is a PERCENTAGE of a baseline that re-bases:
+   * the day's open, the week's open, the intraday peak. An account can fall
+   * indefinitely in individually compliant steps. This one does not move, which
+   * makes it the only limit that answers "never below X". 0 = disabled, and it
+   * stays disabled by default because a floor set by guesswork would halt a
+   * healthy account.
+   */
+  equityFloor: real("equity_floor").notNull().default(0),
+  /**
+   * Halt when equity falls this far below the week's opening equity (ISO week,
+   * Monday-based). Five days each losing 1.9% break no daily limit and still
+   * cost 9% of the account; nothing in the product saw that until this existed.
+   */
+  maxWeeklyLossPercent: real("max_weekly_loss_percent").notNull().default(5),
+  /**
+   * Halt after this many losing closes in a row. 0 = disabled.
+   *
+   * A losing streak is the signal that conditions have changed under the
+   * strategy — the limits above only notice once the money is already gone.
+   * Counted from the broker's own transaction history, since most closes are
+   * stop-losses that never pass through the bot.
+   */
+  maxConsecutiveLosses: integer("max_consecutive_losses").notNull().default(6),
+  /**
+   * Minimum minutes between opening positions in the SAME instrument. 0 = off.
+   *
+   * On 24 Sep 2026 a mode switch re-armed the cycle timer, firing a second
+   * cycle 10 seconds after the first, and GOLD and US500 were each bought twice
+   * — the broker's position list had not caught up, so the open-position check
+   * could not see the first fill. This cooldown reads our own order log, which
+   * had both.
+   */
+  reentryCooldownMinutes: integer("reentry_cooldown_minutes").notNull().default(5),
+  /**
+   * When true, the bot holds at most ONE position per instrument: a same-side
+   * order on an instrument already held is refused.
+   *
+   * Pyramiding is how the 39-unit SMCI short was built one compliant order at a
+   * time. The exposure caps bound the damage; this stops it being built at all.
+   */
+  onePositionPerInstrument: boolean("one_position_per_instrument").notNull().default(true),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
   /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */
