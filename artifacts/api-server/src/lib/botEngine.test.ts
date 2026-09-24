@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
    */
   botConfigRows: [] as Array<Record<string, unknown>>,
   /** Rows the trades table returns: the daily cap and the re-entry cooldown both read it. */
-  recentTrades: [] as Array<{ ticker: string; executedAt: Date }>,
+  recentTrades: [] as Array<{ ticker: string; side: string; executedAt: Date }>,
   /** Persisted equity baselines, as a restarted process would load them. */
   equityBaselines: [] as Array<Record<string, unknown>>,
   /** Every `running` value written via persistRunning, in order. */
@@ -833,7 +833,7 @@ describe("one position per instrument", () => {
   });
 });
 
-describe("re-entry cooldown", () => {
+describe("repeat guard — the same instruction is not sent twice", () => {
   /**
    * The 24 Sep 2026 duplicate: a second cycle 10 seconds after the first bought
    * GOLD and US500 again. The broker's position list had not caught up, so the
@@ -847,7 +847,7 @@ describe("re-entry cooldown", () => {
 
     await startLiveBot({ reentryCooldownMinutes: 5, onePositionPerInstrument: true });
     mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
-    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date(Date.now() - 10_000) }];
+    mocks.recentTrades = [{ ticker: "GOLD", side: "BUY", executedAt: new Date(Date.now() - 10_000) }];
     await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
@@ -860,7 +860,7 @@ describe("re-entry cooldown", () => {
 
     await startLiveBot({ reentryCooldownMinutes: 5 });
     mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
-    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date(Date.now() - 6 * 60_000) }];
+    mocks.recentTrades = [{ ticker: "GOLD", side: "BUY", executedAt: new Date(Date.now() - 6 * 60_000) }];
     await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
@@ -873,7 +873,8 @@ describe("re-entry cooldown", () => {
 
     await startLiveBot({ reentryCooldownMinutes: 60 });
     mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
-    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date() }];
+    // A BUY moments ago must not hold back the SELL that exits it.
+    mocks.recentTrades = [{ ticker: "GOLD", side: "BUY", executedAt: new Date() }];
     await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
@@ -886,7 +887,44 @@ describe("re-entry cooldown", () => {
 
     await startLiveBot({ reentryCooldownMinutes: 5 });
     mocks.enabledInstruments = [{ ticker: "SILVER", enabled: true }];
-    mocks.recentTrades = [{ ticker: "GOLD", executedAt: new Date() }];
+    mocks.recentTrades = [{ ticker: "GOLD", side: "BUY", executedAt: new Date() }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+  });
+});
+
+describe("repeated closes — the runaway short", () => {
+  /**
+   * 24 Sep 2026, GOLD. Bought 0.1176 units, then SOLD 0.1 four times in six
+   * minutes: every cycle read a long that was already closed and closed it
+   * again. On a broker that opens a deal per order that is a 0.4-unit SHORT
+   * nobody decided to hold, and no exposure cap could stop it — a close is
+   * exempt from all of them, which is correct and is exactly why this guard
+   * has to live somewhere else.
+   */
+  it("refuses a second SELL while the first has not been reported", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    // The broker still reports the long that the previous cycle already sold.
+    broker.getBrokerPositions.mockResolvedValue([position("GOLD", 0.1)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ reentryCooldownMinutes: 5 });
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    mocks.recentTrades = [{ ticker: "GOLD", side: "SELL", executedAt: new Date(Date.now() - 60_000) }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+  });
+
+  it("allows the close once the broker has had time to report it", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([position("GOLD", 0.1)]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ reentryCooldownMinutes: 5 });
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    mocks.recentTrades = [{ ticker: "GOLD", side: "SELL", executedAt: new Date(Date.now() - 6 * 60_000) }];
     await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
@@ -1403,8 +1441,8 @@ describe("closing orders — sized from the position, never from the balance", (
     await startLiveBot({ aiTradeMode: "off", maxTradesPerDay: 1 });
     // Two orders already executed today, past a cap of one.
     mocks.recentTrades = [
-      { ticker: "HELD", executedAt: new Date() },
-      { ticker: "NEW", executedAt: new Date() },
+      { ticker: "HELD", side: "SELL", executedAt: new Date() },
+      { ticker: "NEW", side: "BUY", executedAt: new Date() },
     ];
     mocks.enabledInstruments = [
       { ticker: "HELD", enabled: true },

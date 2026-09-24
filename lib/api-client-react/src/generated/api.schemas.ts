@@ -220,7 +220,7 @@ export interface BotConfig {
      */
   maxConsecutiveLosses?: number;
   /**
-     * Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+     * Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.
      * @minimum 0
      */
   reentryCooldownMinutes?: number;
@@ -394,7 +394,7 @@ export interface BotConfigInput {
      */
   maxConsecutiveLosses?: number;
   /**
-     * Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+     * Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.
      * @minimum 0
      */
   reentryCooldownMinutes?: number;

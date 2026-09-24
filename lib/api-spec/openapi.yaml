@@ -2152,7 +2152,7 @@ components:
         reentryCooldownMinutes:
           type: integer
           minimum: 0
-          description: Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+          description: Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.
         onePositionPerInstrument:
           type: boolean
           description: When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.
@@ -2252,7 +2252,7 @@ components:
         reentryCooldownMinutes:
           type: integer
           minimum: 0
-          description: Minimum minutes between opening positions in the SAME instrument. Read from the order log rather than open positions, which lag a fill by seconds. Never blocks a close. 0 disables.
+          description: Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.
         onePositionPerInstrument:
           type: boolean
           description: When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.

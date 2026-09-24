@@ -733,7 +733,7 @@ export default function Settings() {
             </p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="reentry-cooldown">Re-entry cooldown (min)</Label>
+            <Label htmlFor="reentry-cooldown">Repeat-order cooldown (min)</Label>
             <Input
               id="reentry-cooldown"
               type="number"
@@ -743,7 +743,10 @@ export default function Settings() {
               data-testid="input-reentry-cooldown"
             />
             <p className="text-xs text-muted-foreground">
-              How long before the same instrument can be bought again. Never blocks a close. 0 disables.
+              How long before the <em>same instruction</em> can be sent for an instrument again — a second
+              buy, or a second sell. Your broker takes a few seconds to report a fill, and in that gap the
+              bot reads a position that no longer exists and acts on it twice. A buy followed by the sell
+              that exits it is never delayed, because the side is different. 0 disables.
             </p>
           </div>
         </div>

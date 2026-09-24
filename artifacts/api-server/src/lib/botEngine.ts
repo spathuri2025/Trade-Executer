@@ -1351,16 +1351,28 @@ async function runCycleUnlocked(
   // the orders, so trades_table rows for the UTC day are an exact count, and at
   // one-minute cycles a per-candidate query would be a needless hammering of
   // the database. A cap reached mid-cycle simply blocks the rest of it.
-  // When each instrument was last ordered, for the re-entry cooldown. Read from
-  // our own order log rather than the broker's positions because the positions
-  // list lags a fill by seconds — which is exactly how GOLD and US500 were each
-  // bought twice within 11 seconds on 24 Sep 2026.
-  const lastOrderByTicker = new Map<string, Date>();
+  // When each instrument was last sent an order on each side, for the repeat
+  // guard. Read from our own order log rather than the broker's positions,
+  // because the positions list lags a fill by seconds — and every cycle sizes
+  // its decision from that list.
+  //
+  // On 24 Sep 2026 this cost real money twice in fifteen minutes. GOLD and
+  // US500 were each BOUGHT twice, 11 seconds apart, because the first fill was
+  // not in the position list yet. Then GOLD was SOLD four times in six minutes:
+  // each cycle read a long that was already closed and "closed" it again, which
+  // on a broker that opens a new deal per order is how you end up short 0.4
+  // units of gold having never decided to be short at all. The exposure caps
+  // could not stop it, because a close is deliberately exempt from them.
+  //
+  // Keyed by ticker AND side on purpose: repeating an instruction is the bug,
+  // so an entry followed by a genuine exit is not delayed.
+  const lastOrderByTickerSide = new Map<string, Date>();
+  const orderKey = (ticker: string, side: string) => `${ticker}|${side}`;
   if (cfg.reentryCooldownMinutes > 0) {
     try {
       const since = new Date(Date.now() - cfg.reentryCooldownMinutes * 60_000);
       const recent = await db
-        .select({ ticker: tradesTable.ticker, executedAt: tradesTable.executedAt })
+        .select({ ticker: tradesTable.ticker, side: tradesTable.side, executedAt: tradesTable.executedAt })
         .from(tradesTable)
         .where(
           and(
@@ -1370,14 +1382,15 @@ async function runCycleUnlocked(
           )
         );
       for (const r of recent) {
-        const prev = lastOrderByTicker.get(r.ticker);
-        if (!prev || r.executedAt > prev) lastOrderByTicker.set(r.ticker, r.executedAt);
+        const key = orderKey(r.ticker, r.side);
+        const prev = lastOrderByTickerSide.get(key);
+        if (!prev || r.executedAt > prev) lastOrderByTickerSide.set(key, r.executedAt);
       }
     } catch (err) {
       // Fail OPEN deliberately: an unreadable order log must not stop the bot
       // closing positions. The pyramiding gate below needs no database and
       // still holds.
-      logger.warn({ err, userId }, "Could not read recent orders — re-entry cooldown not enforced this cycle");
+      logger.warn({ err, userId }, "Could not read recent orders — the repeat guard is not enforced this cycle");
     }
   }
 
@@ -1731,12 +1744,17 @@ async function runCycleUnlocked(
           logger.info({ userId, ticker: c.ticker, side: decision.action, closing }, "Order deferred — market closed to all orders");
         } else if (exposureIncreasing && profitLocked) {
           aiReason = `Skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC). ${decision.reason}`;
+        } else if (
+          withinCooldown(lastOrderByTickerSide.get(orderKey(c.ticker, decision.action)) ?? null, new Date(), cfg.reentryCooldownMinutes)
+        ) {
+          aiReason = `Skipped: a ${decision.action} for ${c.ticker} was already placed in the last ${cfg.reentryCooldownMinutes} minutes, and the broker may not have reported it yet. ${decision.reason}`;
+          logger.info(
+            { userId, ticker: c.ticker, side: decision.action, closing, cooldown: cfg.reentryCooldownMinutes },
+            "Order skipped — same instruction sent recently"
+          );
         } else if (exposureIncreasing && cfg.onePositionPerInstrument && !opensNewPosition) {
           aiReason = `Skipped: there is already an open position in ${c.ticker}, and adding to it is off. ${decision.reason}`;
           logger.info({ userId, ticker: c.ticker, side: decision.action }, "Entry skipped — one position per instrument");
-        } else if (exposureIncreasing && withinCooldown(lastOrderByTicker.get(c.ticker) ?? null, new Date(), cfg.reentryCooldownMinutes)) {
-          aiReason = `Skipped: ${c.ticker} was traded within the last ${cfg.reentryCooldownMinutes} minutes. ${decision.reason}`;
-          logger.info({ userId, ticker: c.ticker, side: decision.action, cooldown: cfg.reentryCooldownMinutes }, "Entry skipped — re-entry cooldown");
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Skipped: ${c.ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight. ${decision.reason}`;
         } else if (exposureIncreasing && (exposure.byTicker.get(c.ticker) ?? 0) + positionValue > instrumentCap) {
@@ -1928,12 +1946,17 @@ async function runCycleUnlocked(
           logger.info({ userId, ticker, side: signal, closing }, "Order deferred — market closed to all orders");
         } else if (exposureIncreasing && profitLocked) {
           aiReason = `Trade skipped: today's profit target of ${formatMoney(cfg.dailyProfitTarget, account?.currency ?? null)} is reached, so no new positions until tomorrow (UTC).`;
+        } else if (
+          withinCooldown(lastOrderByTickerSide.get(orderKey(ticker, signal)) ?? null, new Date(), cfg.reentryCooldownMinutes)
+        ) {
+          aiReason = `Trade skipped: a ${signal} for ${ticker} was already placed in the last ${cfg.reentryCooldownMinutes} minutes, and the broker may not have reported it yet.`;
+          logger.info(
+            { userId, ticker, side: signal, closing, cooldown: cfg.reentryCooldownMinutes },
+            "Order skipped — same instruction sent recently"
+          );
         } else if (exposureIncreasing && cfg.onePositionPerInstrument && !opensNewPosition) {
           aiReason = `Trade skipped: there is already an open position in ${ticker}, and adding to it is off.`;
           logger.info({ userId, ticker, side: signal }, "Entry skipped — one position per instrument");
-        } else if (exposureIncreasing && withinCooldown(lastOrderByTicker.get(ticker) ?? null, new Date(), cfg.reentryCooldownMinutes)) {
-          aiReason = `Trade skipped: ${ticker} was traded within the last ${cfg.reentryCooldownMinutes} minutes.`;
-          logger.info({ userId, ticker, side: signal, cooldown: cfg.reentryCooldownMinutes }, "Entry skipped — re-entry cooldown");
         } else if (exposureIncreasing && tooCloseToSessionEnd(entryCheck.minutesToSessionEnd)) {
           aiReason = `Trade skipped: ${ticker}'s market closes at ${formatSessionEnd(entryCheck.minutesToSessionEnd ?? 0)}, too soon to open a position that won't be held overnight.`;
         } else if (exposureIncreasing && (exposure.byTicker.get(ticker) ?? 0) + positionValue > instrumentCap) {
