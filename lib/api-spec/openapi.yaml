@@ -1474,6 +1474,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/AssistantError"
 
+  /admin/daily-report/send-now:
+    post:
+      operationId: sendDailyReportNow
+      tags: [admin]
+      summary: Send the morning report immediately
+      description: >
+        Ignores the scheduled hour and the once-a-day guard, so the report can
+        be seen on demand. Does not suppress the scheduled one.
+      responses:
+        "200":
+          description: How many accounts were sent a report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent]
+                properties:
+                  sent:
+                    type: integer
+
   /admin/watchdog/test-alert:
     post:
       operationId: sendWatchdogTestAlert
@@ -3206,7 +3226,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [support_reply, support_message, announcement, circuit_breaker, upgrade_handled, profit_target]
+          enum: [support_reply, support_message, announcement, circuit_breaker, upgrade_handled, profit_target, daily_report]
         title:
           type: string
         body:

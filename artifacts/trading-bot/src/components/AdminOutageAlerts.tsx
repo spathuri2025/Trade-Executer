@@ -1,4 +1,4 @@
-import { useSendWatchdogTestAlert } from "@workspace/api-client-react";
+import { useSendWatchdogTestAlert, useSendDailyReportNow } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
 import { BellRing, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -11,6 +11,7 @@ import { BellRing, CheckCircle2, AlertTriangle } from "lucide-react";
 export function AdminOutageAlerts() {
   const test = useSendWatchdogTestAlert();
   const r = test.data;
+  const report = useSendDailyReportNow();
 
   return (
     <CollapsibleSection
@@ -20,14 +21,34 @@ export function AdminOutageAlerts() {
       description={
         <>
           If the database becomes unreachable for 3 minutes, or a running bot stops cycling, an email goes out with
-          what to do. Send a test to confirm it reaches you.
+          what to do. The morning report arrives daily at 07:00 UTC with what the account actually made — both are
+          emailed, so send one of each to confirm they reach you.
         </>
       }
       contentClassName="space-y-4"
     >
-      <Button onClick={() => test.mutate()} disabled={test.isPending} data-testid="button-test-alert">
-        {test.isPending ? "Sending…" : "Send test alert"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => test.mutate()} disabled={test.isPending} data-testid="button-test-alert">
+          {test.isPending ? "Sending…" : "Send test alert"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => report.mutate()}
+          disabled={report.isPending}
+          data-testid="button-send-daily-report"
+        >
+          {report.isPending ? "Sending…" : "Send morning report now"}
+        </Button>
+      </div>
+
+      {report.data && (
+        <p className="flex items-start gap-2 text-sm text-primary" data-testid="daily-report-result">
+          <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+          {report.data.sent > 0
+            ? `Report sent to ${report.data.sent} account${report.data.sent === 1 ? "" : "s"}. It's also in your Inbox.`
+            : "Nothing sent — no account has a broker connected with transaction history."}
+        </p>
+      )}
 
       {test.isError && (
         <p className="flex items-start gap-2 text-sm text-destructive">

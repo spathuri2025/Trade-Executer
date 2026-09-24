@@ -22,6 +22,7 @@ import { notifyUser, broadcastAnnouncement } from "../lib/notificationService";
 import { recordAudit, listAudit, lookupEmail } from "../lib/auditService";
 import { getEffectivePlan } from "../lib/planService";
 import { sendWatchdogTestAlert } from "../lib/watchdogRuntime";
+import { sendDailyReports } from "../lib/dailyReportRuntime";
 
 const router: IRouter = Router();
 // Scoped to /admin paths, NOT router.use(requireAdmin) bare. This router is
@@ -50,6 +51,14 @@ router.post("/admin/watchdog/test-alert", async (_req, res): Promise<void> => {
     sent: result?.sent ?? 0,
     alertEmailConfigured: Boolean(process.env["ALERT_EMAIL"]),
   });
+});
+
+router.post("/admin/daily-report/send-now", async (_req, res): Promise<void> => {
+  // force: ignores both the send hour and the once-a-day guard, so it can be
+  // used to see today's report immediately. It does not suppress the scheduled
+  // one — the guard only looks for a report already sent.
+  const sent = await sendDailyReports(new Date(), true);
+  res.json({ sent });
 });
 
 router.get("/admin/customers", async (_req, res): Promise<void> => {

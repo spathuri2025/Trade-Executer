@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Megaphone, MessageSquare, AlertTriangle, BadgeCheck, ArrowLeft, Target } from "lucide-react";
+import { Megaphone, MessageSquare, AlertTriangle, BadgeCheck, ArrowLeft, Target, FileBarChart } from "lucide-react";
 
 const TYPE_ICON: Record<string, typeof Megaphone> = {
   announcement: Megaphone,
@@ -29,6 +29,7 @@ const TYPE_ICON: Record<string, typeof Megaphone> = {
   circuit_breaker: AlertTriangle,
   upgrade_handled: BadgeCheck,
   profit_target: Target,
+  daily_report: FileBarChart,
 };
 
 function NotificationsTab() {

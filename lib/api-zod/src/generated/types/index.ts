@@ -158,6 +158,7 @@ export * from './scannerConfigInput';
 export * from './scannerResult';
 export * from './scannerResultSignal';
 export * from './scannerStatus';
+export * from './sendDailyReportNow200';
 export * from './signal';
 export * from './signalRegime';
 export * from './signalRiskLevel';

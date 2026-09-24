@@ -1365,7 +1365,7 @@ export const ListNotificationsResponse = zod.object({
   "unreadCount": zod.number(),
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['support_reply', 'support_message', 'announcement', 'circuit_breaker', 'upgrade_handled', 'profit_target']),
+  "type": zod.enum(['support_reply', 'support_message', 'announcement', 'circuit_breaker', 'upgrade_handled', 'profit_target', 'daily_report']),
   "title": zod.string(),
   "body": zod.string(),
   "link": zod.string().nullable().describe('In-app path this notification points at.'),
@@ -1450,6 +1450,16 @@ export const sendAdminSupportReplyBodyBodyMax = 5000;
 
 export const SendAdminSupportReplyBody = zod.object({
   "body": zod.string().max(sendAdminSupportReplyBodyBodyMax)
+})
+
+
+/**
+ * Ignores the scheduled hour and the once-a-day guard, so the report can be seen on demand. Does not suppress the scheduled one.
+
+ * @summary Send the morning report immediately
+ */
+export const SendDailyReportNowResponse = zod.object({
+  "sent": zod.number()
 })
 
 

@@ -90,6 +90,7 @@ import type {
   ScannerConfigInput,
   ScannerResult,
   ScannerStatus,
+  SendDailyReportNow200,
   Signal,
   Subscription,
   SubscriptionInput,
@@ -5393,6 +5394,78 @@ export const useSendAdminSupportReply = <TError = ErrorType<AssistantError>,
         TContext
       > => {
       return useMutation(getSendAdminSupportReplyMutationOptions(options));
+    }
+
+export const getSendDailyReportNowUrl = () => {
+
+
+
+
+  return `/api/admin/daily-report/send-now`
+}
+
+/**
+ * Ignores the scheduled hour and the once-a-day guard, so the report can be seen on demand. Does not suppress the scheduled one.
+
+ * @summary Send the morning report immediately
+ */
+export const sendDailyReportNow = async ( options?: RequestInit): Promise<SendDailyReportNow200> => {
+
+  return customFetch<SendDailyReportNow200>(getSendDailyReportNowUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSendDailyReportNowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDailyReportNow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendDailyReportNow>>, TError,void, TContext> => {
+
+const mutationKey = ['sendDailyReportNow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendDailyReportNow>>, void> = () => {
+
+
+          return  sendDailyReportNow(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendDailyReportNowMutationResult = NonNullable<Awaited<ReturnType<typeof sendDailyReportNow>>>
+
+    export type SendDailyReportNowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send the morning report immediately
+ */
+export const useSendDailyReportNow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDailyReportNow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendDailyReportNow>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSendDailyReportNowMutationOptions(options));
     }
 
 export const getSendWatchdogTestAlertUrl = () => {

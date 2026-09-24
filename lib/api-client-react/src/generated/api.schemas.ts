@@ -1295,6 +1295,7 @@ export const AppNotificationType = {
   circuit_breaker: 'circuit_breaker',
   upgrade_handled: 'upgrade_handled',
   profit_target: 'profit_target',
+  daily_report: 'daily_report',
 } as const;
 
 export interface AppNotification {
@@ -2025,6 +2026,10 @@ export type ListSupportThreads200 = {
 
 export type ListAdminSupportThreads200 = {
   threads: AdminSupportThread[];
+};
+
+export type SendDailyReportNow200 = {
+  sent: number;
 };
 
 export type ListAuditLog200 = {

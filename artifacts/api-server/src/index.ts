@@ -11,6 +11,7 @@ import { resumeRunningScanners, standDownAllScanners, scansInFlight } from "./li
 import { releaseAllLeases, INSTANCE_ID } from "./lib/engineLease";
 import { gracefulShutdown } from "./lib/shutdown";
 import { startWatchdog, stopWatchdog } from "./lib/watchdogRuntime";
+import { startDailyReports, stopDailyReports } from "./lib/dailyReportRuntime";
 
 const rawPort = process.env["PORT"];
 
@@ -53,6 +54,7 @@ const server = app.listen(port, (err) => {
   // Tells a human when trading has stopped — see lib/watchdog.ts. Started here,
   // not in app.ts, so tests importing the app never send alerts.
   startWatchdog();
+  startDailyReports();
 });
 
 /**
@@ -73,6 +75,7 @@ async function shutdown(signal: string): Promise<void> {
       // A deliberate shutdown is not an outage; don't let the watchdog of a
       // process that's leaving report one.
       stopWatchdog();
+      stopDailyReports();
     },
     standDownEngines: async () => (await standDownAllBots()) + (await standDownAllScanners()),
     stopServer: () => server.close(),

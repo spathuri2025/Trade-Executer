@@ -20,7 +20,8 @@ export type NotificationType =
   | "announcement"
   | "circuit_breaker"
   | "upgrade_handled"
-  | "profit_target";
+  | "profit_target"
+  | "daily_report";
 
 export interface NotifyInput {
   type: NotificationType;
@@ -44,6 +45,8 @@ const EMAILED_TYPES: Record<NotificationType, boolean> = {
   // At most once a day, and it changes what the bot will do until tomorrow —
   // worth an email, like its counterpart the circuit breaker.
   profit_target: true,
+  // The morning report IS an email; the in-app copy is the record of it.
+  daily_report: true,
 };
 
 function emailFooter(link?: string): string {
