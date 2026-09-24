@@ -28,7 +28,11 @@ export const ReadinessCheckResponse = zod.object({
   "database": zod.object({
   "status": zod.enum(['up', 'down']),
   "latencyMs": zod.number()
-}).describe('No error detail is included on failure — this endpoint is public, and database error text names the host and user. The detail is logged server-side instead.\n')
+}).describe('No error detail is included on failure — this endpoint is public, and database error text names the host and user. The detail is logged server-side instead.\n'),
+  "build": zod.object({
+  "commit": zod.string().describe('The git commit this process is running, or \"unknown\" outside a deploy.'),
+  "startedAt": zod.coerce.date().describe('When this process started — a restart is visible as a change here.')
+}).optional().describe('Which build is actually serving. Added 24 Sep 2026: three separate diagnoses that day had to infer the running version from the spacing of trading-cycle timestamps, because nothing reported it.\n')
 })
 
 

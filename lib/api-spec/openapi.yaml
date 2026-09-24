@@ -1971,6 +1971,21 @@ components:
             No error detail is included on failure — this endpoint is public, and
             database error text names the host and user. The detail is logged
             server-side instead.
+        build:
+          type: object
+          required: [commit, startedAt]
+          properties:
+            commit:
+              type: string
+              description: The git commit this process is running, or "unknown" outside a deploy.
+            startedAt:
+              type: string
+              format: date-time
+              description: When this process started — a restart is visible as a change here.
+          description: >
+            Which build is actually serving. Added 24 Sep 2026: three separate
+            diagnoses that day had to infer the running version from the spacing
+            of trading-cycle timestamps, because nothing reported it.
 
     AuthCredentials:
       type: object

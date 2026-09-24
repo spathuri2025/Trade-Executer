@@ -5,6 +5,7 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { ReadinessStatusBuild } from './readinessStatusBuild';
 import type { ReadinessStatusDatabase } from './readinessStatusDatabase';
 import type { ReadinessStatusStatus } from './readinessStatusStatus';
 
@@ -13,4 +14,7 @@ export interface ReadinessStatus {
   /** No error detail is included on failure — this endpoint is public, and database error text names the host and user. The detail is logged server-side instead.
    */
   database: ReadinessStatusDatabase;
+  /** Which build is actually serving. Added 24 Sep 2026: three separate diagnoses that day had to infer the running version from the spacing of trading-cycle timestamps, because nothing reported it.
+   */
+  build?: ReadinessStatusBuild;
 }

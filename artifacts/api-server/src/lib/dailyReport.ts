@@ -92,13 +92,20 @@ export function buildDailyReport(
     lines.push(`  Trades:       ${s.closedTrades}   win rate ${pct(s.winRate)}`);
     lines.push(`  Average win:  ${money(s.averageWin, currency)}      Average loss: ${money(s.averageLoss, currency)}`);
     lines.push(`  Costs:        funding ${money(s.funding, currency)}, fees ${money(s.fees, currency)}`);
-    if (s.byInstrument.length > 0) {
-      const worst = s.byInstrument[0];
-      const best = s.byInstrument[s.byInstrument.length - 1];
-      lines.push(`  Best:         ${best.instrumentName} ${money(best.net, currency)}`);
-      if (worst.instrumentName !== best.instrumentName) {
-        lines.push(`  Worst:        ${worst.instrumentName} ${money(worst.net, currency)}`);
-      }
+    if (s.byInstrument.length === 1) {
+      // One instrument is neither best nor worst. Labelling it "Best" framed a
+      // £2.17 LOSS as the good news in the report of 24 Sep 2026 — the only
+      // instrument traded was also the only one losing money.
+      const only = s.byInstrument[0]!;
+      lines.push(`  Instrument:   ${only.instrumentName} ${money(only.net, currency)}`);
+    } else if (s.byInstrument.length > 1) {
+      const worst = s.byInstrument[0]!;
+      const best = s.byInstrument[s.byInstrument.length - 1]!;
+      // "Best" has to mean it made money. When everything lost, the top of the
+      // list is the least bad, and saying so is the difference between a report
+      // that reads as encouraging and one that reads as true.
+      lines.push(`  ${best.net > 0 ? "Best:        " : "Least bad:   "} ${best.instrumentName} ${money(best.net, currency)}`);
+      lines.push(`  Worst:        ${worst.instrumentName} ${money(worst.net, currency)}`);
     }
   };
 

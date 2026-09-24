@@ -81,4 +81,31 @@ describe("daily report", () => {
     expect(report.text).toMatch(/Best:\s+GOLD/);
     expect(report.text).toMatch(/Worst:\s+SMCI/);
   });
+
+  it("does not call the only instrument traded the best one", () => {
+    // 24 Sep 2026: the real report read "Best: SMCI −£2.17". SMCI was the only
+    // instrument traded, so it was also the worst, and the label framed the
+    // entire week's loss as the good news.
+    const onlySmci = buildDailyReport(
+      [row("2026-09-23T14:05:00.000", "SMCI", "-2.17", "Trade closed: stop-loss")],
+      NOW,
+      CONTEXT,
+    );
+    expect(onlySmci.text).toMatch(/Instrument:\s+SMCI −£2\.17/);
+    expect(onlySmci.text).not.toContain("Best:");
+  });
+
+  it("says 'least bad' rather than 'best' when every instrument lost", () => {
+    const allLosing = buildDailyReport(
+      [
+        row("2026-09-23T14:05:00.000", "SMCI", "-5.00", "Trade closed: stop-loss"),
+        row("2026-09-23T15:20:00.000", "GOLD", "-1.00", "Trade closed: stop-loss"),
+      ],
+      NOW,
+      CONTEXT,
+    );
+    expect(allLosing.text).toMatch(/Least bad:\s+GOLD −£1\.00/);
+    expect(allLosing.text).toMatch(/Worst:\s+SMCI −£5\.00/);
+    expect(allLosing.text).not.toContain("Best:");
+  });
 });

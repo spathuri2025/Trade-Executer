@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
 import { checkDatabase } from "../lib/healthCheck";
+import { buildInfo } from "../lib/buildInfo";
 
 const router: IRouter = Router();
 
@@ -38,6 +39,9 @@ router.get("/readyz", async (req, res): Promise<void> => {
     res.status(503).json({
       status: "degraded",
       database: { status: "down", latencyMs: database.latencyMs },
+      // Included on the failure path too: when something is wrong, which build
+      // is running is one of the first things worth knowing.
+      build: buildInfo(),
     });
     return;
   }
@@ -45,6 +49,7 @@ router.get("/readyz", async (req, res): Promise<void> => {
   res.json({
     status: "ok",
     database: { status: "up", latencyMs: database.latencyMs },
+    build: buildInfo(),
   });
 });
 

@@ -34,11 +34,25 @@ export type ReadinessStatusDatabase = {
   latencyMs: number;
 };
 
+/**
+ * Which build is actually serving. Added 24 Sep 2026: three separate diagnoses that day had to infer the running version from the spacing of trading-cycle timestamps, because nothing reported it.
+
+ */
+export type ReadinessStatusBuild = {
+  /** The git commit this process is running, or "unknown" outside a deploy. */
+  commit: string;
+  /** When this process started — a restart is visible as a change here. */
+  startedAt: string;
+};
+
 export interface ReadinessStatus {
   status: ReadinessStatusStatus;
   /** No error detail is included on failure — this endpoint is public, and database error text names the host and user. The detail is logged server-side instead.
    */
   database: ReadinessStatusDatabase;
+  /** Which build is actually serving. Added 24 Sep 2026: three separate diagnoses that day had to infer the running version from the spacing of trading-cycle timestamps, because nothing reported it.
+   */
+  build?: ReadinessStatusBuild;
 }
 
 export interface AuthCredentials {
