@@ -7,6 +7,7 @@
  */
 
 export * from './accountSummary';
+export * from './activateTradingProfile200';
 export * from './activityFeed';
 export * from './activityItem';
 export * from './activityItemRegime';
@@ -197,6 +198,12 @@ export * from './tradeIntelligenceReport';
 export * from './tradeRiskPlan';
 export * from './tradeSide';
 export * from './tradeStatus';
+export * from './tradingProfile';
+export * from './tradingProfileAiTradeMode';
+export * from './tradingProfileBarResolution';
+export * from './tradingProfileList';
+export * from './tradingProfileMinAiConfidence';
+export * from './tradingProfileStrategyMode';
 export * from './upgradeRequestCreated';
 export * from './upgradeRequestInput';
 export * from './upgradeRequestQueue';

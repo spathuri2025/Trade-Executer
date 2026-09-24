@@ -73,6 +73,8 @@ export const botConfigTable = pgTable("bot_config", {
    * — the concurrent-position cap counts distinct instruments, so adding to one
    * already held is free. 0 = disabled.
    */
+  /** Which trading profile is currently applied. Display only — the engine reads the columns here. */
+  activeProfileId: integer("active_profile_id"),
   maxInstrumentExposurePercent: real("max_instrument_exposure_percent").notNull().default(0),
   /** Ceiling on total exposure across all instruments, same units. 0 = disabled. */
   maxTotalExposurePercent: real("max_total_exposure_percent").notNull().default(0),

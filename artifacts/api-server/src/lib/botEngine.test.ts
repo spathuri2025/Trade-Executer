@@ -171,6 +171,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxTradesPerDay: 0,
     maxIntradayDrawdownPercent: 0,
     closeBeforeSessionEndMinutes: 0,
+    activeProfileId: null,
     maxInstrumentExposurePercent: 0,
     maxTotalExposurePercent: 0,
     dailyProfitTarget: 0,

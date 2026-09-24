@@ -49,6 +49,11 @@ export interface BotConfig {
   /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
   maxIntradayDrawdownPercent?: number;
   /**
+     * Which trading mode is applied. Display only — the engine reads the fields here, not the profile.
+     * @nullable
+     */
+  activeProfileId?: number | null;
+  /**
      * Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.
      * @minimum 0
      * @maximum 100

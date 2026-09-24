@@ -51,7 +51,7 @@ function within(rows: BrokerTransaction[], fromMs: number, toMs: number): Broker
 export function buildDailyReport(
   rows: BrokerTransaction[],
   now: Date,
-  context: { botRunning: boolean; dryRun: boolean; dailyTarget: number }
+  context: { botRunning: boolean; dryRun: boolean; dailyTarget: number; modes?: string[] }
 ): DailyReport {
   const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const DAY = 24 * 60 * 60 * 1000;
@@ -107,6 +107,15 @@ export function buildDailyReport(
 
   lines.push("");
   lines.push(`Bot: ${context.botRunning ? "running" : "STOPPED"}${context.dryRun ? ", dry run (no real orders)" : ""}`);
+  // Which mode produced yesterday's numbers. Without this, a run of days is a
+  // mixture of strategies and the results cannot be attributed to either.
+  if (context.modes && context.modes.length > 0) {
+    lines.push(
+      context.modes.length === 1
+        ? `Mode: ${context.modes[0]}`
+        : `Modes yesterday: ${context.modes.join(" then ")} — results are a mixture`
+    );
+  }
 
   // The one judgement worth making, because the temptation is to read a good
   // week as proof. Below ~35% wins this loses money at any size; above it,

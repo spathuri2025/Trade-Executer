@@ -5,6 +5,7 @@ import { getUserBrokerCredentials } from "./brokerCredentialsService";
 import { getBrokerTransactions } from "./broker";
 import { notifyUser } from "./notificationService";
 import { buildDailyReport } from "./dailyReport";
+import { modesActiveBetween } from "./tradingProfiles";
 
 /**
  * Sends each account its morning report — see dailyReport.ts for the content.
@@ -73,7 +74,12 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
       const rows = await getBrokerTransactions(userId, credentials, from, to);
       if (rows === null) continue; // broker has no transaction history
 
+      const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+      const modes = await modesActiveBetween(userId, yesterdayStart, todayStart).catch(() => [] as string[]);
+
       const report = buildDailyReport(rows, now, {
+        modes,
         botRunning: Boolean(r["running"]),
         dryRun: Boolean(r["dry_run"]),
         dailyTarget: Number(r["daily_profit_target"] ?? 0),

@@ -21,6 +21,7 @@ import type {
 
 import type {
   AccountSummary,
+  ActivateTradingProfile200,
   ActivityFeed,
   AdminCustomerList,
   AdminSupportThreadDetail,
@@ -104,6 +105,8 @@ import type {
   Trade,
   TradeIntelligenceInput,
   TradeIntelligenceReport,
+  TradingProfile,
+  TradingProfileList,
   UpgradeRequestCreated,
   UpgradeRequestInput,
   UpgradeRequestQueue,
@@ -4497,6 +4500,227 @@ export function useGetLivePerformance<TData = Awaited<ReturnType<typeof getLiveP
 
 
 
+
+export const getListTradingProfilesUrl = () => {
+
+
+
+
+  return `/api/trading-profiles`
+}
+
+/**
+ * A mode holds only HOW the engine trades — strategy, bar size, cycle interval, exits, cost hurdle and AI mode. Risk per trade, position and exposure limits, the daily loss and drawdown limits and the trade cap are account-level and are never changed by switching mode.
+
+ * @summary The user's trading modes, and which one is applied
+ */
+export const listTradingProfiles = async ( options?: RequestInit): Promise<TradingProfileList> => {
+
+  return customFetch<TradingProfileList>(getListTradingProfilesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTradingProfilesQueryKey = () => {
+    return [
+    `/api/trading-profiles`
+    ] as const;
+    }
+
+
+export const getListTradingProfilesQueryOptions = <TData = Awaited<ReturnType<typeof listTradingProfiles>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTradingProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTradingProfilesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTradingProfiles>>> = ({ signal }) => listTradingProfiles({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTradingProfiles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTradingProfilesQueryResult = NonNullable<Awaited<ReturnType<typeof listTradingProfiles>>>
+export type ListTradingProfilesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The user's trading modes, and which one is applied
+ */
+
+export function useListTradingProfiles<TData = Awaited<ReturnType<typeof listTradingProfiles>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTradingProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTradingProfilesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getActivateTradingProfileUrl = (id: number,) => {
+
+
+
+
+  return `/api/trading-profiles/${id}/activate`
+}
+
+/**
+ * Applies the mode's settings at once. A running bot picks them up immediately and re-arms its cycle timer. Open positions keep the stop-loss and take-profit they were opened with — those sit at the broker and cannot be changed retrospectively.
+
+ * @summary Apply a trading mode
+ */
+export const activateTradingProfile = async (id: number, options?: RequestInit): Promise<ActivateTradingProfile200> => {
+
+  return customFetch<ActivateTradingProfile200>(getActivateTradingProfileUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getActivateTradingProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateTradingProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof activateTradingProfile>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['activateTradingProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof activateTradingProfile>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  activateTradingProfile(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ActivateTradingProfileMutationResult = NonNullable<Awaited<ReturnType<typeof activateTradingProfile>>>
+
+    export type ActivateTradingProfileMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Apply a trading mode
+ */
+export const useActivateTradingProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateTradingProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof activateTradingProfile>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getActivateTradingProfileMutationOptions(options));
+    }
+
+export const getSaveTradingProfileUrl = (id: number,) => {
+
+
+
+
+  return `/api/trading-profiles/${id}`
+}
+
+/**
+ * @summary Save the settings currently in force into this mode
+ */
+export const saveTradingProfile = async (id: number, options?: RequestInit): Promise<TradingProfile> => {
+
+  return customFetch<TradingProfile>(getSaveTradingProfileUrl(id),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+export const getSaveTradingProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveTradingProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveTradingProfile>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['saveTradingProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveTradingProfile>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  saveTradingProfile(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveTradingProfileMutationResult = NonNullable<Awaited<ReturnType<typeof saveTradingProfile>>>
+
+    export type SaveTradingProfileMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Save the settings currently in force into this mode
+ */
+export const useSaveTradingProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveTradingProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveTradingProfile>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getSaveTradingProfileMutationOptions(options));
+    }
 
 export const getGetPlanUrl = () => {
 

@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RequestUpgradeButton } from "@/components/RequestUpgradeButton";
 import { ChangePasswordCard } from "@/components/ChangePasswordCard";
 import { CollapsibleSection } from "@/components/CollapsibleSection";
+import { TradingModeSwitch } from "@/components/TradingModeSwitch";
 import { Play, Square, Link2, Unlink } from "lucide-react";
 
 type BrokerName = "trading212" | "capitalcom";
@@ -302,6 +303,8 @@ export default function Settings() {
       <ChangePasswordCard />
 
       {/* Broker connection — required before the bot or any live data can work */}
+      <TradingModeSwitch />
+
       <CollapsibleSection
         id="settings.broker"
         title="Broker Connection"

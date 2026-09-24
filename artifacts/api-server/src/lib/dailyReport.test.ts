@@ -56,6 +56,16 @@ describe("daily report", () => {
     expect(report.text).toMatch(/5 closed trades in 30 days.*before a win rate separates/s);
   });
 
+  it("names the mode that produced the day, and says when it was a mixture", () => {
+    // A week of results from two different strategies, reported as one number,
+    // would be unattributable — which is the whole reason modes are recorded.
+    const one = buildDailyReport(rows, NOW, { ...CONTEXT, modes: ["Scalping"] });
+    expect(one.text).toContain("Mode: Scalping");
+
+    const mixed = buildDailyReport(rows, NOW, { ...CONTEXT, modes: ["Intraday", "Scalping"] });
+    expect(mixed.text).toContain("Modes yesterday: Intraday then Scalping — results are a mixture");
+  });
+
   it("says plainly when the bot is stopped", () => {
     const stopped = buildDailyReport(rows, NOW, { ...CONTEXT, botRunning: false });
     expect(stopped.text).toContain("Bot: STOPPED");

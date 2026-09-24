@@ -1222,6 +1222,75 @@ paths:
               schema:
                 $ref: "#/components/schemas/LivePerformance"
 
+  /trading-profiles:
+    get:
+      operationId: listTradingProfiles
+      tags: [bot]
+      summary: The user's trading modes, and which one is applied
+      description: >
+        A mode holds only HOW the engine trades — strategy, bar size, cycle
+        interval, exits, cost hurdle and AI mode. Risk per trade, position and
+        exposure limits, the daily loss and drawdown limits and the trade cap
+        are account-level and are never changed by switching mode.
+      responses:
+        "200":
+          description: Modes and the active one
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingProfileList"
+
+  /trading-profiles/{id}/activate:
+    post:
+      operationId: activateTradingProfile
+      tags: [bot]
+      summary: Apply a trading mode
+      description: >
+        Applies the mode's settings at once. A running bot picks them up
+        immediately and re-arms its cycle timer. Open positions keep the
+        stop-loss and take-profit they were opened with — those sit at the
+        broker and cannot be changed retrospectively.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The mode now in force
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [activeProfileId, name, config]
+                properties:
+                  activeProfileId:
+                    type: integer
+                  name:
+                    type: string
+                  config:
+                    $ref: "#/components/schemas/BotConfig"
+
+  /trading-profiles/{id}:
+    put:
+      operationId: saveTradingProfile
+      tags: [bot]
+      summary: Save the settings currently in force into this mode
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The updated mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingProfile"
+
   /plan:
     get:
       operationId: getPlan
@@ -2047,6 +2116,9 @@ components:
         maxIntradayDrawdownPercent:
           type: number
           description: Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables.
+        activeProfileId:
+          type: ["integer", "null"]
+          description: Which trading mode is applied. Display only — the engine reads the fields here, not the profile.
         maxInstrumentExposurePercent:
           type: number
           minimum: 0
@@ -3613,6 +3685,49 @@ components:
         alertEmailConfigured:
           type: boolean
           description: Whether ALERT_EMAIL is set. Without it, an outage that starts before the app has seen the database can alert nobody.
+
+    TradingProfile:
+      type: object
+      required: [id, name, strategyMode, barResolution, intervalMinutes, stopLossPercent, takeProfitPercent, minEdgeVsSpread, aiTradeMode, minAiConfidence, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        strategyMode:
+          type: string
+          enum: [auto, scalp]
+        barResolution:
+          type: string
+          enum: [MINUTE, MINUTE_5, MINUTE_15, MINUTE_30, HOUR, HOUR_4, DAY, WEEK]
+        intervalMinutes:
+          type: integer
+        stopLossPercent:
+          type: number
+        takeProfitPercent:
+          type: number
+        minEdgeVsSpread:
+          type: number
+        aiTradeMode:
+          type: string
+          enum: [off, guard, autonomous]
+        minAiConfidence:
+          type: string
+          enum: [any, medium, high]
+        updatedAt:
+          type: string
+          format: date-time
+
+    TradingProfileList:
+      type: object
+      required: [profiles, activeProfileId]
+      properties:
+        profiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradingProfile"
+        activeProfileId:
+          type: ["integer", "null"]
 
     LivePerformance:
       type: object

@@ -92,6 +92,8 @@ export interface BotConfig {
   maxIntradayDrawdownPercent: number;
   /** Close positions this many minutes before their session ends; 0 = off. */
   closeBeforeSessionEndMinutes: number;
+  /** Which trading mode (profile) is applied. Display only; the engine reads the fields above. */
+  activeProfileId: number | null;
   /** Ceiling on total exposure to one instrument, percent of account value; 0 = off. */
   maxInstrumentExposurePercent: number;
   /** Ceiling on total exposure across all instruments, percent of account value; 0 = off. */
@@ -128,6 +130,7 @@ const DEFAULT_CONFIG: BotConfig = {
   maxTradesPerDay: 50,
   maxIntradayDrawdownPercent: 2,
   closeBeforeSessionEndMinutes: 0,
+  activeProfileId: null,
   maxInstrumentExposurePercent: 0,
   maxTotalExposurePercent: 0,
   dailyProfitTarget: 0,
@@ -224,6 +227,7 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxTradesPerDay: row.maxTradesPerDay,
     maxIntradayDrawdownPercent: row.maxIntradayDrawdownPercent,
     closeBeforeSessionEndMinutes: row.closeBeforeSessionEndMinutes,
+    activeProfileId: row.activeProfileId,
     maxInstrumentExposurePercent: row.maxInstrumentExposurePercent,
     maxTotalExposurePercent: row.maxTotalExposurePercent,
     dailyProfitTarget: row.dailyProfitTarget,

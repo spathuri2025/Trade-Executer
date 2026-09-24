@@ -178,6 +178,11 @@ export interface BotConfig {
   /** Halts the engine when equity falls this far from its intraday PEAK (not the day's open). 0 disables. */
   maxIntradayDrawdownPercent?: number;
   /**
+     * Which trading mode is applied. Display only — the engine reads the fields here, not the profile.
+     * @nullable
+     */
+  activeProfileId?: number | null;
+  /**
      * Ceiling on TOTAL exposure to one instrument as a percent of account value, counting every open position in it and both directions. Different from maxPositionSizePercent, which caps a single order. 0 disables.
      * @minimum 0
      * @maximum 100
@@ -1661,6 +1666,66 @@ export interface WatchdogTestAlertResult {
   alertEmailConfigured: boolean;
 }
 
+export type TradingProfileStrategyMode = typeof TradingProfileStrategyMode[keyof typeof TradingProfileStrategyMode];
+
+
+export const TradingProfileStrategyMode = {
+  auto: 'auto',
+  scalp: 'scalp',
+} as const;
+
+export type TradingProfileBarResolution = typeof TradingProfileBarResolution[keyof typeof TradingProfileBarResolution];
+
+
+export const TradingProfileBarResolution = {
+  MINUTE: 'MINUTE',
+  MINUTE_5: 'MINUTE_5',
+  MINUTE_15: 'MINUTE_15',
+  MINUTE_30: 'MINUTE_30',
+  HOUR: 'HOUR',
+  HOUR_4: 'HOUR_4',
+  DAY: 'DAY',
+  WEEK: 'WEEK',
+} as const;
+
+export type TradingProfileAiTradeMode = typeof TradingProfileAiTradeMode[keyof typeof TradingProfileAiTradeMode];
+
+
+export const TradingProfileAiTradeMode = {
+  off: 'off',
+  guard: 'guard',
+  autonomous: 'autonomous',
+} as const;
+
+export type TradingProfileMinAiConfidence = typeof TradingProfileMinAiConfidence[keyof typeof TradingProfileMinAiConfidence];
+
+
+export const TradingProfileMinAiConfidence = {
+  any: 'any',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+export interface TradingProfile {
+  id: number;
+  name: string;
+  strategyMode: TradingProfileStrategyMode;
+  barResolution: TradingProfileBarResolution;
+  intervalMinutes: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
+  minEdgeVsSpread: number;
+  aiTradeMode: TradingProfileAiTradeMode;
+  minAiConfidence: TradingProfileMinAiConfidence;
+  updatedAt: string;
+}
+
+export interface TradingProfileList {
+  profiles: TradingProfile[];
+  /** @nullable */
+  activeProfileId: number | null;
+}
+
 export type LivePerformanceByDayItem = {
   date: string;
   net: number;
@@ -2015,6 +2080,12 @@ export const GetLivePerformanceDays = {
   NUMBER_30: 30,
   NUMBER_90: 90,
 } as const;
+
+export type ActivateTradingProfile200 = {
+  activeProfileId: number;
+  name: string;
+  config: BotConfig;
+};
 
 export type ListPlans200 = {
   plans: PlanCatalogEntry[];
