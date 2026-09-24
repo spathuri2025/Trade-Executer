@@ -129,6 +129,8 @@ export interface BotConfig {
   reentryCooldownMinutes: number;
   /** Refuse a same-side order in an instrument already held. */
   onePositionPerInstrument: boolean;
+  /** Ceiling on NET directional exposure (longs minus shorts), percent of account value; 0 = off. */
+  maxNetDirectionalPercent: number;
   /**
    * When true, each instrument is classified as trending or ranging (close-based
    * ADX) and routed to trend-following or mean-reversion automatically. When
@@ -168,6 +170,7 @@ const DEFAULT_CONFIG: BotConfig = {
   maxConsecutiveLosses: 6,
   reentryCooldownMinutes: 5,
   onePositionPerInstrument: true,
+  maxNetDirectionalPercent: 0,
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
 };
@@ -405,6 +408,7 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     maxConsecutiveLosses: row.maxConsecutiveLosses,
     reentryCooldownMinutes: row.reentryCooldownMinutes,
     onePositionPerInstrument: row.onePositionPerInstrument,
+    maxNetDirectionalPercent: row.maxNetDirectionalPercent,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
   };
@@ -491,6 +495,15 @@ async function getOrCreateBotState(userId: number): Promise<BotState> {
 function formatMoney(amount: number, currency: string | null): string {
   const symbol = currency === "GBP" ? "£" : currency === "USD" ? "$" : currency === "EUR" ? "€" : null;
   return symbol ? `${symbol}${amount.toFixed(2)}` : `${amount.toFixed(2)}${currency ? ` ${currency}` : ""}`;
+}
+
+/**
+ * "net long £750" / "net short £750" / "flat" — for the one message where the
+ * sign is the whole point.
+ */
+function directionWords(net: number, currency: string | null): string {
+  if (net === 0) return "flat";
+  return `net ${net > 0 ? "long" : "short"} ${formatMoney(Math.abs(net), currency)}`;
 }
 
 /** UTC calendar-day key (YYYY-MM-DD) used to reset the daily-loss baseline. */
@@ -1541,6 +1554,7 @@ async function runCycleUnlocked(
     percent > 0 && accountBalance !== null && accountBalance > 0 ? (accountBalance * percent) / 100 : Infinity;
   const instrumentCap = exposureCap(cfg.maxInstrumentExposurePercent);
   const totalCap = exposureCap(cfg.maxTotalExposurePercent);
+  const netCap = exposureCap(cfg.maxNetDirectionalPercent);
 
   const positions: PositionSnapshot[] = rawPositions.map((p) => ({
     ticker: p.ticker,
@@ -1773,6 +1787,11 @@ async function runCycleUnlocked(
             `Skipped: this would take your total exposure past its limit — ` +
             `${exposureWords(exposure.total, positionValue, totalCap, account?.currency ?? null)}. ${decision.reason}`;
           logger.warn({ userId, ticker: c.ticker, total: exposure.total, adding: positionValue, cap: totalCap }, "Entry skipped — total exposure limit");
+        } else if (exposureIncreasing && breachesNetDirectional(exposure.net, positionValue, isBuy, netCap)) {
+          aiReason =
+            `Skipped: the account is already ${directionWords(exposure.net, account?.currency ?? null)} and this would ` +
+            `push it past your net direction limit of ${formatMoney(netCap, account?.currency ?? null)}. ${decision.reason}`;
+          logger.warn({ userId, ticker: c.ticker, net: exposure.net, adding: positionValue, isBuy, cap: netCap }, "Entry skipped — net direction limit");
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit. ${decision.reason}`;
         } else if (exposureIncreasing && !clearsCostHurdle(cfg, c.expectedMovePct, entryCheck.spreadPct)) {
@@ -1976,6 +1995,11 @@ async function runCycleUnlocked(
             `Trade skipped: this would take your total exposure past its limit — ` +
             `${exposureWords(exposure.total, positionValue, totalCap, account?.currency ?? null)}.`;
           logger.warn({ userId, ticker, total: exposure.total, adding: positionValue, cap: totalCap }, "Entry skipped — total exposure limit");
+        } else if (exposureIncreasing && breachesNetDirectional(exposure.net, positionValue, isBuy, netCap)) {
+          aiReason =
+            `Trade skipped: the account is already ${directionWords(exposure.net, account?.currency ?? null)} and this ` +
+            `would push it past your net direction limit of ${formatMoney(netCap, account?.currency ?? null)}.`;
+          logger.warn({ userId, ticker, net: exposure.net, adding: positionValue, isBuy, cap: netCap }, "Entry skipped — net direction limit");
         } else if (exposureIncreasing && atTradeCap) {
           aiReason = `Trade skipped: you've reached your ${cfg.maxTradesPerDay}-trade daily limit.`;
           logger.info({ userId, ticker, limit: cfg.maxTradesPerDay }, "Entry skipped — daily trade cap");
@@ -2099,13 +2123,24 @@ function recordExecution(
   side: "BUY" | "SELL",
   quantity: number,
   closing: boolean,
-  exposure?: { byTicker: Map<string, number>; total: number },
+  exposure?: Exposure,
   positionValue?: number
 ): void {
   if (exposure && positionValue !== undefined) {
     const delta = closing ? -(exposure.byTicker.get(ticker) ?? 0) : positionValue;
     exposure.byTicker.set(ticker, Math.max(0, (exposure.byTicker.get(ticker) ?? 0) + delta));
     exposure.total = Math.max(0, exposure.total + delta);
+    // The net moves by the signed amount: an opening BUY adds, an opening SELL
+    // subtracts, and a close removes whatever this ticker was contributing.
+    // Without this a cycle could open five same-direction positions and each
+    // would measure against the net as it stood before any of them.
+    const netDelta = closing
+      ? -(exposure.netByTicker.get(ticker) ?? 0)
+      : isBuySide(side)
+        ? positionValue
+        : -positionValue;
+    exposure.netByTicker.set(ticker, (exposure.netByTicker.get(ticker) ?? 0) + netDelta);
+    exposure.net += netDelta;
   }
   const h = held.get(ticker) ?? { long: 0, short: 0 };
   if (closing) {
@@ -2127,16 +2162,57 @@ function recordExecution(
  * same as a 39-unit long. Every deal on a ticker is summed, because the risk of
  * being wrong about SMCI does not care that it arrived as 108 small orders.
  */
-export function exposureByTicker(positions: NormalizedPosition[]): { byTicker: Map<string, number>; total: number } {
+export function exposureByTicker(positions: NormalizedPosition[]): Exposure {
   const byTicker = new Map<string, number>();
+  const netByTicker = new Map<string, number>();
   let total = 0;
+  let net = 0;
   for (const p of positions) {
     const notional = Math.abs(p.quantity * p.currentPrice);
+    // Direction, not the sign of quantity: on Capital.com `size` is always a
+    // positive magnitude and the direction is its own field.
+    const signed = p.direction === "BUY" ? notional : -notional;
     byTicker.set(p.ticker, (byTicker.get(p.ticker) ?? 0) + notional);
+    netByTicker.set(p.ticker, (netByTicker.get(p.ticker) ?? 0) + signed);
     total += notional;
+    net += signed;
   }
-  return { byTicker, total };
+  return { byTicker, netByTicker, total, net };
 }
+
+/**
+ * Exposure two ways, because they answer different questions.
+ *
+ * `total` is gross: what is at risk in the market at all. `net` is directional:
+ * longs positive, shorts negative. Three £250 shorts in gold and two US indices
+ * — the position on 24 Sep 2026 — are £750 gross and −£750 net. The gross
+ * figure sees three modest positions well inside every cap. The net figure sees
+ * one £750 bet that everything falls together, which is what it actually is.
+ */
+export interface Exposure {
+  /** Absolute notional per ticker. */
+  byTicker: Map<string, number>;
+  /** Signed notional per ticker: positive long, negative short. */
+  netByTicker: Map<string, number>;
+  total: number;
+  net: number;
+}
+
+/**
+ * Whether an order would push the account's net direction past its cap.
+ *
+ * Only refuses an order that makes the imbalance WORSE. An order that reduces
+ * it is always allowed, even from over the cap — otherwise a breach would lock
+ * the account out of the very trades that would correct it, which is the same
+ * mistake as a risk gate that blocks a close.
+ */
+export function breachesNetDirectional(net: number, positionValue: number, isBuy: boolean, cap: number): boolean {
+  if (!Number.isFinite(cap) || cap <= 0) return false;
+  const after = net + (isBuy ? positionValue : -positionValue);
+  return Math.abs(after) > cap && Math.abs(after) > Math.abs(net);
+}
+
+const isBuySide = (side: "BUY" | "SELL"): boolean => side === "BUY";
 
 /** Held size per ticker, split by direction. */
 export type HeldPositions = Map<string, { long: number; short: number }>;

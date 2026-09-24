@@ -236,6 +236,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     maxConsecutiveLosses: 0,
     reentryCooldownMinutes: 0,
     onePositionPerInstrument: false,
+    maxNetDirectionalPercent: 0,
     regimeFilterEnabled: false,
     barResolution: "MINUTE_5",
     ...patch,
@@ -926,6 +927,149 @@ describe("repeat guard — the same instruction is not sent twice", () => {
     await engine.runCycle(TEST_USER_ID);
 
     expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+  });
+});
+
+describe("net direction limit — correlated positions are one bet", () => {
+  it("counts three shorts as one directional position, not three small ones", () => {
+    const e = engine.exposureByTicker([
+      position("GOLD", 2.5, "SELL"),
+      position("US500", 2.5, "SELL"),
+      position("US100", 2.5, "SELL"),
+    ]);
+    // Priced at 100 by the position() helper: £750 gross either way, but the
+    // gross figure reads as three modest positions and the net as one bet.
+    expect(e.total).toBe(750);
+    expect(e.net).toBe(-750);
+  });
+
+  it("nets a long against a short", () => {
+    const e = engine.exposureByTicker([position("GOLD", 3, "BUY"), position("US500", 2, "SELL")]);
+    expect(e.total).toBe(500);
+    expect(e.net).toBe(100);
+  });
+
+  it("refuses a fourth short once the cap is reached", async () => {
+    // £5,000 account, 15% net cap = £750. Three £250 shorts are exactly at it.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([
+      position("GOLD", 2.5, "SELL"),
+      position("US500", 2.5, "SELL"),
+      position("US100", 2.5, "SELL"),
+    ]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({
+      maxNetDirectionalPercent: 15,
+      maxConcurrentPositions: 0,
+      riskPerTradePercent: 5,
+      maxPositionSizePercent: 5,
+    });
+    mocks.enabledInstruments = [{ ticker: "SILVER", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(0);
+  });
+
+  it("still allows a BUY, which reduces the imbalance", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([
+      position("GOLD", 2.5, "SELL"),
+      position("US500", 2.5, "SELL"),
+      position("US100", 2.5, "SELL"),
+    ]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({
+      maxNetDirectionalPercent: 15,
+      maxConcurrentPositions: 0,
+      riskPerTradePercent: 5,
+      maxPositionSizePercent: 5,
+    });
+    mocks.enabledInstruments = [{ ticker: "SILVER", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+    expect(traded()[0]!.side).toBe("BUY");
+  });
+
+  it("cannot be walked past by several same-direction orders inside one cycle", async () => {
+    // £5,000, 15% = £750, £250 each: three fit, the fourth and fifth must not.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({
+      maxNetDirectionalPercent: 15,
+      maxConcurrentPositions: 0,
+      riskPerTradePercent: 5,
+      maxPositionSizePercent: 5,
+    });
+    mocks.enabledInstruments = [
+      { ticker: "A", enabled: true },
+      { ticker: "B", enabled: true },
+      { ticker: "C", enabled: true },
+      { ticker: "D", enabled: true },
+      { ticker: "E", enabled: true },
+    ];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(3);
+  });
+
+  it("is off at zero", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([
+      position("GOLD", 2.5, "SELL"),
+      position("US500", 2.5, "SELL"),
+      position("US100", 2.5, "SELL"),
+    ]);
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({ maxNetDirectionalPercent: 0, maxConcurrentPositions: 0 });
+    mocks.enabledInstruments = [{ ticker: "SILVER", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+
+  it("never blocks a close, even from over the cap", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([
+      position("GOLD", 10, "SELL"), // £1,000 short, already past a £750 cap
+    ]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot({ maxNetDirectionalPercent: 15 });
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+});
+
+describe("breachesNetDirectional", () => {
+  it("allows an order that stays inside the cap", () => {
+    expect(engine.breachesNetDirectional(-500, 200, false, 750)).toBe(false);
+  });
+
+  it("refuses one that pushes further past it", () => {
+    expect(engine.breachesNetDirectional(-700, 200, false, 750)).toBe(true);
+  });
+
+  it("allows an order that reduces an imbalance already over the cap", () => {
+    // Otherwise a breach locks the account out of the trades that would fix it
+    // — the same mistake as a risk gate that blocks a close.
+    expect(engine.breachesNetDirectional(-1000, 200, true, 750)).toBe(false);
+  });
+
+  it("measures the imbalance either way round", () => {
+    expect(engine.breachesNetDirectional(700, 200, true, 750)).toBe(true);
+  });
+
+  it("is off with no cap", () => {
+    expect(engine.breachesNetDirectional(-5000, 5000, false, Infinity)).toBe(false);
+    expect(engine.breachesNetDirectional(-5000, 5000, false, 0)).toBe(false);
   });
 });
 

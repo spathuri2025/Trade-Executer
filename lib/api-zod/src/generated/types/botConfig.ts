@@ -97,6 +97,12 @@ export interface BotConfig {
   reentryCooldownMinutes?: number;
   /** When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected. */
   onePositionPerInstrument?: boolean;
+  /**
+     * Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.
+     * @minimum 0
+     * @maximum 100
+     */
+  maxNetDirectionalPercent?: number;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */

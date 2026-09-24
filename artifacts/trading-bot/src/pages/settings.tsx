@@ -116,6 +116,7 @@ export default function Settings() {
     maxConsecutiveLosses: 6,
     reentryCooldownMinutes: 5,
     onePositionPerInstrument: true,
+    maxNetDirectionalPercent: 0,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
   });
@@ -150,6 +151,7 @@ export default function Settings() {
         maxConsecutiveLosses: botStatus.config.maxConsecutiveLosses ?? 6,
         reentryCooldownMinutes: botStatus.config.reentryCooldownMinutes ?? 5,
         onePositionPerInstrument: botStatus.config.onePositionPerInstrument ?? true,
+        maxNetDirectionalPercent: botStatus.config.maxNetDirectionalPercent ?? 0,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
       });
@@ -730,6 +732,24 @@ export default function Settings() {
               Counted from your broker&rsquo;s own closed trades, so stop-losses count too. The earliest
               sign that conditions have turned — the limits above only notice once the money is gone.
               0 disables.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="max-net-directional">Max net direction (%)</Label>
+            <Input
+              id="max-net-directional"
+              type="number"
+              step="1"
+              min="0"
+              value={config.maxNetDirectionalPercent}
+              onChange={(e) => setConfig({ ...config, maxNetDirectionalPercent: Number(e.target.value) })}
+              data-testid="input-max-net-directional"
+            />
+            <p className="text-xs text-muted-foreground">
+              Longs minus shorts, as a share of the account. Your other caps look at one instrument at a
+              time, so three separate shorts in gold and two US indices pass every limit while being, in
+              substance, one bet that everything falls together. This is the limit that sees that. An order
+              that <em>reduces</em> the imbalance is always allowed. 0 disables.
             </p>
           </div>
           <div className="space-y-1.5">

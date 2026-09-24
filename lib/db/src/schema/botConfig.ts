@@ -128,6 +128,17 @@ export const botConfigTable = pgTable("bot_config", {
    * time. The exposure caps bound the damage; this stops it being built at all.
    */
   onePositionPerInstrument: boolean("one_position_per_instrument").notNull().default(true),
+  /**
+   * Ceiling on NET directional exposure — longs minus shorts — as a percent of
+   * account value. 0 = disabled.
+   *
+   * Every other cap here is per instrument or gross, and neither notices that
+   * several positions are the same bet. On 24 Sep 2026 the bot held £250 short
+   * in gold and £250 short in each of two US indices: three positions at 5% of
+   * the account apiece, well inside every limit, and in substance one £750 bet
+   * that everything falls together. Correlated markets do not diversify.
+   */
+  maxNetDirectionalPercent: real("max_net_directional_percent").notNull().default(0),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
   /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */
