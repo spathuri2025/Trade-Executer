@@ -9,6 +9,7 @@ import {
 
 import {
   getCapitalPositions,
+  closeCapitalPosition,
   getCapitalAccounts,
   getCapitalPriceHistory,
   getCapitalCandles,
@@ -35,8 +36,17 @@ export interface NormalizedPosition {
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
-  /** BUY = long, SELL = short. Closing a position means placing the opposite side. */
+  /** BUY = long, SELL = short. */
   direction: "BUY" | "SELL";
+  /**
+   * The broker's own id for this deal, used to CLOSE it.
+   *
+   * A position is closed by its id, never by placing an opposite order: on a
+   * hedging account an opposite order leaves the original open and adds a
+   * second one facing the other way. Null for brokers that expose no such id —
+   * closeBrokerPosition refuses rather than guessing.
+   */
+  dealId: string | null;
   /**
    * Broker-side exit levels, where the broker will close this position without
    * the bot being involved at all — they hold even if this app is offline,
@@ -78,6 +88,7 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
         pnl,
         pnlPercent,
         direction: p.position.direction,
+        dealId: p.position.dealId,
         stopLevel: p.position.stopLevel,
         // Capital.com names take-profit `limitLevel` on a POSITION but
         // `profitLevel` when placing an order — same concept, two names.
@@ -97,6 +108,10 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
     // Trading 212's Invest/ISA API has no short-selling and no direction field
     // of its own — every position returned here is structurally long.
     direction: "BUY" as const,
+    // T212's Invest/ISA API exposes no per-deal id, so a position there cannot
+    // be closed by id. It also cannot go short, so the failure mode this
+    // protects against does not arise.
+    dealId: null,
     // T212's Invest/ISA API carries no broker-side stop/limit on a position;
     // null here means "none set", which the UI states plainly rather than
     // implying protection that isn't there.
@@ -315,6 +330,26 @@ export async function placeBrokerOrder(
  * doesn't expose one (Trading 212's Invest API has no equivalent here), so the
  * caller can say so plainly instead of showing an empty, misleading page.
  */
+/**
+ * Closes one open deal at the broker.
+ *
+ * Returns false when the broker has no close-by-id call (Trading 212), so the
+ * caller can fall back rather than silently doing nothing. It never falls back
+ * to an opposite order itself: that is the behaviour this function exists to
+ * replace.
+ */
+export async function closeBrokerPosition(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  dealId: string
+): Promise<boolean> {
+  if (credentials.broker === "capitalcom") {
+    await closeCapitalPosition(userId, credentials.capital, dealId);
+    return true;
+  }
+  return false;
+}
+
 export async function getBrokerTransactions(
   userId: number,
   credentials: UserBrokerCredentials,

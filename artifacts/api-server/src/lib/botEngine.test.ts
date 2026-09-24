@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   recentTrades: [] as Array<{ ticker: string; side: string; executedAt: Date }>,
   /** Persisted equity baselines, as a restarted process would load them. */
   equityBaselines: [] as Array<Record<string, unknown>>,
+  /** Every row written to the trades table, in order — opens and closes alike. */
+  tradeInserts: [] as Array<Record<string, unknown>>,
   /** Every `running` value written via persistRunning, in order. */
   runningWrites: [] as boolean[],
   broker: {
@@ -31,6 +33,7 @@ const mocks = vi.hoisted(() => ({
     getBrokerQuote: vi.fn(),
     placeBrokerOrder: vi.fn(),
     getBrokerTransactions: vi.fn(),
+    closeBrokerPosition: vi.fn(),
   },
   ma: { computeMASignal: vi.fn() },
   ai: { reviewSignal: vi.fn(), decideTrades: vi.fn() },
@@ -82,7 +85,17 @@ vi.mock("@workspace/db", () => ({
         },
       }),
     }),
-    insert: () => ({ values: () => insertResult() }),
+    insert: (table: { __name?: string }) => ({
+      values: (values: Record<string, unknown>) => {
+        // The trades table is the one honest record of what the engine did:
+        // an OPEN goes through placeBrokerOrder and a CLOSE through the
+        // broker's close-by-deal call, but both write a row here. Assertions
+        // read this rather than one of the two broker mocks, so a test says
+        // what happened rather than which mechanism carried it.
+        if (table?.__name === "trades") mocks.tradeInserts.push(values);
+        return insertResult();
+      },
+    }),
     update: () => ({
       set: (values: { running?: boolean }) => ({
         where: () => {
@@ -156,6 +169,7 @@ function position(
     // default of "none set" keeps every existing call site meaningful.
     stopLevel: null,
     takeProfitLevel: null,
+    dealId: `deal-${ticker}`,
   };
 }
 
@@ -167,6 +181,25 @@ function utcWeekKeyOf(d: Date): string {
   const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
   const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
   return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/**
+ * What the engine actually traded, from the trades it recorded: `{ticker, side,
+ * quantity}` for every FILLED or DRY_RUN row, in order.
+ *
+ * Deliberately not read from a broker mock. Since 24 Sep 2026 an open and a
+ * close take different broker calls — placeBrokerOrder opens, closeBrokerPosition
+ * closes by deal id — and a test that asserts on placeBrokerOrder alone would
+ * pass while the engine silently stopped closing anything.
+ */
+function traded(): Array<{ ticker: string; side: string; quantity: number }> {
+  return mocks.tradeInserts
+    .filter((r) => r["status"] === "FILLED" || r["status"] === "DRY_RUN")
+    .map((r) => ({
+      ticker: String(r["ticker"]),
+      side: String(r["side"]),
+      quantity: Number(r["quantity"]),
+    }));
 }
 
 function account(total: number): NormalizedAccount {
@@ -220,6 +253,7 @@ beforeEach(async () => {
   mocks.botConfigRows = [];
   mocks.recentTrades = [];
   mocks.equityBaselines = [];
+  mocks.tradeInserts = [];
   mocks.runningWrites = [];
   broker.getBrokerAccount.mockResolvedValue(defaultAccount);
   broker.getBrokerPositions.mockResolvedValue([]);
@@ -237,6 +271,7 @@ beforeEach(async () => {
   // No closed trades by default, so the losing-streak breaker never trips in
   // tests that are about something else.
   broker.getBrokerTransactions.mockResolvedValue([]);
+  broker.closeBrokerPosition.mockResolvedValue(true);
   // Full entitlements by default so every pre-existing test — all written
   // before plans existed — keeps exercising the same paths unchanged. Tests
   // that care about the paywall override this explicitly.
@@ -331,10 +366,10 @@ describe("fail-closed — risk data unavailable blocks new entries", () => {
     const results = await engine.runCycle(TEST_USER_ID);
 
     // Only the closing SELL on the already-held ticker reaches the broker.
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][2]).toBe("HELD");
-    expect(orders[0][4]).toBe("SELL");
+    expect(orders[0].ticker).toBe("HELD");
+    expect(orders[0].side).toBe("SELL");
 
     expect(results.find((r) => r.ticker === "NEWBUY")?.tradeExecuted).toBe(false);
     expect(results.find((r) => r.ticker === "HELD")?.tradeExecuted).toBe(true);
@@ -440,10 +475,10 @@ describe("zero equity — the risk layer refuses on its own, without the AI", ()
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][3]).toBe(10); // the whole position, not an equity-derived size
-    expect(orders[0][4]).toBe("SELL");
+    expect(orders[0].quantity).toBe(10); // the whole position, not an equity-derived size
+    expect(orders[0].side).toBe("SELL");
   });
 
   it("closes a held position in full even at zero equity — sized from the position, not the balance", async () => {
@@ -459,14 +494,14 @@ describe("zero equity — the risk layer refuses on its own, without the AI", ()
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    const [, , ticker, quantity, side, stopLoss, takeProfit] = orders[0];
-    expect(ticker).toBe("HELD");
-    expect(quantity).toBe(5); // the whole holding
-    expect(side).toBe("SELL");
-    expect(stopLoss).toBeUndefined(); // a close protects nothing
-    expect(takeProfit).toBeUndefined();
+    expect(orders[0]).toEqual({ ticker: "HELD", side: "SELL", quantity: 5 }); // the whole holding
+    // A close now goes through the broker's close-by-deal call, which takes no
+    // stop-loss or take-profit at all — a close protects nothing, and after
+    // 24 Sep 2026 it is not an order in the first place.
+    expect(broker.closeBrokerPosition).toHaveBeenCalledWith(TEST_USER_ID, expect.anything(), "deal-HELD");
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
   });
 
   it("a funded account is unaffected", async () => {
@@ -591,8 +626,8 @@ describe("minimum deal size — orders below the broker's minimum are skipped, n
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
-    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
-    const [, , ticker, quantity, side] = broker.placeBrokerOrder.mock.calls[0];
+    expect(traded()).toHaveLength(1);
+    const { ticker, quantity, side } = traded()[0]!;
     expect(ticker).toBe("CLOSEDMKT");
     expect(quantity).toBe(10);
     expect(side).toBe("SELL");
@@ -815,9 +850,9 @@ describe("one position per instrument", () => {
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][4]).toBe("SELL");
+    expect(orders[0].side).toBe("SELL");
   });
 
   it("opens a position in an instrument that is not held", async () => {
@@ -877,7 +912,7 @@ describe("repeat guard — the same instruction is not sent twice", () => {
     mocks.recentTrades = [{ ticker: "GOLD", side: "BUY", executedAt: new Date() }];
     await engine.runCycle(TEST_USER_ID);
 
-    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+    expect(traded()).toHaveLength(1);
   });
 
   it("does not hold back a different instrument", async () => {
@@ -927,7 +962,7 @@ describe("repeated closes — the runaway short", () => {
     mocks.recentTrades = [{ ticker: "GOLD", side: "SELL", executedAt: new Date(Date.now() - 6 * 60_000) }];
     await engine.runCycle(TEST_USER_ID);
 
-    expect(broker.placeBrokerOrder.mock.calls).toHaveLength(1);
+    expect(traded()).toHaveLength(1);
   });
 });
 
@@ -1145,15 +1180,16 @@ describe("flatten-by-close", () => {
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
-    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
-    const [, , ticker, quantity, side, stopLoss, takeProfit] = broker.placeBrokerOrder.mock.calls[0];
+    expect(traded()).toHaveLength(1);
+    const { ticker, quantity, side } = traded()[0]!;
     expect(ticker).toBe("CLOSEDMKT");
     expect(quantity).toBe(10);
     expect(side).toBe("SELL"); // opposite of the long's BUY direction — a close, not a new short
-    // A closing order never carries a new stop-loss/take-profit, even though
-    // buildConfig() sets non-zero stopLossPercent/takeProfitPercent.
-    expect(stopLoss).toBeUndefined();
-    expect(takeProfit).toBeUndefined();
+    // A close carries no stop-loss or take-profit, and since 24 Sep 2026 it is
+    // not an order at all: the deal is closed by its id, which is the only call
+    // that removes a position rather than opening an offsetting one.
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
+    expect(broker.closeBrokerPosition).toHaveBeenCalledWith(TEST_USER_ID, expect.anything(), "deal-CLOSEDMKT");
   });
 
   it("closes a held short position with a BUY (opposite of SELL)", async () => {
@@ -1172,7 +1208,7 @@ describe("flatten-by-close", () => {
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
-    const [, , ticker, quantity, side] = broker.placeBrokerOrder.mock.calls[0];
+    const { ticker, quantity, side } = traded()[0]!;
     expect(ticker).toBe("SHORTED");
     expect(quantity).toBe(4);
     expect(side).toBe("BUY");
@@ -1204,6 +1240,9 @@ describe("flatten-by-close", () => {
   it("does not attempt a close for OFFLINE or SUSPENDED markets either", async () => {
     for (const marketStatus of ["OFFLINE", "SUSPENDED", "AUCTION_NO_EDIT"]) {
       broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
       broker.getBrokerPositions.mockResolvedValue([position("SHUTMKT", 10)]);
       broker.getBrokerQuote.mockResolvedValue({
         ticker: "SHUTMKT",
@@ -1280,14 +1319,14 @@ describe("flatten-by-close", () => {
 
     broker.placeBrokerOrder.mockRejectedValueOnce(new Error("broker rejected the close"));
     await engine.runCycle(TEST_USER_ID);
-    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(1);
+    expect(traded()).toHaveLength(1);
 
     // Position is still reported open by the broker (mock unchanged) — the
     // next cycle attempts the close again, same retry behavior as any other
     // trade failure.
     broker.placeBrokerOrder.mockResolvedValueOnce({ id: "order-2" });
     await engine.runCycle(TEST_USER_ID);
-    expect(broker.placeBrokerOrder).toHaveBeenCalledTimes(2);
+    expect(traded()).toHaveLength(2);
   });
 });
 
@@ -1362,10 +1401,10 @@ describe("closing orders — sized from the position, never from the balance", (
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][3]).toBe(0.2);
-    expect(orders[0][4]).toBe("SELL");
+    expect(orders[0].quantity).toBe(0.2);
+    expect(orders[0].side).toBe("SELL");
   });
 
   it("sums every deal on the ticker — the broker returns one row per deal", async () => {
@@ -1379,7 +1418,13 @@ describe("closing orders — sized from the position, never from the balance", (
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    expect(broker.placeBrokerOrder.mock.calls[0][3]).toBeCloseTo(2.393, 9);
+    // Each deal is closed by its own id, so two deals are two closes. What
+    // matters is that nothing is left behind: the closed sizes sum to the
+    // whole holding, and both deals were named.
+    const closed = traded();
+    expect(closed).toHaveLength(2);
+    expect(closed.reduce((t, c) => t + c.quantity, 0)).toBeCloseTo(2.393, 9);
+    expect(broker.closeBrokerPosition).toHaveBeenCalledTimes(2);
   });
 
   it("does the same in autonomous mode", async () => {
@@ -1393,9 +1438,9 @@ describe("closing orders — sized from the position, never from the balance", (
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][3]).toBe(0.2);
+    expect(orders[0].quantity).toBe(0.2);
   });
 
   it("a BUY on a held SHORT is a close, and no exposure gate may block it", async () => {
@@ -1409,10 +1454,10 @@ describe("closing orders — sized from the position, never from the balance", (
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][3]).toBe(3);
-    expect(orders[0][4]).toBe("BUY");
+    expect(orders[0].quantity).toBe(3);
+    expect(orders[0].side).toBe("BUY");
   });
 
   it("a SELL adding to a held short increases exposure, so the gates DO apply", async () => {
@@ -1450,10 +1495,10 @@ describe("closing orders — sized from the position, never from the balance", (
     ];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][2]).toBe("HELD");
-    expect(orders[0][4]).toBe("SELL");
+    expect(orders[0].ticker).toBe("HELD");
+    expect(orders[0].side).toBe("SELL");
   });
 });
 
@@ -1503,10 +1548,10 @@ describe("closed markets — no order is sent that the broker must reject", () =
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][3]).toBe(2);
-    expect(orders[0][4]).toBe("SELL");
+    expect(orders[0].quantity).toBe(2);
+    expect(orders[0].side).toBe("SELL");
   });
 });
 
@@ -1569,17 +1614,17 @@ describe("close before the session ends", () => {
 
     await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
-    expect(orders).toHaveLength(1);
-    const [, , ticker, quantity, side, stopLoss, takeProfit] = orders[0];
-    expect(ticker).toBe("PL");
-    expect(quantity).toBe(1.165); // the whole deal, never equity-sized
-    expect(side).toBe("SELL");
-    expect(stopLoss).toBeUndefined();
-    expect(takeProfit).toBeUndefined();
+    // The whole deal, closed by its id, never equity-sized and never an
+    // opposite order that would leave the original open.
+    expect(traded()).toEqual([{ ticker: "PL", side: "SELL", quantity: 1.165 }]);
+    expect(broker.closeBrokerPosition).toHaveBeenCalledWith(TEST_USER_ID, expect.anything(), "deal-PL");
+    expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
   });
 
   it("leaves it alone outside the window", async () => {
@@ -1590,6 +1635,9 @@ describe("close before the session ends", () => {
 
     await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
@@ -1604,6 +1652,9 @@ describe("close before the session ends", () => {
 
     await startLiveBot({ closeBeforeSessionEndMinutes: 0 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
@@ -1619,6 +1670,9 @@ describe("close before the session ends", () => {
 
     await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
@@ -1643,6 +1697,9 @@ describe("close before the session ends", () => {
 
     await startLiveBot({ closeBeforeSessionEndMinutes: 10 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [];
     await engine.runCycle(TEST_USER_ID);
 
@@ -1658,6 +1715,9 @@ describe("close before the session ends", () => {
     at("2026-09-21T19:48:00"); // 12 minutes to go
     await startLiveBot({ aiTradeMode: "off", closeBeforeSessionEndMinutes: 10, intervalMinutes: 5 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
@@ -1678,6 +1738,9 @@ describe("daily profit lock", () => {
 
     await startLiveBot({ aiTradeMode: "off", dailyProfitTarget: 40 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.notify.notifyUser.mockClear();
     mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
 
@@ -1701,6 +1764,9 @@ describe("daily profit lock", () => {
     mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
     await engine.runCycle(TEST_USER_ID); // locks
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     await engine.runCycle(TEST_USER_ID); // dipped — still locked
 
     expect(broker.placeBrokerOrder).not.toHaveBeenCalled();
@@ -1716,13 +1782,16 @@ describe("daily profit lock", () => {
 
     await startLiveBot({ aiTradeMode: "off", dailyProfitTarget: 40 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [{ ticker: "HELD", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][4]).toBe("SELL");
-    expect(orders[0][3]).toBe(3);
+    expect(orders[0].side).toBe("SELL");
+    expect(orders[0].quantity).toBe(3);
   });
 
   it("does not lock below the target", async () => {
@@ -1734,6 +1803,9 @@ describe("daily profit lock", () => {
 
     await startLiveBot({ aiTradeMode: "off", dailyProfitTarget: 40 });
     broker.placeBrokerOrder.mockClear();
+    broker.closeBrokerPosition.mockClear();
+    // traded() reads the recorded trades, so the setup cycle's rows must go too.
+    mocks.tradeInserts = [];
     mocks.enabledInstruments = [{ ticker: "NEW", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
@@ -1770,9 +1842,9 @@ describe("exposure caps — the SMCI accumulation", () => {
     mocks.enabledInstruments = [{ ticker: "SMCI", enabled: true }];
     await engine.runCycle(TEST_USER_ID);
 
-    const orders = broker.placeBrokerOrder.mock.calls;
+    const orders = traded();
     expect(orders).toHaveLength(1);
-    expect(orders[0][3]).toBe(12); // the whole short, closed
+    expect(orders[0].quantity).toBe(12); // the whole short, closed
   });
 
   it("sums every deal on the ticker, not just the biggest", async () => {

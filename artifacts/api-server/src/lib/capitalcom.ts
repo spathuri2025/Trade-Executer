@@ -239,6 +239,33 @@ export async function getCapitalPositions(userId: number, credentials: CapitalCr
   return data?.positions ?? [];
 }
 
+/**
+ * Closes an open deal outright.
+ *
+ * This is NOT the same as placing an opposite order, which is what the bot did
+ * until 24 Sep 2026. On an account that hedges, an opposite order opens a
+ * second, offsetting position: the original stays open, the next cycle reads it
+ * and "closes" it again, and the account ends up holding both sides. GOLD was
+ * sold four times that morning against a long it had bought once; SMCI was sold
+ * 108 times in September. Neither was a sizing bug — the close simply never
+ * closed anything.
+ *
+ * DELETE /positions/{dealId} is the only call that actually removes a position,
+ * and it closes that deal in full. There is no partial close here: Capital.com
+ * opens a separate deal per order, so "close half" means closing one of the
+ * deals, which is what the caller selects.
+ */
+export async function closeCapitalPosition(
+  userId: number,
+  credentials: CapitalCredentials,
+  dealId: string
+): Promise<{ dealReference: string }> {
+  const data = (await capitalFetch(userId, credentials, `/positions/${encodeURIComponent(dealId)}`, {
+    method: "DELETE",
+  })) as { dealReference?: string } | null;
+  return { dealReference: data?.dealReference ?? "" };
+}
+
 export async function getCapitalAccounts(userId: number, credentials: CapitalCredentials): Promise<CapitalAccount> {
   return capitalFetch(userId, credentials, "/accounts") as Promise<CapitalAccount>;
 }

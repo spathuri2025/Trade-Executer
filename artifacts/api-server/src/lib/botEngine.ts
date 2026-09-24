@@ -18,6 +18,7 @@ import {
   getBrokerCandles,
   type NormalizedPosition,
   getBrokerTransactions,
+  closeBrokerPosition,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import { summariseTransactions, parseUtc } from "./livePerformance";
@@ -1466,6 +1467,7 @@ async function runCycleUnlocked(
       dryRun,
       aiReason: "Flatten-by-close: market closed for this instrument.",
       isClose: true,
+      closeDeals: [pos],
     });
 
     if (closed) {
@@ -1521,6 +1523,7 @@ async function runCycleUnlocked(
         dryRun,
         aiReason: `Closed before the market closes at ${closeAt}, so it isn't held through the overnight gap.`,
         isClose: true,
+        closeDeals: [pos],
       });
       if (closed) rawPositions = rawPositions.filter((p) => p !== pos);
     }
@@ -1832,6 +1835,7 @@ async function runCycleUnlocked(
             // A close carries no new stop/take-profit: there is no resulting
             // position left for them to protect.
             isClose: closing,
+            closeDeals: closing ? dealsToClose(rawPositions, c.ticker, decision.action) : undefined,
           });
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
@@ -2027,6 +2031,7 @@ async function runCycleUnlocked(
             aiReason: aiReason ?? undefined,
             aiConfidence,
             isClose: closing,
+            closeDeals: closing ? dealsToClose(rawPositions, ticker, signal) : undefined,
           });
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
@@ -2142,6 +2147,22 @@ export type HeldPositions = Map<string, { long: number; short: number }>;
  * Capital.com returns each deal as its own position: buying PL twice gives two
  * rows, not one. Anything that asks "how much do we hold?" has to sum them.
  */
+/**
+ * The open deals that an order of this side would be closing.
+ *
+ * A SELL closes longs, a BUY closes shorts. Capital.com opens a separate deal
+ * per order, so there can be several — each is closed by its own id, which is
+ * the only way to actually close anything (see closeCapitalPosition).
+ */
+export function dealsToClose(
+  positions: NormalizedPosition[],
+  ticker: string,
+  side: "BUY" | "SELL"
+): NormalizedPosition[] {
+  const closes = side === "SELL" ? "BUY" : "SELL";
+  return positions.filter((p) => p.ticker === ticker && p.direction === closes);
+}
+
 export function heldByTicker(positions: NormalizedPosition[]): HeldPositions {
   const held: HeldPositions = new Map();
   for (const p of positions) {
@@ -2207,8 +2228,16 @@ async function placeAndRecord(args: {
    * rather than opening/adding to one — a closing order never carries a new
    * stop-loss/take-profit, since there's no resulting position left to protect. */
   isClose?: boolean;
+  /**
+   * The open deals this close is closing, when they are known.
+   *
+   * Supplied, each is closed by its own id. Absent — or from a broker with no
+   * per-deal id — the old opposite-order path runs, which is correct only where
+   * positions net (Trading 212) and was catastrophic where they do not.
+   */
+  closeDeals?: NormalizedPosition[];
 }): Promise<boolean> {
-  const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence, isClose } = args;
+  const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence, isClose, closeDeals } = args;
   const { stopLossPercent, takeProfitPercent } = cfg;
 
   // Last line of defence, covering every caller including future ones: an order
@@ -2235,6 +2264,50 @@ async function placeAndRecord(args: {
       aiConfidence: aiConfidence ?? null,
     });
     return true;
+  }
+
+  // Closing by deal id. This is the path that actually closes a position; the
+  // opposite-order path below leaves the original open on a hedging account and
+  // adds a second position facing the other way, which is how GOLD came to be
+  // sold four times against a long it had bought once on 24 Sep 2026.
+  if (isClose && closeDeals && closeDeals.length > 0 && closeDeals.every((d) => d.dealId)) {
+    let closedAny = false;
+    for (const deal of closeDeals) {
+      try {
+        await closeBrokerPosition(userId, credentials, deal.dealId!);
+        await db.insert(tradesTable).values({
+          userId,
+          ticker,
+          side,
+          quantity: String(deal.quantity),
+          price: String(currentPrice),
+          total: String(deal.quantity * currentPrice),
+          status: "FILLED",
+          orderId: deal.dealId,
+          aiReason: aiReason ?? null,
+          aiConfidence: aiConfidence ?? null,
+        });
+        closedAny = true;
+        logger.info({ userId, ticker, side, dealId: deal.dealId }, "Position closed by deal id");
+      } catch (err) {
+        // Recorded per deal: closing three and failing on the second must leave
+        // a truthful record of which two closed.
+        const msg = err instanceof Error ? err.message : String(err);
+        await db.insert(tradesTable).values({
+          userId,
+          ticker,
+          side,
+          quantity: String(deal.quantity),
+          price: String(currentPrice),
+          total: String(deal.quantity * currentPrice),
+          status: "FAILED",
+          aiReason: `${aiReason ? `${aiReason} ` : ""}Close failed: ${msg}`,
+          aiConfidence: aiConfidence ?? null,
+        });
+        logger.error({ userId, ticker, dealId: deal.dealId, err: msg }, "Could not close position by deal id");
+      }
+    }
+    return closedAny;
   }
 
   try {
