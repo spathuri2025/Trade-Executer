@@ -72,14 +72,18 @@ export function buildDailyReport(
    */
   const exitsLine = (s: ReturnType<typeof summariseTransactions>): string => {
     const { takeProfit, stopLoss, closedEarly } = s.exits;
-    const parts = [`${takeProfit} take-profit`, `${stopLoss} stop-loss`, `${closedEarly} closed early`];
-    let line = `  Exits:        ${parts.join(", ")}`;
-    // When nothing was recognised at all, the count is far more likely to be a
-    // parsing gap than a fact about the trading — say so, and show the wording.
-    if (takeProfit === 0 && stopLoss === 0 && closedEarly > 0 && s.unrecognisedCloseLabels.length > 0) {
-      line += `\n                (unrecognised labels: ${s.unrecognisedCloseLabels.map((l) => `"${l}"`).join(", ")})`;
+    // Nothing recognised at all is a missing data source, not a finding. On
+    // 25 Sep 2026 this line read "0 take-profit, 0 stop-loss, 95 closed early"
+    // while the broker screen showed a Silver short closing at its stop price
+    // to the cent — Capital.com labels every close "Trade closed" and says
+    // nothing about what triggered it. Reporting zeros as a fact was worse than
+    // reporting nothing, so say what is actually known.
+    if (takeProfit === 0 && stopLoss === 0 && closedEarly > 0) {
+      const labels = s.unrecognisedCloseLabels.map((l) => `"${l}"`).join(", ");
+      return `  Exits:        not reported — every close is labelled ${labels || "the same way"}`;
     }
-    return line;
+    const parts = [`${takeProfit} take-profit`, `${stopLoss} stop-loss`, `${closedEarly} closed early`];
+    return `  Exits:        ${parts.join(", ")}`;
   };
 
   const lines: string[] = [];

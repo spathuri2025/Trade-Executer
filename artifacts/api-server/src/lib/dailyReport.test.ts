@@ -87,31 +87,35 @@ describe("daily report", () => {
     expect(report.text).toMatch(/Exits:\s+1 take-profit, 1 stop-loss, 1 closed early/);
   });
 
-  it("makes it obvious when no trade ever reaches its target", () => {
-    // The 24 Sep 2026 pattern: everything closed early, neither level reached.
-    const allEarly = buildDailyReport(
+  it("counts exits once the broker labels any of them", () => {
+    // The counting is only meaningful where a label is actually understood; a
+    // mixture proves it distinguishes rather than bucketing everything.
+    const mixed = buildDailyReport(
       [
-        row("2026-09-23T14:00:00.000", "GOLD", "0.21"),
+        row("2026-09-23T14:00:00.000", "GOLD", "0.21", "Trade closed: take-profit"),
         row("2026-09-23T14:30:00.000", "GOLD", "-0.23"),
         row("2026-09-23T15:00:00.000", "US500", "0.19"),
       ],
       NOW,
       CONTEXT,
     );
-    expect(allEarly.text).toMatch(/Exits:\s+0 take-profit, 0 stop-loss, 3 closed early/);
+    expect(mixed.text).toMatch(/Exits:\s+1 take-profit, 0 stop-loss, 2 closed early/);
   });
 
-  it("admits when it recognised no exit label at all, and shows the wording", () => {
+  it("says exits are not reported, rather than reporting zeros as a finding", () => {
+    // Capital.com labels every close "Trade closed" and says nothing about what
+    // triggered it. Printing "0 stop-loss" from that reads as a fact about the
+    // trading when it is a fact about the data.
     const unknown = buildDailyReport(
       [
-        row("2026-09-23T14:00:00.000", "Silver", "-0.58", "Position closed by SL"),
-        row("2026-09-23T14:30:00.000", "Silver", "-0.60", "Position closed by SL"),
+        row("2026-09-23T14:00:00.000", "Silver", "-0.58", "Trade closed"),
+        row("2026-09-23T14:30:00.000", "Silver", "-0.60", "Trade closed"),
       ],
       NOW,
       CONTEXT,
     );
-    expect(unknown.text).toMatch(/Exits:\s+0 take-profit, 0 stop-loss, 2 closed early/);
-    expect(unknown.text).toContain('unrecognised labels: "Position closed by SL"');
+    expect(unknown.text).toContain('Exits:        not reported — every close is labelled "Trade closed"');
+    expect(unknown.text).not.toMatch(/0 stop-loss/);
   });
 
   it("stays quiet about labels once some are recognised", () => {
