@@ -48,10 +48,67 @@ function within(rows: BrokerTransaction[], fromMs: number, toMs: number): Broker
  * @param rows every transaction of at least the last 30 days
  * @param now  when the report is being written
  */
+/**
+ * The win rate an instrument needs just to break even, given its spread and the
+ * configured exits.
+ *
+ * Expectancy per trade is `w x takeProfit - (1 - w) x stopLoss - spread`, and
+ * setting that to zero gives `(stopLoss + spread) / (stopLoss + takeProfit)`.
+ *
+ * The number this produces is the single most useful fact about an instrument.
+ * With scalp's symmetric 0.3% exits, SMCI's measured 0.468% spread needs 128% —
+ * it cannot be profitable at any skill level, because the round trip costs more
+ * than the trade is trying to make. The same instrument under a 3% target and a
+ * 1.5% stop needs 43.7%, which is below what this account already achieves. The
+ * payoff ratio, not the strategy, is what makes the spread survivable.
+ *
+ * Returns null when the exits are not set, since there is nothing to solve.
+ */
+export function breakEvenWinRate(spreadPct: number, stopLossPercent: number, takeProfitPercent: number): number | null {
+  const denominator = stopLossPercent + takeProfitPercent;
+  if (!(denominator > 0)) return null;
+  return (stopLossPercent + spreadPct) / denominator;
+}
+
+/**
+ * Per-instrument spread, worst first, with what each would need to break even.
+ * Instruments needing more than 100% are named as impossible rather than left
+ * for the reader to notice.
+ */
+export function spreadSection(
+  spreads: Array<{ ticker: string; spreadPct: number; samples: number }>,
+  stopLossPercent: number,
+  takeProfitPercent: number
+): string[] {
+  if (spreads.length === 0) return [];
+  const lines = ["", "Cost of trading (measured spread, and the win rate it demands)"];
+  const worstFirst = [...spreads].sort((a, b) => b.spreadPct - a.spreadPct).slice(0, 8);
+  for (const s of worstFirst) {
+    const need = breakEvenWinRate(s.spreadPct, stopLossPercent, takeProfitPercent);
+    const needed =
+      need === null
+        ? "—"
+        : need >= 1
+          ? `needs ${Math.round(need * 100)}% — impossible`
+          : `needs ${Math.round(need * 100)}%`;
+    lines.push(`  ${s.ticker.padEnd(8)} spread ${s.spreadPct.toFixed(3)}%   ${needed}`);
+  }
+  return lines;
+}
+
 export function buildDailyReport(
   rows: BrokerTransaction[],
   now: Date,
-  context: { botRunning: boolean; dryRun: boolean; dailyTarget: number; modes?: string[] }
+  context: {
+    botRunning: boolean;
+    dryRun: boolean;
+    dailyTarget: number;
+    modes?: string[];
+    /** Measured spreads from the signal log, for the cost section. */
+    spreads?: Array<{ ticker: string; spreadPct: number; samples: number }>;
+    stopLossPercent?: number;
+    takeProfitPercent?: number;
+  }
 ): DailyReport {
   const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const DAY = 24 * 60 * 60 * 1000;
@@ -135,6 +192,11 @@ export function buildDailyReport(
 
   block("Last 7 days", week);
   block("Last 30 days", month);
+
+  lines.push("");
+  lines.push(
+    ...spreadSection(context.spreads ?? [], context.stopLossPercent ?? 0, context.takeProfitPercent ?? 0)
+  );
 
   lines.push("");
   lines.push(`Bot: ${context.botRunning ? "running" : "STOPPED"}${context.dryRun ? ", dry run (no real orders)" : ""}`);

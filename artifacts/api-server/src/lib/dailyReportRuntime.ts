@@ -1,5 +1,5 @@
 import { and, eq, gte, sql } from "drizzle-orm";
-import { db, notificationsTable } from "@workspace/db";
+import { db, notificationsTable, signalsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { getUserBrokerCredentials } from "./brokerCredentialsService";
 import { getBrokerTransactions } from "./broker";
@@ -52,7 +52,8 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
   if (!force && now.getUTCHours() < sendHourUtc()) return 0;
 
   const recipients = await db.execute(sql`
-    select c.user_id, c.running, c.dry_run, c.daily_profit_target
+    select c.user_id, c.running, c.dry_run, c.daily_profit_target,
+           c.stop_loss_percent, c.take_profit_percent
     from bot_config c
     join users u on u.id = c.user_id
     where u.suspended_at is null
@@ -78,11 +79,35 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
       const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
       const modes = await modesActiveBetween(userId, yesterdayStart, todayStart).catch(() => [] as string[]);
 
+      // Measured spread per instrument from the signal log. Recorded whenever a
+      // quote was fetched, so it reflects the moments the engine actually
+      // considered trading rather than an average over quiet hours.
+      const spreads = await db
+        .select({
+          ticker: signalsTable.ticker,
+          spreadPct: sql<number>`avg(${signalsTable.spreadPct})`,
+          samples: sql<number>`count(${signalsTable.spreadPct})`,
+        })
+        .from(signalsTable)
+        .where(and(eq(signalsTable.userId, userId), gte(signalsTable.createdAt, from), sql`${signalsTable.spreadPct} is not null`))
+        .groupBy(signalsTable.ticker)
+        .catch((err: unknown) => {
+          logger.warn({ err, userId }, "Could not read spreads for the morning report — omitting that section");
+          return [] as Array<{ ticker: string; spreadPct: number; samples: number }>;
+        });
+
       const report = buildDailyReport(rows, now, {
         modes,
         botRunning: Boolean(r["running"]),
         dryRun: Boolean(r["dry_run"]),
         dailyTarget: Number(r["daily_profit_target"] ?? 0),
+        spreads: spreads.map((x) => ({
+          ticker: x.ticker,
+          spreadPct: Number(x.spreadPct) * 100, // stored as a fraction, shown as a percent
+          samples: Number(x.samples),
+        })),
+        stopLossPercent: Number(r["stop_loss_percent"] ?? 0),
+        takeProfitPercent: Number(r["take_profit_percent"] ?? 0),
       });
 
       // notifyUser writes the in-app copy AND emails it — one path, so the

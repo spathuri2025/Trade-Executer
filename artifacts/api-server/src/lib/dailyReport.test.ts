@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDailyReport } from "./dailyReport";
+import { buildDailyReport, breakEvenWinRate, spreadSection } from "./dailyReport";
 import type { BrokerTransaction } from "./livePerformance";
 
 const row = (dateUtc: string, instrumentName: string, size: string, note = "Trade closed", transactionType = "TRADE"): BrokerTransaction => ({
@@ -149,5 +149,55 @@ describe("daily report", () => {
     expect(allLosing.text).toMatch(/Least bad:\s+GOLD −£1\.00/);
     expect(allLosing.text).toMatch(/Worst:\s+SMCI −£5\.00/);
     expect(allLosing.text).not.toContain("Best:");
+  });
+});
+
+describe("breakEvenWinRate", () => {
+  it("is the point where expectancy is exactly zero", () => {
+    // Symmetric 0.3% exits, no spread: a coin flip breaks even.
+    expect(breakEvenWinRate(0, 0.3, 0.3)).toBeCloseTo(0.5, 10);
+  });
+
+  it("shows scalp mode cannot survive a wide spread", () => {
+    // SMCI's measured 0.468% against 0.3% exits: more than 100%, so no win
+    // rate makes it profitable — the round trip costs more than the target.
+    expect(breakEvenWinRate(0.468, 0.3, 0.3)).toBeGreaterThan(1);
+  });
+
+  it("shows the same instrument becomes viable on a 2:1 payoff", () => {
+    // 3% target against a 1.5% stop: 43.7%, below what the account achieves.
+    expect(breakEvenWinRate(0.468, 1.5, 3)).toBeCloseTo(0.437, 3);
+  });
+
+  it("is null when no exits are set, since there is nothing to solve", () => {
+    expect(breakEvenWinRate(0.1, 0, 0)).toBeNull();
+  });
+});
+
+describe("spreadSection", () => {
+  const spreads = [
+    { ticker: "GOLD", spreadPct: 0.045, samples: 30 },
+    { ticker: "SMCI", spreadPct: 0.468, samples: 50 },
+    { ticker: "AAPL", spreadPct: 0.116, samples: 41 },
+  ];
+
+  it("puts the most expensive instrument first — that is the one to act on", () => {
+    const lines = spreadSection(spreads, 0.3, 0.3);
+    const tickers = lines.filter((l) => l.startsWith("  ")).map((l) => l.trim().split(/\s+/)[0]);
+    expect(tickers).toEqual(["SMCI", "AAPL", "GOLD"]);
+  });
+
+  it("names an impossible instrument as impossible rather than leaving it to be noticed", () => {
+    expect(spreadSection(spreads, 0.3, 0.3).join("\n")).toMatch(/SMCI.*needs \d+% — impossible/);
+  });
+
+  it("drops the impossible label once the payoff makes it viable", () => {
+    const text = spreadSection(spreads, 1.5, 3).join("\n");
+    expect(text).toMatch(/SMCI.*needs 44%/);
+    expect(text).not.toContain("impossible");
+  });
+
+  it("says nothing at all when no spread has been measured", () => {
+    expect(spreadSection([], 0.3, 0.3)).toEqual([]);
   });
 });

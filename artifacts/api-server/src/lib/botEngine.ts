@@ -1777,6 +1777,9 @@ async function runCycleUnlocked(
       };
       let tradeExecuted = false;
       let aiReason = decision.reason;
+      // Recorded on the signal below whether or not anything is traded: the
+      // spread is what decides which instruments can pay at all.
+      let spreadPct: number | null = null;
       if (decision.action !== "HOLD") {
         const { closing, quantity, positionValue } = planOrder(
           decision.action, c.ticker, held, c.currentPrice, cfg, accountBalance
@@ -1800,6 +1803,7 @@ async function runCycleUnlocked(
         // an already-open position — unlike marketClosed, which stays scoped
         // to brand-new entries only, per checkEntryQuote's own docs.
         const entryCheck = await checkEntryQuote(userId, credentials, c.ticker);
+        spreadPct = entryCheck.spreadPct;
         const marketClosed = opensNewPosition && entryCheck.marketClosed;
         // null minDealSize (unknown) falls back to 0 — "no minimum known,
         // allow the trade" — consistent with checkEntryQuote's own fail-open
@@ -1944,6 +1948,7 @@ async function runCycleUnlocked(
         aiReason,
         strategy: c.strategy,
         regime: c.regime,
+        spreadPct,
       });
       results.push({ ticker: c.ticker, signal: decision.action, tradeExecuted });
     }
@@ -1964,6 +1969,8 @@ async function runCycleUnlocked(
     const { ticker, signal, shortMa, longMa, currentPrice, expectedMovePct } = c;
     let tradeExecuted = false;
     let aiReason: string | null = null;
+    // Recorded on the signal below whether or not anything is traded.
+    let spreadPct: number | null = null;
 
     if (signal !== "HOLD") {
       let proceed = true;
@@ -2029,6 +2036,7 @@ async function runCycleUnlocked(
         // an already-open position — unlike marketClosed, which stays scoped
         // to brand-new entries only, per checkEntryQuote's own docs.
         const entryCheck = await checkEntryQuote(userId, credentials, ticker);
+        spreadPct = entryCheck.spreadPct;
         const marketClosed = opensNewPosition && entryCheck.marketClosed;
         // null minDealSize (unknown) falls back to 0 — "no minimum known,
         // allow the trade" — consistent with checkEntryQuote's own fail-open
@@ -2164,6 +2172,7 @@ async function runCycleUnlocked(
       aiReason,
       strategy: c.strategy,
       regime: c.regime,
+      spreadPct,
     });
     results.push({ ticker, signal, tradeExecuted });
   }

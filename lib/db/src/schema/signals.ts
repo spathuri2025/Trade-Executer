@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, numeric, real, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,6 +16,18 @@ export const signalsTable = pgTable("signals", {
   aiReason: text("ai_reason"),
   strategy: text("strategy", { enum: ["trend_following", "mean_reversion", "scalp"] }),
   regime: text("regime", { enum: ["trending", "ranging"] }),
+  /**
+   * The live round-trip spread when this signal was evaluated, as a percent of
+   * price. Null when no quote was fetched — a HOLD costs nothing to skip, so
+   * the engine does not spend a broker call on one.
+   *
+   * Recorded because spread decides which instruments can be profitable at all.
+   * With a 0.3% stop and target, SMCI's measured 0.468% spread needs a 128% win
+   * rate to break even — mathematically impossible — and until this column
+   * existed that could only be discovered by regexing the numbers out of
+   * rejection messages, which sees only the trades that were blocked.
+   */
+  spreadPct: real("spread_pct"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
