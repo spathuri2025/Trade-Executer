@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, instrumentsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
-import { AddInstrumentBody, DeleteInstrumentParams } from "@workspace/api-zod";
+import { AddInstrumentBody, DeleteInstrumentParams, UpdateInstrumentBody } from "@workspace/api-zod";
 import { getPlanLimits } from "../lib/planService";
 
 const router: IRouter = Router();
@@ -63,6 +63,50 @@ router.post("/instruments", async (req, res): Promise<void> => {
     name: instrument.name,
     enabled: instrument.enabled,
     addedAt: instrument.addedAt.toISOString(),
+  });
+});
+
+/**
+ * Enable or disable an instrument.
+ *
+ * Separate from DELETE on purpose. An instrument whose spread makes it
+ * unprofitable — SMCI needs a 128% win rate at a 0.3% target — is worth keeping
+ * in the list with its history rather than erased, so the decision can be
+ * revisited when the exits change. The engine reads `enabled` every cycle, so
+ * this takes effect on the next one without a restart.
+ */
+router.patch("/instruments/:id", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = DeleteInstrumentParams.safeParse({ id: parseInt(raw, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const body = UpdateInstrumentBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  // Scoped to the caller's own rows, exactly as DELETE is: the id alone must
+  // never be enough to touch another account's watchlist.
+  const [updated] = await db
+    .update(instrumentsTable)
+    .set({ enabled: body.data.enabled })
+    .where(and(eq(instrumentsTable.id, params.data.id), eq(instrumentsTable.userId, req.user!.id)))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "Instrument not found" });
+    return;
+  }
+
+  res.json({
+    id: updated.id,
+    ticker: updated.ticker,
+    name: updated.name,
+    enabled: updated.enabled,
+    addedAt: updated.addedAt.toISOString(),
   });
 });
 

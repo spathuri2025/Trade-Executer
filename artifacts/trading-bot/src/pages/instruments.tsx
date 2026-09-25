@@ -5,6 +5,7 @@ import {
   getListInstrumentsQueryKey,
   useAddInstrument,
   useDeleteInstrument,
+  useUpdateInstrument,
   useGetPlan,
   getGetPlanQueryKey
 } from "@workspace/api-client-react";
@@ -69,6 +70,21 @@ export default function Instruments() {
         toast({ title: "Instrument deleted" });
       }
     }
+  });
+
+  const toggleMutation = useUpdateInstrument({
+    mutation: {
+      onSuccess: (updated) => {
+        queryClient.invalidateQueries({ queryKey: getListInstrumentsQueryKey() });
+        toast({
+          title: `${updated.ticker} ${updated.enabled ? "enabled" : "disabled"}`,
+          description: updated.enabled
+            ? "The engine will consider it from the next cycle."
+            : "It stays in your list with its history, and the engine will skip it from the next cycle.",
+        });
+      },
+      onError: () => toast({ title: "Couldn't change that instrument", variant: "destructive" }),
+    },
   });
 
   const handleAdd = (e: React.FormEvent) => {
@@ -153,7 +169,15 @@ export default function Instruments() {
                         <span className="text-xs text-muted-foreground">
                           {inst.enabled ? "Enabled" : "Disabled"}
                         </span>
-                        <Switch checked={inst.enabled} disabled />
+                        <Switch
+                          checked={inst.enabled}
+                          onCheckedChange={(enabled) =>
+                            toggleMutation.mutate({ id: inst.id, data: { enabled } })
+                          }
+                          disabled={toggleMutation.isPending}
+                          aria-label={`${inst.enabled ? "Disable" : "Enable"} ${inst.ticker}`}
+                          data-testid={`toggle-instrument-${inst.ticker}`}
+                        />
                       </div>
                       <Button 
                         variant="ghost" 

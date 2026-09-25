@@ -107,6 +107,7 @@ import type {
   TradeIntelligenceReport,
   TradingProfile,
   TradingProfileList,
+  UpdateInstrumentInput,
   UpgradeRequestCreated,
   UpgradeRequestInput,
   UpgradeRequestQueue,
@@ -1910,6 +1911,80 @@ export const useAddInstrument = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAddInstrumentMutationOptions(options));
+    }
+
+export const getUpdateInstrumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/instruments/${id}`
+}
+
+/**
+ * A disabled instrument is left in the watchlist but not traded — the engine reads the flag every cycle, so a change takes effect on the next one with no restart. Deliberately separate from DELETE: an instrument whose spread makes it unprofitable is worth keeping visible, with its history intact, rather than erased.
+
+ * @summary Enable or disable an instrument
+ */
+export const updateInstrument = async (id: number,
+    updateInstrumentInput: UpdateInstrumentInput, options?: RequestInit): Promise<Instrument> => {
+
+  return customFetch<Instrument>(getUpdateInstrumentUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateInstrumentInput,)
+  }
+);}
+
+
+
+
+export const getUpdateInstrumentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInstrument>>, TError,{id: number;data: BodyType<UpdateInstrumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInstrument>>, TError,{id: number;data: BodyType<UpdateInstrumentInput>}, TContext> => {
+
+const mutationKey = ['updateInstrument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInstrument>>, {id: number;data: BodyType<UpdateInstrumentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateInstrument(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInstrumentMutationResult = NonNullable<Awaited<ReturnType<typeof updateInstrument>>>
+    export type UpdateInstrumentMutationBody = BodyType<UpdateInstrumentInput>
+    export type UpdateInstrumentMutationError = ErrorType<void>
+
+    /**
+ * @summary Enable or disable an instrument
+ */
+export const useUpdateInstrument = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInstrument>>, TError,{id: number;data: BodyType<UpdateInstrumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInstrument>>,
+        TError,
+        {id: number;data: BodyType<UpdateInstrumentInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateInstrumentMutationOptions(options));
     }
 
 export const getDeleteInstrumentUrl = (id: number,) => {

@@ -205,6 +205,7 @@ export * from './tradingProfileBarResolution';
 export * from './tradingProfileList';
 export * from './tradingProfileMinAiConfidence';
 export * from './tradingProfileStrategyMode';
+export * from './updateInstrumentInput';
 export * from './upgradeRequestCreated';
 export * from './upgradeRequestInput';
 export * from './upgradeRequestQueue';

@@ -510,6 +510,38 @@ paths:
                 $ref: "#/components/schemas/Instrument"
 
   /instruments/{id}:
+    patch:
+      operationId: updateInstrument
+      tags: [instruments]
+      summary: Enable or disable an instrument
+      description: >
+        A disabled instrument is left in the watchlist but not traded — the engine
+        reads the flag every cycle, so a change takes effect on the next one with no
+        restart. Deliberately separate from DELETE: an instrument whose spread makes
+        it unprofitable is worth keeping visible, with its history intact, rather
+        than erased.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInstrumentInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instrument"
+        "404":
+          description: No such instrument for this account
+
     delete:
       operationId: deleteInstrument
       tags: [instruments]
@@ -1986,6 +2018,14 @@ components:
             Which build is actually serving. Added 24 Sep 2026: three separate
             diagnoses that day had to infer the running version from the spacing
             of trading-cycle timestamps, because nothing reported it.
+
+    UpdateInstrumentInput:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the engine should trade this instrument.
 
     AuthCredentials:
       type: object

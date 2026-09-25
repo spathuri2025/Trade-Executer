@@ -55,6 +55,11 @@ export interface ReadinessStatus {
   build?: ReadinessStatusBuild;
 }
 
+export interface UpdateInstrumentInput {
+  /** Whether the engine should trade this instrument. */
+  enabled: boolean;
+}
+
 export interface AuthCredentials {
   email: string;
   password: string;

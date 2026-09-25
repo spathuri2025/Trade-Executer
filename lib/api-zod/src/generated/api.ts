@@ -714,6 +714,28 @@ export const AddInstrumentBody = zod.object({
 
 
 /**
+ * A disabled instrument is left in the watchlist but not traded — the engine reads the flag every cycle, so a change takes effect on the next one with no restart. Deliberately separate from DELETE: an instrument whose spread makes it unprofitable is worth keeping visible, with its history intact, rather than erased.
+
+ * @summary Enable or disable an instrument
+ */
+export const UpdateInstrumentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateInstrumentBody = zod.object({
+  "enabled": zod.boolean().describe('Whether the engine should trade this instrument.')
+})
+
+export const UpdateInstrumentResponse = zod.object({
+  "id": zod.number(),
+  "ticker": zod.string(),
+  "name": zod.string(),
+  "enabled": zod.boolean(),
+  "addedAt": zod.string().optional()
+})
+
+
+/**
  * @summary Remove instrument from watchlist
  */
 export const DeleteInstrumentParams = zod.object({
