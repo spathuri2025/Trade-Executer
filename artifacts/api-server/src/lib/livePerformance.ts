@@ -71,6 +71,18 @@ export interface LivePerformance {
    * already in the data and simply never counted.
    */
   exits: { takeProfit: number; stopLoss: number; closedEarly: number };
+  /**
+   * The distinct close labels that matched neither "take-profit" nor
+   * "stop-loss", up to five.
+   *
+   * Without this the exits count cannot be trusted: a label the parser does not
+   * recognise falls into "closed early" silently, and on 25 Sep 2026 that
+   * produced "0 stop-loss in 95 trades" for an account whose broker screen
+   * plainly showed a position closing at its stop price to the cent. A counter
+   * that cannot classify should say what it saw rather than quietly pick a
+   * bucket.
+   */
+  unrecognisedCloseLabels: string[];
 }
 
 const FEE_TYPES = new Set(["TRADE_COMMISSION", "TRADE_COMMISSION_GSL", "FX_COMMISSION", "INACTIVITY_FEE"]);
@@ -90,6 +102,8 @@ const round = (n: number) => Math.round(n * 100) / 100;
 
 export function summariseTransactions(rows: BrokerTransaction[]): LivePerformance {
   const trades: Array<{ dateUtc: string; instrumentName: string; result: number; closeType: CloseType }> = [];
+  /** The broker's raw wording per trade, kept only to report labels we failed to classify. */
+  const noteByTrade = new Map<(typeof trades)[number], string>();
   let funding = 0;
   let fees = 0;
   const dayNet = new Map<string, { net: number; trades: number }>();
@@ -116,12 +130,14 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
     if (row.transactionType === "TRADE") {
       // An opening leg carries no realised result; only closes are trades here.
       if (/open/i.test(row.note)) continue;
-      trades.push({
+      const trade = {
         dateUtc: row.dateUtc,
         instrumentName: row.instrumentName,
         result: amount,
         closeType: closeTypeFromNote(row.note),
-      });
+      };
+      trades.push(trade);
+      noteByTrade.set(trade, row.note ?? "");
       addDay(row.dateUtc, amount, true);
       addInstrument(row.instrumentName, amount, true);
     } else if (row.transactionType === "SWAP") {
@@ -137,10 +153,17 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
   }
 
   const exits = { takeProfit: 0, stopLoss: 0, closedEarly: 0 };
+  const unrecognised = new Set<string>();
   for (const t of trades) {
     if (t.closeType === "take-profit") exits.takeProfit += 1;
     else if (t.closeType === "stop-loss") exits.stopLoss += 1;
-    else exits.closedEarly += 1;
+    else {
+      exits.closedEarly += 1;
+      // Trimmed and capped: this is a diagnostic, and an empty note is itself
+      // worth seeing, reported as such rather than as a blank.
+      const label = (noteByTrade.get(t) ?? "").trim();
+      if (unrecognised.size < 5) unrecognised.add(label === "" ? "(no label)" : label);
+    }
   }
 
   const winners = trades.filter((t) => t.result > 0).map((t) => t.result);
@@ -176,6 +199,7 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
       .map(([instrumentName, i]) => ({ instrumentName, trades: i.trades, net: round(i.net) }))
       .sort((a, b) => a.net - b.net),
     exits,
+    unrecognisedCloseLabels: [...unrecognised],
     recentTrades: [...trades]
       .sort((a, b) => parseUtc(b.dateUtc).getTime() - parseUtc(a.dateUtc).getTime())
       .slice(0, 50)

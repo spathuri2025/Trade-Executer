@@ -101,6 +101,25 @@ describe("daily report", () => {
     expect(allEarly.text).toMatch(/Exits:\s+0 take-profit, 0 stop-loss, 3 closed early/);
   });
 
+  it("admits when it recognised no exit label at all, and shows the wording", () => {
+    const unknown = buildDailyReport(
+      [
+        row("2026-09-23T14:00:00.000", "Silver", "-0.58", "Position closed by SL"),
+        row("2026-09-23T14:30:00.000", "Silver", "-0.60", "Position closed by SL"),
+      ],
+      NOW,
+      CONTEXT,
+    );
+    expect(unknown.text).toMatch(/Exits:\s+0 take-profit, 0 stop-loss, 2 closed early/);
+    expect(unknown.text).toContain('unrecognised labels: "Position closed by SL"');
+  });
+
+  it("stays quiet about labels once some are recognised", () => {
+    // Recognising any means the parser is working; listing the rest would be
+    // noise in a report read every morning.
+    expect(report.text).not.toContain("unrecognised labels");
+  });
+
   it("does not call the only instrument traded the best one", () => {
     // 24 Sep 2026: the real report read "Best: SMCI −£2.17". SMCI was the only
     // instrument traded, so it was also the worst, and the label framed the

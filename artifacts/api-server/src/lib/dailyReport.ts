@@ -73,7 +73,13 @@ export function buildDailyReport(
   const exitsLine = (s: ReturnType<typeof summariseTransactions>): string => {
     const { takeProfit, stopLoss, closedEarly } = s.exits;
     const parts = [`${takeProfit} take-profit`, `${stopLoss} stop-loss`, `${closedEarly} closed early`];
-    return `  Exits:        ${parts.join(", ")}`;
+    let line = `  Exits:        ${parts.join(", ")}`;
+    // When nothing was recognised at all, the count is far more likely to be a
+    // parsing gap than a fact about the trading — say so, and show the wording.
+    if (takeProfit === 0 && stopLoss === 0 && closedEarly > 0 && s.unrecognisedCloseLabels.length > 0) {
+      line += `\n                (unrecognised labels: ${s.unrecognisedCloseLabels.map((l) => `"${l}"`).join(", ")})`;
+    }
+    return line;
   };
 
   const lines: string[] = [];

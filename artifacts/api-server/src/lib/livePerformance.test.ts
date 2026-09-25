@@ -72,6 +72,28 @@ describe("summariseTransactions", () => {
     expect(s.exits.takeProfit + s.exits.stopLoss + s.exits.closedEarly).toBe(s.closedTrades);
   });
 
+  it("reports the wording it could not classify, rather than silently bucketing it", () => {
+    // 25 Sep 2026: the report said "0 stop-loss in 95 trades" while the broker
+    // screen showed Silver closing at its stop price to the cent. The parser
+    // was wrong, not the trading, and nothing in the output admitted it.
+    const unknownWording = summariseTransactions([
+      row("2026-09-21T15:00:00.000", "Silver", "TRADE", "Position closed by SL", "-0.58"),
+      row("2026-09-21T15:10:00.000", "Silver", "TRADE", "Position closed by SL", "-0.60"),
+      row("2026-09-21T15:20:00.000", "GOLD", "TRADE", "", "0.31"),
+    ]);
+    expect(unknownWording.exits).toEqual({ takeProfit: 0, stopLoss: 0, closedEarly: 3 });
+    expect(unknownWording.unrecognisedCloseLabels).toEqual(["Position closed by SL", "(no label)"]);
+  });
+
+  it("reports nothing unrecognised when every label is understood", () => {
+    expect(s.unrecognisedCloseLabels).toEqual(["Trade closed"]);
+    const allKnown = summariseTransactions([
+      row("2026-09-21T15:00:00.000", "GOLD", "TRADE", "Trade closed: stop-loss", "-0.5"),
+      row("2026-09-21T15:10:00.000", "GOLD", "TRADE", "Trade closed: take-profit", "0.7"),
+    ]);
+    expect(allKnown.unrecognisedCloseLabels).toEqual([]);
+  });
+
   it("counts every close as early when none carries a label", () => {
     const plain = summariseTransactions([
       row("2026-09-21T15:00:00.000", "GOLD", "TRADE", "Trade closed", "0.10"),
