@@ -1,0 +1,88 @@
+# External uptime check for the trading engine.
+#
+# Why this exists, and why it runs HERE rather than in the app: the in-process
+# watchdog can tell you the database is unreachable or that a running bot has
+# stopped cycling, but it cannot report its own death. On 22 Sep 2026 the
+# database was unreachable for half an hour and nothing said so. A check that
+# lives in the same process as the thing it watches is not a check.
+#
+# GitHub Actions is the cheapest genuinely-external option here: no account to
+# create, no credentials, and it keeps running when Render does not.
+#
+# CADENCE AND COST. Actions bills each job rounded up to the minute, and a
+# private repo on the Free plan gets 2,000 minutes a month. Every 30 minutes is
+# ~1,440 runs a month, which fits with room to spare. Every 15 would be ~2,880
+# and would exceed it. Raise this to */15 or */5 only on a paid plan, or if this
+# repo is public (it should not be — it is a trading app).
+#
+# The cost of 30-minute checks is that an outage can go unnoticed for up to half
+# an hour. That is the same length as the September outage, so it is a real
+# improvement over nothing and an honest limitation to know about.
+
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  # Run by hand from the Actions tab. With simulate_failure set, it fails on
+  # purpose so you can prove the alert email actually arrives BEFORE an outage
+  # needs it — the same reason the app has a "Send test alert" button.
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: "Fail deliberately, to test that the alert reaches you"
+        type: boolean
+        default: false
+
+# A late run must not pile up behind an earlier one.
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  readyz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the app is serving and can reach its database
+        env:
+          # Override in Settings → Secrets and variables → Actions → Variables
+          # if the domain ever changes, rather than editing this file.
+          HEALTH_URL: ${{ vars.HEALTH_URL || 'https://www.tradebuzz.co.uk/api/readyz' }}
+          SIMULATE: ${{ inputs.simulate_failure }}
+        run: |
+          set -uo pipefail
+
+          if [ "${SIMULATE:-false}" = "true" ]; then
+            echo "::error::Simulated failure — if you are reading this in an email, the alert path works."
+            exit 1
+          fi
+
+          # Three attempts, 20s apart. A single blip is not an outage: Render's
+          # zero-downtime deploys swap instances, and paging on one bad response
+          # trains you to ignore the alert, which is worse than not having one.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o body.json -w '%{http_code}' --max-time 20 "$HEALTH_URL" || echo 000)
+            body=$(cat body.json 2>/dev/null || echo '<no body>')
+
+            if [ "$code" = "200" ] \
+               && printf '%s' "$body" | grep -q '"status":"ok"' \
+               && printf '%s' "$body" | grep -q '"status":"up"'; then
+              echo "Healthy on attempt $attempt: $body"
+              exit 0
+            fi
+
+            echo "Attempt $attempt failed — http=$code body=$body"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+
+          # 503 means the app is serving but cannot reach its database, which is
+          # exactly the September failure. Anything else means it is not serving.
+          echo "::error::TradeBuzz is not healthy. Last response: http=$code $body"
+          # Defaulted so the script is runnable (and testable) outside Actions,
+          # where this variable does not exist and `set -u` would abort here —
+          # losing the exit code the check exists to produce.
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          echo "Runbook: check Render (service up? recent deploy?), then Supabase" >> "$summary"
+          echo "(project uhyuculkxmkwgagnirle — Advisors, and whether the database is paused)." >> "$summary"
+          exit 1
