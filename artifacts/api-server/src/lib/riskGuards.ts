@@ -125,21 +125,29 @@ export function hardLimitBreach(marks: EquityMarks, equity: number, cfg: HardLim
 }
 
 /**
- * How many closed trades in a row, counting back from the most recent, lost
- * money. Trades must be oldest-first.
+ * The run of losing trades at the end of the list — how many, and what they
+ * cost. Trades must be oldest-first.
  *
- * A trade closed at exactly zero is treated as neither a win nor a loss and
- * ends the streak — it is not evidence the strategy is failing, and counting it
- * as a loss would halt on a flat scratch.
+ * The cost matters as much as the count. On 24 Sep 2026 the breaker halted
+ * trading for the rest of the day after six consecutive losses averaging £0.23:
+ * a total of about £1.38. Counting events treats six pennies and six percent
+ * alike, and only one of those is evidence that conditions have changed.
+ *
+ * A trade closed at exactly zero is neither a win nor a loss and ends the
+ * streak — it is not evidence of anything, and counting it as a loss would halt
+ * on a flat scratch.
  */
-export function trailingLossStreak(trades: Array<{ result: number }>): number {
-  let streak = 0;
+export function trailingLossStreak(trades: Array<{ result: number }>): { count: number; loss: number } {
+  let count = 0;
+  let loss = 0;
   for (let i = trades.length - 1; i >= 0; i -= 1) {
     const result = trades[i]?.result ?? 0;
-    if (result < 0) streak += 1;
-    else break;
+    if (result < 0) {
+      count += 1;
+      loss += -result; // positive magnitude, so the caller compares like with like
+    } else break;
   }
-  return streak;
+  return { count, loss };
 }
 
 /**

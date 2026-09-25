@@ -114,6 +114,7 @@ export default function Settings() {
     equityFloor: 0,
     maxWeeklyLossPercent: 5,
     maxConsecutiveLosses: 6,
+    minStreakLossPercent: 0.5,
     reentryCooldownMinutes: 5,
     onePositionPerInstrument: true,
     maxNetDirectionalPercent: 0,
@@ -150,6 +151,7 @@ export default function Settings() {
         equityFloor: botStatus.config.equityFloor ?? 0,
         maxWeeklyLossPercent: botStatus.config.maxWeeklyLossPercent ?? 5,
         maxConsecutiveLosses: botStatus.config.maxConsecutiveLosses ?? 6,
+        minStreakLossPercent: botStatus.config.minStreakLossPercent ?? 0.5,
         reentryCooldownMinutes: botStatus.config.reentryCooldownMinutes ?? 5,
         onePositionPerInstrument: botStatus.config.onePositionPerInstrument ?? true,
         maxNetDirectionalPercent: botStatus.config.maxNetDirectionalPercent ?? 0,
@@ -734,6 +736,23 @@ export default function Settings() {
               Counted from your broker&rsquo;s own closed trades, so stop-losses count too. The earliest
               sign that conditions have turned — the limits above only notice once the money is gone.
               0 disables.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="min-streak-loss">Streak must cost at least (%)</Label>
+            <Input
+              id="min-streak-loss"
+              type="number"
+              step="0.1"
+              min="0"
+              value={config.minStreakLossPercent}
+              onChange={(e) => setConfig({ ...config, minStreakLossPercent: Number(e.target.value) })}
+              data-testid="input-min-streak-loss"
+            />
+            <p className="text-xs text-muted-foreground">
+              A losing run only halts trading if it <em>also</em> cost this much of your account — both
+              conditions, not either. Without it, six losses of 23p stopped the bot for a whole day over
+              &pound;1.38. 0 counts losses alone.
             </p>
           </div>
           <div className="space-y-1.5">

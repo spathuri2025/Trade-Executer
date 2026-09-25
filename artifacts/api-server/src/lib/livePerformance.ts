@@ -60,6 +60,17 @@ export interface LivePerformance {
   byDay: Array<{ date: string; net: number; trades: number }>;
   byInstrument: Array<{ instrumentName: string; trades: number; net: number }>;
   recentTrades: Array<{ dateUtc: string; instrumentName: string; result: number; closeType: CloseType }>;
+  /**
+   * How trades ended, counted over the whole period.
+   *
+   * The question this answers: are the exit levels doing anything? On 24 Sep
+   * 2026 the average trade realised £0.21 on a £250 position — a 0.084% move,
+   * against a 1.5% stop and a 3% target. Either the targets are never reached
+   * or something closes positions long before them, and those are very
+   * different problems. Capital.com labels every close, so the answer was
+   * already in the data and simply never counted.
+   */
+  exits: { takeProfit: number; stopLoss: number; closedEarly: number };
 }
 
 const FEE_TYPES = new Set(["TRADE_COMMISSION", "TRADE_COMMISSION_GSL", "FX_COMMISSION", "INACTIVITY_FEE"]);
@@ -125,6 +136,13 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
     // performance and are deliberately left out.
   }
 
+  const exits = { takeProfit: 0, stopLoss: 0, closedEarly: 0 };
+  for (const t of trades) {
+    if (t.closeType === "take-profit") exits.takeProfit += 1;
+    else if (t.closeType === "stop-loss") exits.stopLoss += 1;
+    else exits.closedEarly += 1;
+  }
+
   const winners = trades.filter((t) => t.result > 0).map((t) => t.result);
   const losers = trades.filter((t) => t.result < 0).map((t) => t.result);
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -157,6 +175,7 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
     byInstrument: [...instrumentNet.entries()]
       .map(([instrumentName, i]) => ({ instrumentName, trades: i.trades, net: round(i.net) }))
       .sort((a, b) => a.net - b.net),
+    exits,
     recentTrades: [...trades]
       .sort((a, b) => parseUtc(b.dateUtc).getTime() - parseUtc(a.dateUtc).getTime())
       .slice(0, 50)

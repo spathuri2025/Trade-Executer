@@ -132,6 +132,9 @@ export const getBotStatusResponseConfigMaxWeeklyLossPercentMin = 0;
 
 export const getBotStatusResponseConfigMaxConsecutiveLossesMin = 0;
 
+export const getBotStatusResponseConfigMinStreakLossPercentMin = 0;
+export const getBotStatusResponseConfigMinStreakLossPercentMax = 100;
+
 export const getBotStatusResponseConfigReentryCooldownMinutesMin = 0;
 
 export const getBotStatusResponseConfigMaxNetDirectionalPercentMin = 0;
@@ -171,6 +174,7 @@ export const GetBotStatusResponse = zod.object({
   "equityFloor": zod.number().min(getBotStatusResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(getBotStatusResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
   "maxConsecutiveLosses": zod.number().min(getBotStatusResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "minStreakLossPercent": zod.number().min(getBotStatusResponseConfigMinStreakLossPercentMin).max(getBotStatusResponseConfigMinStreakLossPercentMax).optional().describe('A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.'),
   "reentryCooldownMinutes": zod.number().min(getBotStatusResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(getBotStatusResponseConfigMaxNetDirectionalPercentMin).max(getBotStatusResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
@@ -207,6 +211,9 @@ export const startBotResponseConfigEquityFloorMin = 0;
 export const startBotResponseConfigMaxWeeklyLossPercentMin = 0;
 
 export const startBotResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const startBotResponseConfigMinStreakLossPercentMin = 0;
+export const startBotResponseConfigMinStreakLossPercentMax = 100;
 
 export const startBotResponseConfigReentryCooldownMinutesMin = 0;
 
@@ -247,6 +254,7 @@ export const StartBotResponse = zod.object({
   "equityFloor": zod.number().min(startBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(startBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
   "maxConsecutiveLosses": zod.number().min(startBotResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "minStreakLossPercent": zod.number().min(startBotResponseConfigMinStreakLossPercentMin).max(startBotResponseConfigMinStreakLossPercentMax).optional().describe('A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.'),
   "reentryCooldownMinutes": zod.number().min(startBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(startBotResponseConfigMaxNetDirectionalPercentMin).max(startBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
@@ -283,6 +291,9 @@ export const stopBotResponseConfigEquityFloorMin = 0;
 export const stopBotResponseConfigMaxWeeklyLossPercentMin = 0;
 
 export const stopBotResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const stopBotResponseConfigMinStreakLossPercentMin = 0;
+export const stopBotResponseConfigMinStreakLossPercentMax = 100;
 
 export const stopBotResponseConfigReentryCooldownMinutesMin = 0;
 
@@ -323,6 +334,7 @@ export const StopBotResponse = zod.object({
   "equityFloor": zod.number().min(stopBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(stopBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
   "maxConsecutiveLosses": zod.number().min(stopBotResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "minStreakLossPercent": zod.number().min(stopBotResponseConfigMinStreakLossPercentMin).max(stopBotResponseConfigMinStreakLossPercentMax).optional().describe('A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.'),
   "reentryCooldownMinutes": zod.number().min(stopBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(stopBotResponseConfigMaxNetDirectionalPercentMin).max(stopBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
@@ -359,6 +371,9 @@ export const resumeBotResponseConfigEquityFloorMin = 0;
 export const resumeBotResponseConfigMaxWeeklyLossPercentMin = 0;
 
 export const resumeBotResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const resumeBotResponseConfigMinStreakLossPercentMin = 0;
+export const resumeBotResponseConfigMinStreakLossPercentMax = 100;
 
 export const resumeBotResponseConfigReentryCooldownMinutesMin = 0;
 
@@ -399,6 +414,7 @@ export const ResumeBotResponse = zod.object({
   "equityFloor": zod.number().min(resumeBotResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(resumeBotResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
   "maxConsecutiveLosses": zod.number().min(resumeBotResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "minStreakLossPercent": zod.number().min(resumeBotResponseConfigMinStreakLossPercentMin).max(resumeBotResponseConfigMinStreakLossPercentMax).optional().describe('A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.'),
   "reentryCooldownMinutes": zod.number().min(resumeBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(resumeBotResponseConfigMaxNetDirectionalPercentMin).max(resumeBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
@@ -436,6 +452,9 @@ export const updateBotConfigBodyMaxWeeklyLossPercentMin = 0;
 
 export const updateBotConfigBodyMaxConsecutiveLossesMin = 0;
 
+export const updateBotConfigBodyMinStreakLossPercentMin = 0;
+export const updateBotConfigBodyMinStreakLossPercentMax = 100;
+
 export const updateBotConfigBodyReentryCooldownMinutesMin = 0;
 
 export const updateBotConfigBodyMaxNetDirectionalPercentMin = 0;
@@ -470,6 +489,7 @@ export const UpdateBotConfigBody = zod.object({
   "equityFloor": zod.number().min(updateBotConfigBodyEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(updateBotConfigBodyMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
   "maxConsecutiveLosses": zod.number().min(updateBotConfigBodyMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "minStreakLossPercent": zod.number().min(updateBotConfigBodyMinStreakLossPercentMin).max(updateBotConfigBodyMinStreakLossPercentMax).optional().describe('A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.'),
   "reentryCooldownMinutes": zod.number().min(updateBotConfigBodyReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(updateBotConfigBodyMaxNetDirectionalPercentMin).max(updateBotConfigBodyMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
@@ -495,6 +515,9 @@ export const updateBotConfigResponseConfigEquityFloorMin = 0;
 export const updateBotConfigResponseConfigMaxWeeklyLossPercentMin = 0;
 
 export const updateBotConfigResponseConfigMaxConsecutiveLossesMin = 0;
+
+export const updateBotConfigResponseConfigMinStreakLossPercentMin = 0;
+export const updateBotConfigResponseConfigMinStreakLossPercentMax = 100;
 
 export const updateBotConfigResponseConfigReentryCooldownMinutesMin = 0;
 
@@ -535,6 +558,7 @@ export const UpdateBotConfigResponse = zod.object({
   "equityFloor": zod.number().min(updateBotConfigResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(updateBotConfigResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
   "maxConsecutiveLosses": zod.number().min(updateBotConfigResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "minStreakLossPercent": zod.number().min(updateBotConfigResponseConfigMinStreakLossPercentMin).max(updateBotConfigResponseConfigMinStreakLossPercentMax).optional().describe('A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.'),
   "reentryCooldownMinutes": zod.number().min(updateBotConfigResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(updateBotConfigResponseConfigMaxNetDirectionalPercentMin).max(updateBotConfigResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
@@ -1429,6 +1453,9 @@ export const activateTradingProfileResponseConfigMaxWeeklyLossPercentMin = 0;
 
 export const activateTradingProfileResponseConfigMaxConsecutiveLossesMin = 0;
 
+export const activateTradingProfileResponseConfigMinStreakLossPercentMin = 0;
+export const activateTradingProfileResponseConfigMinStreakLossPercentMax = 100;
+
 export const activateTradingProfileResponseConfigReentryCooldownMinutesMin = 0;
 
 export const activateTradingProfileResponseConfigMaxNetDirectionalPercentMin = 0;
@@ -1467,6 +1494,7 @@ export const ActivateTradingProfileResponse = zod.object({
   "equityFloor": zod.number().min(activateTradingProfileResponseConfigEquityFloorMin).optional().describe('The bot must not trade when account equity is at or below this figure (account currency). The only limit here that is absolute rather than a percentage of a baseline that re-bases each day. 0 disables.'),
   "maxWeeklyLossPercent": zod.number().min(activateTradingProfileResponseConfigMaxWeeklyLossPercentMin).optional().describe('Halts the engine when equity falls this far below the week\'s opening equity (ISO week, Monday-based). A resume does NOT hand back a fresh weekly allowance. 0 disables.'),
   "maxConsecutiveLosses": zod.number().min(activateTradingProfileResponseConfigMaxConsecutiveLossesMin).optional().describe('Halts the engine after this many closed trades in a row lost money, counted from the broker\'s own history. Resuming resets the count. 0 disables.'),
+  "minStreakLossPercent": zod.number().min(activateTradingProfileResponseConfigMinStreakLossPercentMin).max(activateTradingProfileResponseConfigMinStreakLossPercentMax).optional().describe('A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.'),
   "reentryCooldownMinutes": zod.number().min(activateTradingProfileResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(activateTradingProfileResponseConfigMaxNetDirectionalPercentMin).max(activateTradingProfileResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),

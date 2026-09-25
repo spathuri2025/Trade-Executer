@@ -127,6 +127,8 @@ export interface BotConfig {
   maxWeeklyLossPercent: number;
   /** Halt after this many losing closes in a row; 0 = off. */
   maxConsecutiveLosses: number;
+  /** A losing streak must also have cost this much, as a percent of equity, before it halts; 0 = count alone. */
+  minStreakLossPercent: number;
   /** Minimum minutes between opening positions in the same instrument; 0 = off. */
   reentryCooldownMinutes: number;
   /** Refuse a same-side order in an instrument already held. */
@@ -171,6 +173,7 @@ const DEFAULT_CONFIG: BotConfig = {
   equityFloor: 0,
   maxWeeklyLossPercent: 5,
   maxConsecutiveLosses: 6,
+  minStreakLossPercent: 0.5,
   reentryCooldownMinutes: 5,
   onePositionPerInstrument: true,
   maxNetDirectionalPercent: 0,
@@ -343,13 +346,13 @@ async function haltTrading(userId: number, state: BotState, reason: string, titl
  * Returns null when the history can't be read — an unknown streak must not halt
  * a bot, and the equity limits still bound the loss either way.
  */
-const lossStreakCache = new Map<number, { at: number; streak: number }>();
+const lossStreakCache = new Map<number, { at: number; streak: { count: number; loss: number } }>();
 const LOSS_STREAK_TTL_MS = 60_000;
 
 async function consecutiveLossStreak(
   userId: number,
   credentials: UserBrokerCredentials
-): Promise<number | null> {
+): Promise<{ count: number; loss: number } | null> {
   const cached = lossStreakCache.get(userId);
   if (cached && Date.now() - cached.at < LOSS_STREAK_TTL_MS) return cached.streak;
 
@@ -410,6 +413,7 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     equityFloor: row.equityFloor,
     maxWeeklyLossPercent: row.maxWeeklyLossPercent,
     maxConsecutiveLosses: row.maxConsecutiveLosses,
+    minStreakLossPercent: row.minStreakLossPercent,
     reentryCooldownMinutes: row.reentryCooldownMinutes,
     onePositionPerInstrument: row.onePositionPerInstrument,
     maxNetDirectionalPercent: row.maxNetDirectionalPercent,
@@ -1335,13 +1339,34 @@ async function runCycleUnlocked(
   // trades table would miss them.
   if (state.running && !dryRun && cfg.maxConsecutiveLosses > 0) {
     const streak = await consecutiveLossStreak(userId, credentials);
-    if (streak !== null && streak >= cfg.maxConsecutiveLosses) {
+    // Both conditions, not either. A streak must be long AND have cost
+    // something: on 24 Sep 2026 six losses averaging £0.23 halted trading for
+    // the rest of the day over £1.38, because the breaker counted events and
+    // ignored money. A cost floor of 0 restores counting alone.
+    const equity = account?.total ?? null;
+    const costFloor =
+      cfg.minStreakLossPercent > 0 && equity !== null && equity > 0
+        ? (equity * cfg.minStreakLossPercent) / 100
+        : 0;
+    if (streak !== null && streak.count >= cfg.maxConsecutiveLosses && streak.loss >= costFloor) {
       const reason =
-        `${streak} trades in a row closed at a loss, reaching your limit of ${cfg.maxConsecutiveLosses}. ` +
-        `Trading is halted until you resume it — a losing streak this long usually means conditions have changed, not that the next trade is due to win.`;
-      logger.error({ userId, streak, limit: cfg.maxConsecutiveLosses }, "Losing-streak breaker TRIPPED — stopping bot");
+        `${streak.count} trades in a row closed at a loss, costing ${formatMoney(streak.loss, account?.currency ?? null)} ` +
+        `— your limit is ${cfg.maxConsecutiveLosses} losses in a row. Trading is halted until you resume it: a losing run ` +
+        `this long usually means conditions have changed, not that the next trade is due to win.`;
+      logger.error(
+        { userId, streak: streak.count, loss: streak.loss, costFloor, limit: cfg.maxConsecutiveLosses },
+        "Losing-streak breaker TRIPPED — stopping bot"
+      );
       await haltTrading(userId, state, reason, "Your trading bot was stopped after a run of losing trades");
       return results;
+    }
+    if (streak !== null && streak.count >= cfg.maxConsecutiveLosses) {
+      // Long enough to trip on count, cheap enough not to. Worth a log line:
+      // this is the case that used to halt the day.
+      logger.info(
+        { userId, streak: streak.count, loss: streak.loss, costFloor },
+        "Losing streak reached its count but not its cost floor — continuing"
+      );
     }
   }
 

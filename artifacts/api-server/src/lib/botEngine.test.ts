@@ -238,6 +238,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     equityFloor: 0,
     maxWeeklyLossPercent: 0,
     maxConsecutiveLosses: 0,
+    minStreakLossPercent: 0,
     reentryCooldownMinutes: 0,
     onePositionPerInstrument: false,
     maxNetDirectionalPercent: 0,
@@ -1348,13 +1349,77 @@ describe("losing-streak breaker", () => {
       close(20, "-0.40"),
     ]);
 
-    await startLiveBot({ maxConsecutiveLosses: 3, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await startLiveBot({
+      maxConsecutiveLosses: 3,
+      minStreakLossPercent: 0,
+      maxDailyLossPercent: 0,
+      maxIntradayDrawdownPercent: 0,
+    });
     await engine.runCycle(TEST_USER_ID);
 
     const status = await engine.getBotStatus(TEST_USER_ID);
     expect(status.circuitBreaker.tripped).toBe(true);
     expect(status.circuitBreaker.reason).toMatch(/row/i);
     expect(status.running).toBe(false);
+  });
+
+  it("does NOT halt on a long run of trivial losses", async () => {
+    // 24 Sep 2026: six losses averaging £0.23 stopped the bot for the rest of
+    // the day over £1.38 on a £5,000 account. 0.5% of equity is £25.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerTransactions.mockResolvedValue([
+      close(60, "-0.23"), close(50, "-0.23"), close(40, "-0.23"),
+      close(30, "-0.23"), close(20, "-0.23"), close(10, "-0.23"),
+    ]);
+
+    await startLiveBot({
+      maxConsecutiveLosses: 6,
+      minStreakLossPercent: 0.5,
+      maxDailyLossPercent: 0,
+      maxIntradayDrawdownPercent: 0,
+    });
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+  });
+
+  it("halts when the same run of losses actually costs something", async () => {
+    // Same six losses, at the size the 1.5% stop implies: 6 x £5 = £30, past
+    // the £25 floor.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerTransactions.mockResolvedValue([
+      close(60, "-5"), close(50, "-5"), close(40, "-5"),
+      close(30, "-5"), close(20, "-5"), close(10, "-5"),
+    ]);
+
+    await startLiveBot({
+      maxConsecutiveLosses: 6,
+      minStreakLossPercent: 0.5,
+      maxDailyLossPercent: 0,
+      maxIntradayDrawdownPercent: 0,
+    });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/costing/i);
+  });
+
+  it("counts alone when the cost floor is zero", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerTransactions.mockResolvedValue([
+      close(30, "-0.01"), close(20, "-0.01"), close(10, "-0.01"),
+    ]);
+
+    await startLiveBot({
+      maxConsecutiveLosses: 3,
+      minStreakLossPercent: 0,
+      maxDailyLossPercent: 0,
+      maxIntradayDrawdownPercent: 0,
+    });
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(true);
   });
 
   it("does not halt when the streak is broken by a win", async () => {

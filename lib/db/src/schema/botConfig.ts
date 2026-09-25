@@ -122,6 +122,16 @@ export const botConfigTable = pgTable("bot_config", {
    */
   maxConsecutiveLosses: integer("max_consecutive_losses").notNull().default(6),
   /**
+   * A losing streak must ALSO have cost at least this percent of account equity
+   * before it halts trading. 0 = count alone, the original behaviour.
+   *
+   * On 24 Sep 2026 six consecutive losses averaging £0.23 stopped the bot for
+   * the rest of the day — a total of £1.38 on a £5,000 account. Counting events
+   * treats six pennies and six percent alike, and only one of those is evidence
+   * that conditions have changed.
+   */
+  minStreakLossPercent: real("min_streak_loss_percent").notNull().default(0.5),
+  /**
    * Minimum minutes between opening positions in the SAME instrument. 0 = off.
    *
    * On 24 Sep 2026 a mode switch re-armed the cycle timer, firing a second

@@ -64,6 +64,18 @@ export function buildDailyReport(
   const dayLabel = utcDay(new Date(todayStart - DAY));
   const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
 
+  /**
+   * How trades ended. The line that says whether the exit levels are doing
+   * anything at all: on 24 Sep 2026 the average trade realised £0.21 on a £250
+   * position — 0.084%, against a 1.5% stop and a 3% target — so neither level
+   * was being reached and nobody could see that from the report.
+   */
+  const exitsLine = (s: ReturnType<typeof summariseTransactions>): string => {
+    const { takeProfit, stopLoss, closedEarly } = s.exits;
+    const parts = [`${takeProfit} take-profit`, `${stopLoss} stop-loss`, `${closedEarly} closed early`];
+    return `  Exits:        ${parts.join(", ")}`;
+  };
+
   const lines: string[] = [];
   lines.push(`Yesterday (${dayLabel})`);
   if (yesterday.closedTrades === 0) {
@@ -79,6 +91,7 @@ export function buildDailyReport(
           : `  Target:       ${plainMoney(context.dailyTarget, currency)} — short by ${plainMoney(short, currency)}`
       );
     }
+    lines.push(exitsLine(yesterday));
   }
 
   const block = (name: string, s: ReturnType<typeof summariseTransactions>) => {
@@ -91,6 +104,7 @@ export function buildDailyReport(
     lines.push(`  Result:       ${money(s.netResult, currency)}   (per trading day ${money(s.averagePerTradingDay, currency)})`);
     lines.push(`  Trades:       ${s.closedTrades}   win rate ${pct(s.winRate)}`);
     lines.push(`  Average win:  ${money(s.averageWin, currency)}      Average loss: ${money(s.averageLoss, currency)}`);
+    lines.push(exitsLine(s));
     lines.push(`  Costs:        funding ${money(s.funding, currency)}, fees ${money(s.fees, currency)}`);
     if (s.byInstrument.length === 1) {
       // One instrument is neither best nor worst. Labelling it "Best" framed a

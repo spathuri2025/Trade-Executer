@@ -108,19 +108,27 @@ describe("trailingLossStreak", () => {
   const t = (...results: number[]) => results.map((result) => ({ result }));
 
   it("counts only the losses at the end", () => {
-    expect(trailingLossStreak(t(-1, -1, 5, -1, -1, -1))).toBe(3);
+    expect(trailingLossStreak(t(-1, -1, 5, -1, -1, -1))).toEqual({ count: 3, loss: 3 });
+  });
+
+  it("adds up what the streak cost, not just how long it is", () => {
+    // Six losses of 23p is £1.38 — the 24 Sep 2026 case, where halting for the
+    // day was a wild over-reaction to the money actually lost.
+    const { count, loss } = trailingLossStreak(t(-0.23, -0.23, -0.23, -0.23, -0.23, -0.23));
+    expect(count).toBe(6);
+    expect(loss).toBeCloseTo(1.38, 10);
   });
 
   it("is zero when the last trade won", () => {
-    expect(trailingLossStreak(t(-1, -1, -1, 0.5))).toBe(0);
+    expect(trailingLossStreak(t(-1, -1, -1, 0.5))).toEqual({ count: 0, loss: 0 });
   });
 
   it("treats a scratch as ending the streak", () => {
-    expect(trailingLossStreak(t(-1, -1, 0, -1))).toBe(1);
+    expect(trailingLossStreak(t(-1, -1, 0, -1))).toEqual({ count: 1, loss: 1 });
   });
 
   it("is zero with no trades", () => {
-    expect(trailingLossStreak([])).toBe(0);
+    expect(trailingLossStreak([])).toEqual({ count: 0, loss: 0 });
   });
 });
 

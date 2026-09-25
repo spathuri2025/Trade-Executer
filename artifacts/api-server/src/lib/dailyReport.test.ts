@@ -82,6 +82,25 @@ describe("daily report", () => {
     expect(report.text).toMatch(/Worst:\s+SMCI/);
   });
 
+  it("says how trades ended, so an exit level that never fires is visible", () => {
+    // Yesterday's three closes: one take-profit, one stop-loss, one plain.
+    expect(report.text).toMatch(/Exits:\s+1 take-profit, 1 stop-loss, 1 closed early/);
+  });
+
+  it("makes it obvious when no trade ever reaches its target", () => {
+    // The 24 Sep 2026 pattern: everything closed early, neither level reached.
+    const allEarly = buildDailyReport(
+      [
+        row("2026-09-23T14:00:00.000", "GOLD", "0.21"),
+        row("2026-09-23T14:30:00.000", "GOLD", "-0.23"),
+        row("2026-09-23T15:00:00.000", "US500", "0.19"),
+      ],
+      NOW,
+      CONTEXT,
+    );
+    expect(allEarly.text).toMatch(/Exits:\s+0 take-profit, 0 stop-loss, 3 closed early/);
+  });
+
   it("does not call the only instrument traded the best one", () => {
     // 24 Sep 2026: the real report read "Best: SMCI −£2.17". SMCI was the only
     // instrument traded, so it was also the worst, and the label framed the

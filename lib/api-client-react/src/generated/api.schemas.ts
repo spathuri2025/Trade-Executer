@@ -240,6 +240,12 @@ export interface BotConfig {
      */
   maxConsecutiveLosses?: number;
   /**
+     * A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.
+     * @minimum 0
+     * @maximum 100
+     */
+  minStreakLossPercent?: number;
+  /**
      * Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.
      * @minimum 0
      */
@@ -425,6 +431,12 @@ export interface BotConfigInput {
      * @minimum 0
      */
   maxConsecutiveLosses?: number;
+  /**
+     * A losing streak must ALSO have cost at least this percent of account equity before it halts trading. Both conditions, not either. On 24 Sep 2026 six consecutive losses averaging 23p stopped the bot for the rest of the day over GBP 1.38 on a GBP 5,000 account, because the breaker counted events and ignored money. 0 = count alone.
+     * @minimum 0
+     * @maximum 100
+     */
+  minStreakLossPercent?: number;
   /**
      * Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.
      * @minimum 0

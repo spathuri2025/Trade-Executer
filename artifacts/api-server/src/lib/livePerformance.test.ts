@@ -66,6 +66,20 @@ describe("summariseTransactions", () => {
     expect(s.recentTrades.find((t) => t.result === -0.4)?.closeType).toBe("stop-loss");
   });
 
+  it("counts how trades ended, which is what says whether the exit levels do anything", () => {
+    // Two take-profits, one stop-loss, two closed some other way.
+    expect(s.exits).toEqual({ takeProfit: 2, stopLoss: 1, closedEarly: 2 });
+    expect(s.exits.takeProfit + s.exits.stopLoss + s.exits.closedEarly).toBe(s.closedTrades);
+  });
+
+  it("counts every close as early when none carries a label", () => {
+    const plain = summariseTransactions([
+      row("2026-09-21T15:00:00.000", "GOLD", "TRADE", "Trade closed", "0.10"),
+      row("2026-09-21T15:05:00.000", "GOLD", "TRADE", "Trade closed", "-0.10"),
+    ]);
+    expect(plain.exits).toEqual({ takeProfit: 0, stopLoss: 0, closedEarly: 2 });
+  });
+
   it("is empty and honest with no history", () => {
     const empty = summariseTransactions([]);
     expect(empty.closedTrades).toBe(0);
