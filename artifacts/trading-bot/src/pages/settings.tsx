@@ -945,12 +945,19 @@ export default function Settings() {
                   value={config.riskPerTradePercent}
                   onChange={(e) => setConfig({ ...config, riskPerTradePercent: Number(e.target.value) })}
                   className="font-mono"
-                  min={0} max={10} step={0.1}
+                  // 100 matches Max Position Size, which caps the same number.
+                  // This was 10 while that allowed 100, so the browser blocked a
+                  // 25% trade before the request was sent — a limit nothing in
+                  // the contract, the engine or the database actually held.
+                  min={0} max={100} step={0.1}
                   data-testid="input-risk-per-trade"
                 />
                 <p className="text-xs text-muted-foreground">
                   {config.riskPerTradePercent > 0
-                    ? `Sizes position to ${config.riskPerTradePercent}% of account. Set 0 to use fixed amount.`
+                    ? `Sizes each position to ${config.riskPerTradePercent}% of your account` +
+                      (config.maxPositionSizePercent > 0 && config.maxPositionSizePercent < config.riskPerTradePercent
+                        ? ` — but Max Position Size clamps it to ${config.maxPositionSizePercent}%, so that is what you will actually get.`
+                        : ". Set 0 to use a fixed amount instead.")
                     : "Using fixed Trade Amount below."}
                 </p>
               </div>
