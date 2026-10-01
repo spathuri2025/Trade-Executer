@@ -4,6 +4,7 @@ import { UpdateBotConfigBody } from "@workspace/api-zod";
 import { getBrokerAccount } from "../lib/broker";
 import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
 import { getPlanLimits } from "../lib/planService";
+import { impossibleSettings } from "../lib/riskGuards";
 
 const router: IRouter = Router();
 
@@ -70,6 +71,18 @@ router.patch("/bot/config", async (req, res): Promise<void> => {
     res.status(402).json({
       error: "AI trade modes aren't included in your current plan. Upgrade to use them.",
     });
+    return;
+  }
+
+  // Refuse a combination under which the engine could never open a position.
+  // Checked against the MERGED config, since this is a PATCH: raising the trade
+  // size alone is the usual way into this, and the cap it conflicts with is not
+  // in the body. Saving it would leave a bot that cycles, logs signals and
+  // trades nothing, which reads as a broken engine rather than a setting.
+  const current = await getBotStatus(req.user!.id);
+  const conflicts = impossibleSettings({ ...current.config, ...parsed.data });
+  if (conflicts.length > 0) {
+    res.status(400).json({ error: conflicts.join(" ") });
     return;
   }
 

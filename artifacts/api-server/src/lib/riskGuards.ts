@@ -164,3 +164,50 @@ export function withinCooldown(lastOrderAt: Date | null, now: Date, cooldownMinu
   if (cooldownMinutes <= 0 || lastOrderAt === null) return false;
   return now.getTime() - lastOrderAt.getTime() < cooldownMinutes * 60_000;
 }
+
+/**
+ * Settings combinations under which the engine can never open a position.
+ *
+ * Every exposure cap is checked against the size of the order being proposed,
+ * so a cap BELOW that size refuses the very first trade and every one after it.
+ * The bot then runs, cycles, logs signals and does nothing, which looks exactly
+ * like a broken engine rather than a setting.
+ *
+ * This is the third time this shape of mistake has cost a morning: Max
+ * Concurrent Positions saved as 0 (which means unlimited), Take-Profit saved as
+ * 0 (which means disabled), and now a 25% position against a 15% net-direction
+ * cap. In each case the value was accepted, looked deliberate, and silently did
+ * the opposite of what was intended.
+ *
+ * Returns one plain message per conflict, naming both fields and the fix.
+ */
+export function impossibleSettings(cfg: {
+  riskPerTradePercent: number;
+  maxPositionSizePercent: number;
+  maxInstrumentExposurePercent: number;
+  maxTotalExposurePercent: number;
+  maxNetDirectionalPercent: number;
+}): string[] {
+  // What one order will actually be worth, as a percent of equity: the risk
+  // setting, clamped by the per-order cap. Mirrors sizePosition().
+  const base = cfg.riskPerTradePercent > 0 ? cfg.riskPerTradePercent : 0;
+  const size = cfg.maxPositionSizePercent > 0 ? Math.min(base, cfg.maxPositionSizePercent) : base;
+  if (size <= 0) return []; // sizing from a fixed amount; percentages do not apply
+
+  const round = (n: number) => Number(n.toFixed(2));
+  const conflicts: string[] = [];
+  const check = (cap: number, name: string) => {
+    // A cap of 0 is "disabled" everywhere in this config, not "allow nothing".
+    if (cap > 0 && cap < size) {
+      conflicts.push(
+        `${name} is ${round(cap)}% but each trade is ${round(size)}% of the account, ` +
+          `so no position could ever open. Raise ${name} to at least ${round(size)}%, or lower the trade size.`
+      );
+    }
+  };
+
+  check(cfg.maxNetDirectionalPercent, "Max net direction");
+  check(cfg.maxTotalExposurePercent, "Max total exposure");
+  check(cfg.maxInstrumentExposurePercent, "Max exposure per instrument");
+  return conflicts;
+}

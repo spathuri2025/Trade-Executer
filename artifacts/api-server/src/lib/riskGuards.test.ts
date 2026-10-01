@@ -5,6 +5,7 @@ import {
   hardLimitBreach,
   trailingLossStreak,
   withinCooldown,
+  impossibleSettings,
   type EquityMarks,
 } from "./riskGuards";
 
@@ -149,5 +150,64 @@ describe("withinCooldown", () => {
 
   it("allows an instrument that has never been traded", () => {
     expect(withinCooldown(null, now, 5)).toBe(false);
+  });
+});
+
+describe("impossibleSettings", () => {
+  const base = {
+    riskPerTradePercent: 5,
+    maxPositionSizePercent: 25,
+    maxInstrumentExposurePercent: 25,
+    maxTotalExposurePercent: 75,
+    maxNetDirectionalPercent: 15,
+  };
+
+  it("passes a coherent set", () => {
+    expect(impossibleSettings(base)).toEqual([]);
+  });
+
+  it("catches a 25% trade against a 15% net-direction cap", () => {
+    // 1 Oct 2026: raising risk to 25% without raising the net cap would have
+    // refused every order while the bot cycled and logged signals, looking
+    // broken rather than misconfigured.
+    const conflicts = impossibleSettings({ ...base, riskPerTradePercent: 25 });
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toContain("Max net direction is 15%");
+    expect(conflicts[0]).toContain("each trade is 25%");
+    expect(conflicts[0]).toContain("at least 25%");
+  });
+
+  it("uses the clamped size, not the raw risk setting", () => {
+    // Risk 50% but the per-order cap is 25%, so orders are 25% — a 25% net cap
+    // is therefore fine, and flagging it would be a false alarm.
+    expect(impossibleSettings({ ...base, riskPerTradePercent: 50, maxNetDirectionalPercent: 25 })).toEqual([]);
+  });
+
+  it("treats a cap of 0 as disabled, not as 'allow nothing'", () => {
+    expect(
+      impossibleSettings({
+        ...base,
+        riskPerTradePercent: 25,
+        maxNetDirectionalPercent: 0,
+        maxTotalExposurePercent: 0,
+        maxInstrumentExposurePercent: 0,
+      })
+    ).toEqual([]);
+  });
+
+  it("reports every conflicting cap, not just the first", () => {
+    const conflicts = impossibleSettings({
+      ...base,
+      riskPerTradePercent: 30,
+      maxPositionSizePercent: 30,
+      maxNetDirectionalPercent: 15,
+      maxTotalExposurePercent: 20,
+      maxInstrumentExposurePercent: 25,
+    });
+    expect(conflicts).toHaveLength(3);
+  });
+
+  it("says nothing when sizing comes from a fixed amount", () => {
+    expect(impossibleSettings({ ...base, riskPerTradePercent: 0, maxPositionSizePercent: 0 })).toEqual([]);
   });
 });
