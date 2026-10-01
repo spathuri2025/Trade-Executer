@@ -104,6 +104,12 @@ export interface BotConfigInput {
      * @maximum 100
      */
   maxNetDirectionalPercent?: number;
+  /**
+     * Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.
+     * @minimum 0
+     * @maximum 100
+     */
+  maxGroupNetDirectionalPercent?: number;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
   /** Capital.com candle resolution the bot fetches signals at. */

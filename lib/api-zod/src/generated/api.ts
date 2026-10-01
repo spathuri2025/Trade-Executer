@@ -140,6 +140,9 @@ export const getBotStatusResponseConfigReentryCooldownMinutesMin = 0;
 export const getBotStatusResponseConfigMaxNetDirectionalPercentMin = 0;
 export const getBotStatusResponseConfigMaxNetDirectionalPercentMax = 100;
 
+export const getBotStatusResponseConfigMaxGroupNetDirectionalPercentMin = 0;
+export const getBotStatusResponseConfigMaxGroupNetDirectionalPercentMax = 100;
+
 
 
 export const GetBotStatusResponse = zod.object({
@@ -178,6 +181,7 @@ export const GetBotStatusResponse = zod.object({
   "reentryCooldownMinutes": zod.number().min(getBotStatusResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(getBotStatusResponseConfigMaxNetDirectionalPercentMin).max(getBotStatusResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
+  "maxGroupNetDirectionalPercent": zod.number().min(getBotStatusResponseConfigMaxGroupNetDirectionalPercentMin).max(getBotStatusResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -220,6 +224,9 @@ export const startBotResponseConfigReentryCooldownMinutesMin = 0;
 export const startBotResponseConfigMaxNetDirectionalPercentMin = 0;
 export const startBotResponseConfigMaxNetDirectionalPercentMax = 100;
 
+export const startBotResponseConfigMaxGroupNetDirectionalPercentMin = 0;
+export const startBotResponseConfigMaxGroupNetDirectionalPercentMax = 100;
+
 
 
 export const StartBotResponse = zod.object({
@@ -258,6 +265,7 @@ export const StartBotResponse = zod.object({
   "reentryCooldownMinutes": zod.number().min(startBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(startBotResponseConfigMaxNetDirectionalPercentMin).max(startBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
+  "maxGroupNetDirectionalPercent": zod.number().min(startBotResponseConfigMaxGroupNetDirectionalPercentMin).max(startBotResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -300,6 +308,9 @@ export const stopBotResponseConfigReentryCooldownMinutesMin = 0;
 export const stopBotResponseConfigMaxNetDirectionalPercentMin = 0;
 export const stopBotResponseConfigMaxNetDirectionalPercentMax = 100;
 
+export const stopBotResponseConfigMaxGroupNetDirectionalPercentMin = 0;
+export const stopBotResponseConfigMaxGroupNetDirectionalPercentMax = 100;
+
 
 
 export const StopBotResponse = zod.object({
@@ -338,6 +349,7 @@ export const StopBotResponse = zod.object({
   "reentryCooldownMinutes": zod.number().min(stopBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(stopBotResponseConfigMaxNetDirectionalPercentMin).max(stopBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
+  "maxGroupNetDirectionalPercent": zod.number().min(stopBotResponseConfigMaxGroupNetDirectionalPercentMin).max(stopBotResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -380,6 +392,9 @@ export const resumeBotResponseConfigReentryCooldownMinutesMin = 0;
 export const resumeBotResponseConfigMaxNetDirectionalPercentMin = 0;
 export const resumeBotResponseConfigMaxNetDirectionalPercentMax = 100;
 
+export const resumeBotResponseConfigMaxGroupNetDirectionalPercentMin = 0;
+export const resumeBotResponseConfigMaxGroupNetDirectionalPercentMax = 100;
+
 
 
 export const ResumeBotResponse = zod.object({
@@ -418,6 +433,7 @@ export const ResumeBotResponse = zod.object({
   "reentryCooldownMinutes": zod.number().min(resumeBotResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(resumeBotResponseConfigMaxNetDirectionalPercentMin).max(resumeBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
+  "maxGroupNetDirectionalPercent": zod.number().min(resumeBotResponseConfigMaxGroupNetDirectionalPercentMin).max(resumeBotResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -460,6 +476,9 @@ export const updateBotConfigBodyReentryCooldownMinutesMin = 0;
 export const updateBotConfigBodyMaxNetDirectionalPercentMin = 0;
 export const updateBotConfigBodyMaxNetDirectionalPercentMax = 100;
 
+export const updateBotConfigBodyMaxGroupNetDirectionalPercentMin = 0;
+export const updateBotConfigBodyMaxGroupNetDirectionalPercentMax = 100;
+
 
 
 export const UpdateBotConfigBody = zod.object({
@@ -493,6 +512,7 @@ export const UpdateBotConfigBody = zod.object({
   "reentryCooldownMinutes": zod.number().min(updateBotConfigBodyReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(updateBotConfigBodyMaxNetDirectionalPercentMin).max(updateBotConfigBodyMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
+  "maxGroupNetDirectionalPercent": zod.number().min(updateBotConfigBodyMaxGroupNetDirectionalPercentMin).max(updateBotConfigBodyMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).optional().describe('Capital.com candle resolution the bot fetches signals at.')
 })
@@ -523,6 +543,9 @@ export const updateBotConfigResponseConfigReentryCooldownMinutesMin = 0;
 
 export const updateBotConfigResponseConfigMaxNetDirectionalPercentMin = 0;
 export const updateBotConfigResponseConfigMaxNetDirectionalPercentMax = 100;
+
+export const updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMin = 0;
+export const updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMax = 100;
 
 
 
@@ -562,6 +585,7 @@ export const UpdateBotConfigResponse = zod.object({
   "reentryCooldownMinutes": zod.number().min(updateBotConfigResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(updateBotConfigResponseConfigMaxNetDirectionalPercentMin).max(updateBotConfigResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
+  "maxGroupNetDirectionalPercent": zod.number().min(updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMin).max(updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -1483,6 +1507,9 @@ export const activateTradingProfileResponseConfigReentryCooldownMinutesMin = 0;
 export const activateTradingProfileResponseConfigMaxNetDirectionalPercentMin = 0;
 export const activateTradingProfileResponseConfigMaxNetDirectionalPercentMax = 100;
 
+export const activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMin = 0;
+export const activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMax = 100;
+
 
 
 export const ActivateTradingProfileResponse = zod.object({
@@ -1520,6 +1547,7 @@ export const ActivateTradingProfileResponse = zod.object({
   "reentryCooldownMinutes": zod.number().min(activateTradingProfileResponseConfigReentryCooldownMinutesMin).optional().describe('Minimum minutes before the same instruction (same instrument AND same side) may be sent again. Read from the order log rather than open positions, which lag a fill by seconds and caused both a duplicated entry and a repeated close on 24 Sep 2026. A buy followed by the sell that exits it is not delayed. 0 disables.'),
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(activateTradingProfileResponseConfigMaxNetDirectionalPercentMin).max(activateTradingProfileResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
+  "maxGroupNetDirectionalPercent": zod.number().min(activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMin).max(activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 })

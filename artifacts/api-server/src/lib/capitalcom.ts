@@ -504,6 +504,8 @@ export interface CapitalQuote {
    * is normalised to a percent rather than passed through.
    */
   minStopDistancePercent: number | null;
+  /** Asset class (SHARES, INDICES, COMMODITIES…), for grouping correlated exposure. null when unknown. */
+  instrumentType: string | null;
   /** The instrument's trading schedule, from the same response. null when absent. */
   openingHours: OpeningHours | null;
 }
@@ -541,7 +543,7 @@ export function minStopDistancePercent(
 
 export async function getCapitalQuote(userId: number, credentials: CapitalCredentials, epic: string): Promise<CapitalQuote> {
   const data = await capitalFetch(userId, credentials, `/markets/${encodeURIComponent(epic)}`) as {
-    instrument?: { currency?: string; openingHours?: OpeningHours };
+    instrument?: { currency?: string; openingHours?: OpeningHours; type?: string };
     snapshot?: { bid?: number; offer?: number; marketStatus?: string; updateTime?: string };
     dealingRules?: {
       minDealSize?: { value?: number };
@@ -565,6 +567,12 @@ export async function getCapitalQuote(userId: number, credentials: CapitalCreden
     currency: data.instrument?.currency ?? null,
     updateTime: snap.updateTime ?? null,
     minDealSize: typeof data.dealingRules?.minDealSize?.value === "number" ? data.dealingRules.minDealSize.value : null,
+    // Asset class — SHARES, INDICES, COMMODITIES, CURRENCIES. Used to group
+    // correlated exposure: three same-direction positions across gold and two
+    // US indices are three positions by every per-instrument measure and one
+    // bet in substance. Null when the broker does not say, and an unknown class
+    // is never grouped — it must not silently join someone else's bucket.
+    instrumentType: typeof data.instrument?.type === "string" ? data.instrument.type : null,
     minStopDistancePercent: minStopDistancePercent(
       data.dealingRules?.minStopOrProfitDistance,
       typeof snap.offer === "number" ? snap.offer : null

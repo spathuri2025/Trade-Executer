@@ -135,6 +135,8 @@ export interface BotConfig {
   onePositionPerInstrument: boolean;
   /** Ceiling on NET directional exposure (longs minus shorts), percent of account value; 0 = off. */
   maxNetDirectionalPercent: number;
+  /** Ceiling on NET directional exposure within one asset class, percent of account value; 0 = off. */
+  maxGroupNetDirectionalPercent: number;
   /**
    * When true, each instrument is classified as trending or ranging (close-based
    * ADX) and routed to trend-following or mean-reversion automatically. When
@@ -177,6 +179,7 @@ const DEFAULT_CONFIG: BotConfig = {
   reentryCooldownMinutes: 5,
   onePositionPerInstrument: true,
   maxNetDirectionalPercent: 0,
+  maxGroupNetDirectionalPercent: 0,
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
 };
@@ -417,6 +420,7 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     reentryCooldownMinutes: row.reentryCooldownMinutes,
     onePositionPerInstrument: row.onePositionPerInstrument,
     maxNetDirectionalPercent: row.maxNetDirectionalPercent,
+    maxGroupNetDirectionalPercent: row.maxGroupNetDirectionalPercent,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
   };
@@ -551,6 +555,8 @@ async function checkEntryQuote(
   minutesToSessionEnd: number | null;
   /** Minutes since this market's session opened after a real break; null if none/unknown. */
   minutesSinceSessionOpen: number | null;
+  /** Asset class of this instrument, for the per-class exposure gate. */
+  instrumentType: string | null;
 }> {
   try {
     const quote = await getBrokerQuote(userId, credentials, ticker);
@@ -570,6 +576,7 @@ async function checkEntryQuote(
       spreadPct: Number.isFinite(rawSpread) && rawSpread >= 0 ? rawSpread : null,
       minutesToSessionEnd: minutesUntilSessionEnd(quote.openingHours),
       minutesSinceSessionOpen: minutesSinceSessionStart(quote.openingHours),
+      instrumentType: quote.instrumentType,
     };
   } catch (err) {
     logger.warn({ userId, ticker, err }, "Could not check market status/min size — allowing trade (fail-open)");
@@ -586,6 +593,7 @@ async function checkEntryQuote(
       spreadPct: null,
       minutesToSessionEnd: null,
       minutesSinceSessionOpen: null,
+      instrumentType: null,
     };
   }
 }
@@ -1607,6 +1615,7 @@ async function runCycleUnlocked(
   const instrumentCap = exposureCap(cfg.maxInstrumentExposurePercent);
   const totalCap = exposureCap(cfg.maxTotalExposurePercent);
   const netCap = exposureCap(cfg.maxNetDirectionalPercent);
+  const groupCap = exposureCap(cfg.maxGroupNetDirectionalPercent);
 
   const positions: PositionSnapshot[] = rawPositions.map((p) => ({
     ticker: p.ticker,
@@ -1857,6 +1866,19 @@ async function runCycleUnlocked(
             `Skipped: the account is already ${directionWords(exposure.net, account?.currency ?? null)} and this would ` +
             `push it past your net direction limit of ${formatMoney(netCap, account?.currency ?? null)}. ${decision.reason}`;
           logger.warn({ userId, ticker: c.ticker, net: exposure.net, adding: positionValue, isBuy, cap: netCap }, "Entry skipped — net direction limit");
+        } else if (
+          exposureIncreasing &&
+          entryCheck.instrumentType !== null &&
+          breachesNetDirectional(exposure.netByGroup.get(entryCheck.instrumentType) ?? 0, positionValue, isBuy, groupCap)
+        ) {
+          aiReason =
+            `Skipped: ${entryCheck.instrumentType.toLowerCase()} is already ` +
+            `${directionWords(exposure.netByGroup.get(entryCheck.instrumentType) ?? 0, account?.currency ?? null)} and this ` +
+            `would push that one asset class past its ${formatMoney(groupCap, account?.currency ?? null)} limit. ${decision.reason}`;
+          logger.warn(
+            { userId, ticker: c.ticker, group: entryCheck.instrumentType, groupNet: exposure.netByGroup.get(entryCheck.instrumentType) ?? 0, cap: groupCap },
+            "Entry skipped — per-asset-class direction limit"
+          );
         } else if (exposureIncreasing && exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)) {
           const tight = exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)!;
           aiReason =
@@ -1933,7 +1955,7 @@ async function runCycleUnlocked(
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
             if (opensNewPosition) liveTickers.add(c.ticker);
-            recordExecution(held, liveTickers, c.ticker, decision.action, quantity, closing, exposure, positionValue);
+            recordExecution(held, liveTickers, c.ticker, decision.action, quantity, closing, exposure, positionValue, entryCheck.instrumentType);
           }
         }
       }
@@ -2086,6 +2108,19 @@ async function runCycleUnlocked(
             `Trade skipped: the account is already ${directionWords(exposure.net, account?.currency ?? null)} and this ` +
             `would push it past your net direction limit of ${formatMoney(netCap, account?.currency ?? null)}.`;
           logger.warn({ userId, ticker, net: exposure.net, adding: positionValue, isBuy, cap: netCap }, "Entry skipped — net direction limit");
+        } else if (
+          exposureIncreasing &&
+          entryCheck.instrumentType !== null &&
+          breachesNetDirectional(exposure.netByGroup.get(entryCheck.instrumentType) ?? 0, positionValue, isBuy, groupCap)
+        ) {
+          aiReason =
+            `Trade skipped: ${entryCheck.instrumentType.toLowerCase()} is already ` +
+            `${directionWords(exposure.netByGroup.get(entryCheck.instrumentType) ?? 0, account?.currency ?? null)} and this ` +
+            `would push that one asset class past its ${formatMoney(groupCap, account?.currency ?? null)} limit.`;
+          logger.warn(
+            { userId, ticker, group: entryCheck.instrumentType, groupNet: exposure.netByGroup.get(entryCheck.instrumentType) ?? 0, cap: groupCap },
+            "Entry skipped — per-asset-class direction limit"
+          );
         } else if (exposureIncreasing && exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)) {
           const tight = exitTooTightForBroker(cfg, entryCheck.minStopDistancePercent)!;
           aiReason =
@@ -2155,7 +2190,7 @@ async function runCycleUnlocked(
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
             if (opensNewPosition) liveTickers.add(ticker);
-            recordExecution(held, liveTickers, ticker, signal, quantity, closing, exposure, positionValue);
+            recordExecution(held, liveTickers, ticker, signal, quantity, closing, exposure, positionValue, entryCheck.instrumentType);
           }
         }
       }
@@ -2220,7 +2255,9 @@ function recordExecution(
   quantity: number,
   closing: boolean,
   exposure?: Exposure,
-  positionValue?: number
+  positionValue?: number,
+  /** Asset class of this ticker, so the group tally stays current within a cycle. */
+  group?: string | null
 ): void {
   if (exposure && positionValue !== undefined) {
     const delta = closing ? -(exposure.byTicker.get(ticker) ?? 0) : positionValue;
@@ -2237,6 +2274,7 @@ function recordExecution(
         : -positionValue;
     exposure.netByTicker.set(ticker, (exposure.netByTicker.get(ticker) ?? 0) + netDelta);
     exposure.net += netDelta;
+    if (group) exposure.netByGroup.set(group, (exposure.netByGroup.get(group) ?? 0) + netDelta);
   }
   const h = held.get(ticker) ?? { long: 0, short: 0 };
   if (closing) {
@@ -2261,6 +2299,7 @@ function recordExecution(
 export function exposureByTicker(positions: NormalizedPosition[]): Exposure {
   const byTicker = new Map<string, number>();
   const netByTicker = new Map<string, number>();
+  const netByGroup = new Map<string, number>();
   let total = 0;
   let net = 0;
   for (const p of positions) {
@@ -2270,10 +2309,13 @@ export function exposureByTicker(positions: NormalizedPosition[]): Exposure {
     const signed = p.direction === "BUY" ? notional : -notional;
     byTicker.set(p.ticker, (byTicker.get(p.ticker) ?? 0) + notional);
     netByTicker.set(p.ticker, (netByTicker.get(p.ticker) ?? 0) + signed);
+    // An unknown asset class is deliberately NOT grouped. Bucketing it with
+    // other unknowns would invent a correlation nobody measured.
+    if (p.instrumentType) netByGroup.set(p.instrumentType, (netByGroup.get(p.instrumentType) ?? 0) + signed);
     total += notional;
     net += signed;
   }
-  return { byTicker, netByTicker, total, net };
+  return { byTicker, netByTicker, netByGroup, total, net };
 }
 
 /**
@@ -2290,6 +2332,16 @@ export interface Exposure {
   byTicker: Map<string, number>;
   /** Signed notional per ticker: positive long, negative short. */
   netByTicker: Map<string, number>;
+  /**
+   * Signed notional per asset class (SHARES, INDICES, COMMODITIES…).
+   *
+   * Three same-direction positions in gold and two US indices are three
+   * positions by every per-instrument measure and, in substance, one bet that
+   * everything falls together. The per-ticker and total figures cannot see
+   * that; this can. Instruments whose class the broker does not report are
+   * absent rather than lumped together.
+   */
+  netByGroup: Map<string, number>;
   total: number;
   net: number;
 }

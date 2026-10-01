@@ -47,6 +47,8 @@ export interface NormalizedPosition {
    * closeBrokerPosition refuses rather than guessing.
    */
   dealId: string | null;
+  /** Asset class, straight from the broker's own position record. */
+  instrumentType: string | null;
   /**
    * Broker-side exit levels, where the broker will close this position without
    * the bot being involved at all — they hold even if this app is offline,
@@ -88,6 +90,7 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
         pnl,
         pnlPercent,
         direction: p.position.direction,
+        instrumentType: p.market.instrumentType ?? null,
         dealId: p.position.dealId,
         stopLevel: p.position.stopLevel,
         // Capital.com names take-profit `limitLevel` on a POSITION but
@@ -108,6 +111,7 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
     // Trading 212's Invest/ISA API has no short-selling and no direction field
     // of its own — every position returned here is structurally long.
     direction: "BUY" as const,
+    instrumentType: null,
     // T212's Invest/ISA API exposes no per-deal id, so a position there cannot
     // be closed by id. It also cannot go short, so the failure mode this
     // protects against does not arise.
@@ -247,6 +251,8 @@ export interface NormalizedQuote {
   minDealSize: number | null;
   /** Minimum stop-loss/take-profit distance from the price, as a percent. null when unknown. */
   minStopDistancePercent: number | null;
+  /** Asset class (SHARES, INDICES, COMMODITIES…), for grouping correlated exposure. */
+  instrumentType: string | null;
   /** Trading schedule, where the broker publishes one (Capital.com). null otherwise. */
   openingHours: OpeningHours | null;
 }
@@ -263,6 +269,7 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
       currency: q.currency,
       minDealSize: q.minDealSize,
       minStopDistancePercent: q.minStopDistancePercent,
+      instrumentType: q.instrumentType,
       openingHours: q.openingHours,
     };
   }
@@ -286,6 +293,7 @@ export async function getBrokerQuote(userId: number, credentials: UserBrokerCred
     currency: null,
     minDealSize: null,
     minStopDistancePercent: null,
+    instrumentType: null,
     openingHours: null,
   };
 }

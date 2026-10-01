@@ -118,6 +118,7 @@ export default function Settings() {
     reentryCooldownMinutes: 5,
     onePositionPerInstrument: true,
     maxNetDirectionalPercent: 0,
+    maxGroupNetDirectionalPercent: 0,
     noOpenAfterSessionStartMinutes: 0,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
@@ -155,6 +156,7 @@ export default function Settings() {
         reentryCooldownMinutes: botStatus.config.reentryCooldownMinutes ?? 5,
         onePositionPerInstrument: botStatus.config.onePositionPerInstrument ?? true,
         maxNetDirectionalPercent: botStatus.config.maxNetDirectionalPercent ?? 0,
+        maxGroupNetDirectionalPercent: botStatus.config.maxGroupNetDirectionalPercent ?? 0,
         noOpenAfterSessionStartMinutes: botStatus.config.noOpenAfterSessionStartMinutes ?? 0,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
@@ -753,6 +755,25 @@ export default function Settings() {
               A losing run only halts trading if it <em>also</em> cost this much of your account — both
               conditions, not either. Without it, six losses of 23p stopped the bot for a whole day over
               &pound;1.38. 0 counts losses alone.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="max-group-net">Max net per asset class (%)</Label>
+            <Input
+              id="max-group-net"
+              type="number"
+              step="1"
+              min="0"
+              max="100"
+              value={config.maxGroupNetDirectionalPercent}
+              onChange={(e) => setConfig({ ...config, maxGroupNetDirectionalPercent: Number(e.target.value) })}
+              data-testid="input-max-group-net"
+            />
+            <p className="text-xs text-muted-foreground">
+              The same limit as Max Net Direction, but applied <em>within</em> one asset class — shares,
+              indices, commodities. Three same-direction trades spread across gold and two US indices look
+              like three positions to every other limit and behave like one bet. This is what notices.
+              Instruments your broker does not classify are never grouped. 0 disables.
             </p>
           </div>
           <div className="space-y-1.5">

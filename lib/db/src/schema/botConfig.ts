@@ -160,6 +160,20 @@ export const botConfigTable = pgTable("bot_config", {
    * that everything falls together. Correlated markets do not diversify.
    */
   maxNetDirectionalPercent: real("max_net_directional_percent").notNull().default(0),
+  /**
+   * Ceiling on NET directional exposure within a single asset class — SHARES,
+   * INDICES, COMMODITIES — as a percent of account value. 0 = disabled.
+   *
+   * The account-wide net cap bounds how one-way the book is overall; this
+   * bounds how concentrated that bet is. Three same-direction positions in gold
+   * and two US indices pass every per-instrument limit and are, in substance,
+   * one bet that everything falls together. Correlated markets do not
+   * diversify, and counting positions cannot tell you that.
+   *
+   * Instruments whose class the broker does not report are never grouped: an
+   * unknown must not silently join a bucket it may not belong to.
+   */
+  maxGroupNetDirectionalPercent: real("max_group_net_directional_percent").notNull().default(0),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
   /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */

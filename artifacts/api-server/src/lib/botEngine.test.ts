@@ -158,7 +158,8 @@ const defaultPrices = Array<number>(30).fill(100);
 function position(
   ticker: string,
   quantity: number,
-  direction: "BUY" | "SELL" = quantity >= 0 ? "BUY" : "SELL"
+  direction: "BUY" | "SELL" = quantity >= 0 ? "BUY" : "SELL",
+  instrumentType: string | null = null
 ): NormalizedPosition {
   return {
     ticker,
@@ -173,6 +174,7 @@ function position(
     stopLevel: null,
     takeProfitLevel: null,
     dealId: `deal-${ticker}`,
+    instrumentType,
   };
 }
 
@@ -242,6 +244,7 @@ function buildConfig(patch: Partial<BotConfig> = {}): BotConfig {
     reentryCooldownMinutes: 0,
     onePositionPerInstrument: false,
     maxNetDirectionalPercent: 0,
+    maxGroupNetDirectionalPercent: 0,
     regimeFilterEnabled: false,
     barResolution: "MINUTE_5",
     ...patch,
@@ -1171,6 +1174,133 @@ describe("net direction limit — correlated positions are one bet", () => {
     await engine.runCycle(TEST_USER_ID);
 
     expect(traded()).toHaveLength(1);
+  });
+});
+
+describe("per-asset-class direction limit — three positions, one bet", () => {
+  const typedQuote = (ticker: string, instrumentType: string | null) => ({
+    ticker,
+    bid: 100,
+    offer: 100,
+    price: 100,
+    marketStatus: "TRADEABLE",
+    currency: "GBP",
+    minDealSize: null,
+    minStopDistancePercent: null,
+    instrumentType,
+    openingHours: null,
+  });
+
+  it("counts gold and silver as one commodity bet, not two positions", () => {
+    const e = engine.exposureByTicker([
+      position("GOLD", 5, "SELL", "COMMODITIES"),
+      position("SILVER", 5, "SELL", "COMMODITIES"),
+      position("US500", 5, "BUY", "INDICES"),
+    ]);
+    expect(e.netByGroup.get("COMMODITIES")).toBe(-1000);
+    expect(e.netByGroup.get("INDICES")).toBe(500);
+    // Account-wide net is only -500, which is precisely what hides the
+    // concentration: two short commodities partly offset by a long index.
+    expect(e.net).toBe(-500);
+  });
+
+  it("does not group instruments whose class the broker never reported", () => {
+    const e = engine.exposureByTicker([position("MYSTERY", 5, "SELL", null)]);
+    expect(e.netByGroup.size).toBe(0);
+  });
+
+  it("refuses a third short in an asset class already at its limit", async () => {
+    // £5,000 account, 15% class cap = £750. Two £250 commodity shorts leave
+    // £500 of it used; a third would reach £750... so use a tighter cap to bite.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([
+      position("GOLD", 2.5, "SELL", "COMMODITIES"),
+      position("SILVER", 2.5, "SELL", "COMMODITIES"),
+    ]);
+    broker.getBrokerQuote.mockResolvedValue(typedQuote("COPPER", "COMMODITIES"));
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({
+      maxGroupNetDirectionalPercent: 10, // £500, already used
+      maxNetDirectionalPercent: 0,
+      maxConcurrentPositions: 0,
+      riskPerTradePercent: 5,
+      maxPositionSizePercent: 5,
+    });
+    mocks.enabledInstruments = [{ ticker: "COPPER", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(0);
+  });
+
+  it("allows the same trade in a different asset class", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([
+      position("GOLD", 2.5, "SELL", "COMMODITIES"),
+      position("SILVER", 2.5, "SELL", "COMMODITIES"),
+    ]);
+    broker.getBrokerQuote.mockResolvedValue(typedQuote("US500", "INDICES"));
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({
+      maxGroupNetDirectionalPercent: 10,
+      maxNetDirectionalPercent: 0,
+      maxConcurrentPositions: 0,
+      riskPerTradePercent: 5,
+      maxPositionSizePercent: 5,
+    });
+    mocks.enabledInstruments = [{ ticker: "US500", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+
+  it("does not block an instrument whose class is unknown", async () => {
+    // Fail open: an unreported class must not take an instrument dark.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([position("GOLD", 2.5, "SELL", "COMMODITIES")]);
+    broker.getBrokerQuote.mockResolvedValue(typedQuote("MYSTERY", null));
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({
+      maxGroupNetDirectionalPercent: 1,
+      maxNetDirectionalPercent: 0,
+      maxConcurrentPositions: 0,
+    });
+    mocks.enabledInstruments = [{ ticker: "MYSTERY", enabled: true }];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(1);
+  });
+
+  it("cannot be walked past by several same-class orders inside one cycle", async () => {
+    // £5,000, 10% class cap = £500, £250 each: two fit, the third must not.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    broker.getBrokerQuote.mockImplementation((_u: number, _c: unknown, t: string) =>
+      Promise.resolve(typedQuote(t, "INDICES"))
+    );
+    ma.computeMASignal.mockReturnValue({ signal: "SELL", shortMa: 1, longMa: 2 });
+
+    await startLiveBot({
+      maxGroupNetDirectionalPercent: 10,
+      maxNetDirectionalPercent: 0,
+      maxConcurrentPositions: 0,
+      riskPerTradePercent: 5,
+      maxPositionSizePercent: 5,
+    });
+    mocks.enabledInstruments = [
+      { ticker: "US500", enabled: true },
+      { ticker: "US100", enabled: true },
+      { ticker: "UK100", enabled: true },
+    ];
+    mocks.tradeInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(traded()).toHaveLength(2);
   });
 });
 
