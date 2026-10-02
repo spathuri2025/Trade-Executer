@@ -60,6 +60,7 @@ import type {
   HealthStatus,
   Instrument,
   InstrumentInput,
+  InstrumentMatch,
   LatestAssistantBriefResult,
   LatestDailyBriefResult,
   LatestMarketBrainResult,
@@ -91,6 +92,7 @@ import type {
   ScannerConfigInput,
   ScannerResult,
   ScannerStatus,
+  SearchInstrumentsParams,
   SendDailyReportNow200,
   Signal,
   Subscription,
@@ -1912,6 +1914,92 @@ export const useAddInstrument = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getAddInstrumentMutationOptions(options));
     }
+
+export const getSearchInstrumentsUrl = (params: SearchInstrumentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/instruments/search?${stringifiedParams}` : `/api/instruments/search`
+}
+
+/**
+ * Searches the broker's own catalogue and returns the identifier it actually needs. The watchlist stores an "epic" — Capital.com's internal id — which happens to equal the ticker for shares and does not for anything else: crude oil is OIL_CRUDE, not "Crude Oil Spot" or "CL". An instrument saved with a wrong epic looks correct in the list and silently never produces a signal, so guessing it is not a viable way to add one.
+
+ * @summary Find tradeable instruments by name or symbol
+ */
+export const searchInstruments = async (params: SearchInstrumentsParams, options?: RequestInit): Promise<InstrumentMatch[]> => {
+
+  return customFetch<InstrumentMatch[]>(getSearchInstrumentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchInstrumentsQueryKey = (params?: SearchInstrumentsParams,) => {
+    return [
+    `/api/instruments/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchInstrumentsQueryOptions = <TData = Awaited<ReturnType<typeof searchInstruments>>, TError = ErrorType<void>>(params: SearchInstrumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchInstruments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchInstrumentsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchInstruments>>> = ({ signal }) => searchInstruments(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchInstruments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchInstrumentsQueryResult = NonNullable<Awaited<ReturnType<typeof searchInstruments>>>
+export type SearchInstrumentsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Find tradeable instruments by name or symbol
+ */
+
+export function useSearchInstruments<TData = Awaited<ReturnType<typeof searchInstruments>>, TError = ErrorType<void>>(
+ params: SearchInstrumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchInstruments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchInstrumentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getUpdateInstrumentUrl = (id: number,) => {
 

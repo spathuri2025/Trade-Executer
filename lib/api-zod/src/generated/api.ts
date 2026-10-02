@@ -738,6 +738,26 @@ export const AddInstrumentBody = zod.object({
 
 
 /**
+ * Searches the broker's own catalogue and returns the identifier it actually needs. The watchlist stores an "epic" — Capital.com's internal id — which happens to equal the ticker for shares and does not for anything else: crude oil is OIL_CRUDE, not "Crude Oil Spot" or "CL". An instrument saved with a wrong epic looks correct in the list and silently never produces a signal, so guessing it is not a viable way to add one.
+
+ * @summary Find tradeable instruments by name or symbol
+ */
+
+
+
+export const SearchInstrumentsQueryParams = zod.object({
+  "q": zod.coerce.string().min(1).describe('Part of an instrument\'s name or symbol.')
+})
+
+export const SearchInstrumentsResponseItem = zod.object({
+  "epic": zod.string().describe('The identifier to store as the watchlist ticker.'),
+  "name": zod.string(),
+  "instrumentType": zod.string().describe('Asset class (SHARES, INDICES, COMMODITIES…), which also decides which per-class exposure bucket it joins.')
+})
+export const SearchInstrumentsResponse = zod.array(SearchInstrumentsResponseItem)
+
+
+/**
  * A disabled instrument is left in the watchlist but not traded — the engine reads the flag every cycle, so a change takes effect on the next one with no restart. Deliberately separate from DELETE: an instrument whose spread makes it unprofitable is worth keeping visible, with its history intact, rather than erased.
 
  * @summary Enable or disable an instrument

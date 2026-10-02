@@ -3,6 +3,9 @@ import { db, instrumentsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { AddInstrumentBody, DeleteInstrumentParams, UpdateInstrumentBody } from "@workspace/api-zod";
 import { getPlanLimits } from "../lib/planService";
+import { getBrokerUniverse } from "../lib/broker";
+import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
+import { searchInstruments } from "../lib/instrumentSearch";
 
 const router: IRouter = Router();
 
@@ -21,6 +24,55 @@ router.get("/instruments", async (req, res): Promise<void> => {
       addedAt: i.addedAt.toISOString(),
     }))
   );
+});
+
+/**
+ * Instrument search over the broker's catalogue.
+ *
+ * Cached for six hours and shared across requests: the catalogue is thousands
+ * of rows and barely changes, while a search box issues a request per
+ * keystroke. Fetching it each time would be a rate-limit problem of our own
+ * making — the same mistake the scalp engine's instrument ceiling exists to
+ * avoid.
+ *
+ * Declared BEFORE /instruments/:id so Express does not read "search" as an id.
+ */
+const universeCache = new Map<number, { at: number; rows: Awaited<ReturnType<typeof getBrokerUniverse>> }>();
+const UNIVERSE_TTL_MS = 6 * 60 * 60 * 1000;
+
+router.get("/instruments/search", async (req, res): Promise<void> => {
+  const q = typeof req.query["q"] === "string" ? req.query["q"] : "";
+  if (q.trim().length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const userId = req.user!.id;
+  const credentials = await getUserBrokerCredentials(userId);
+  if (!credentials) {
+    res.status(400).json({ error: "Connect a broker account to search instruments" });
+    return;
+  }
+
+  const cached = universeCache.get(userId);
+  let rows = cached && Date.now() - cached.at < UNIVERSE_TTL_MS ? cached.rows : null;
+  if (!rows) {
+    try {
+      rows = await getBrokerUniverse(userId, credentials);
+      universeCache.set(userId, { at: Date.now(), rows });
+    } catch (err) {
+      req.log.error({ err }, "Could not load the broker instrument catalogue");
+      res.status(400).json({ error: "Couldn't reach your broker's instrument list. Try again shortly." });
+      return;
+    }
+  }
+
+  if (rows.length === 0) {
+    res.status(400).json({ error: "Your broker doesn't publish a searchable instrument list." });
+    return;
+  }
+
+  res.json(searchInstruments(rows, q));
 });
 
 router.post("/instruments", async (req, res): Promise<void> => {

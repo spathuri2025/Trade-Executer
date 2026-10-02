@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListInstruments,
@@ -6,6 +6,9 @@ import {
   useAddInstrument,
   useDeleteInstrument,
   useUpdateInstrument,
+  useSearchInstruments,
+  getSearchInstrumentsQueryKey,
+  type InstrumentMatch,
   useGetPlan,
   getGetPlanQueryKey
 } from "@workspace/api-client-react";
@@ -22,12 +25,25 @@ export default function Instruments() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
-  const [ticker, setTicker] = useState("");
-  const [name, setName] = useState("");
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<InstrumentMatch | null>(null);
 
   const { data: instruments, isLoading } = useListInstruments({
     query: { queryKey: getListInstrumentsQueryKey() }
   });
+
+  // Debounced so a search box does not issue a broker-catalogue request per
+  // keystroke; the catalogue itself is cached server-side for six hours.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const search = useSearchInstruments(
+    { q: debounced },
+    { query: { queryKey: getSearchInstrumentsQueryKey({ q: debounced }), enabled: debounced.length > 1, retry: false } }
+  );
 
   const { data: planStatus } = useGetPlan({ query: { queryKey: getGetPlanQueryKey() } });
   // null means the plan is uncapped — the API sends null rather than Infinity,
@@ -39,8 +55,8 @@ export default function Instruments() {
   const addMutation = useAddInstrument({
     mutation: {
       onSuccess: () => {
-        setTicker("");
-        setName("");
+        setQuery("");
+        setPicked(null);
         queryClient.invalidateQueries({ queryKey: getListInstrumentsQueryKey() });
         // Keep the plan's "instruments used" counter in step with the new total.
         queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey() });
@@ -89,8 +105,11 @@ export default function Instruments() {
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ticker || !name) return;
-    addMutation.mutate({ data: { ticker: ticker.toUpperCase(), name, enabled: true } });
+    // Only ever an instrument chosen from the broker's own catalogue — the epic
+    // is never typed, which is what makes a wrong one impossible rather than
+    // merely unlikely.
+    if (!picked) return;
+    addMutation.mutate({ data: { ticker: picked.epic, name: picked.name, enabled: true } });
   };
 
   return (
@@ -118,30 +137,77 @@ export default function Instruments() {
             )}
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Ticker Symbol</label>
-                <Input 
-                  placeholder="e.g. AAPL" 
-                  value={ticker} 
-                  onChange={(e) => setTicker(e.target.value)}
-                  className="font-mono uppercase"
-                  required
+                <label className="text-sm font-medium">Search instruments</label>
+                <Input
+                  placeholder="e.g. crude oil, gold, Apple"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPicked(null);
+                  }}
+                  data-testid="input-instrument-search"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Searches your broker&rsquo;s own catalogue. The watchlist stores the identifier Capital.com
+                  uses, which matches the ticker for shares and does not for anything else &mdash; crude oil is{" "}
+                  <span className="font-mono">OIL_CRUDE</span>. Picking from this list is the only way to be
+                  sure it is right: a wrong one looks fine here and silently never trades.
+                </p>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Company Name</label>
-                <Input 
-                  placeholder="e.g. Apple Inc." 
-                  value={name} 
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
+
+              {search.isFetching && query.trim().length > 0 && (
+                <p className="text-xs text-muted-foreground">Searching&hellip;</p>
+              )}
+
+              {search.isError && (
+                <p className="text-xs text-destructive" data-testid="search-error">
+                  {(search.error as { data?: { error?: string } })?.data?.error ??
+                    "Couldn't search your broker's instruments."}
+                </p>
+              )}
+
+              {!picked && (search.data?.length ?? 0) > 0 && (
+                <div className="max-h-56 overflow-y-auto divide-y divide-border rounded-md border border-border">
+                  {search.data!.map((m) => (
+                    <button
+                      key={m.epic}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-muted/40"
+                      onClick={() => setPicked(m)}
+                      data-testid={`search-result-${m.epic}`}
+                    >
+                      <div className="font-mono text-sm">{m.epic}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {m.name} &middot; {m.instrumentType.toLowerCase()}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {!picked && !search.isFetching && query.trim().length > 1 && (search.data?.length ?? 0) === 0 && !search.isError && (
+                <p className="text-xs text-muted-foreground">Nothing matched. Try fewer words.</p>
+              )}
+
+              {picked && (
+                <div className="rounded-md border border-primary/40 bg-primary/5 p-3 space-y-1" data-testid="picked-instrument">
+                  <div className="font-mono text-sm">{picked.epic}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {picked.name} &middot; {picked.instrumentType.toLowerCase()}
+                  </div>
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Counts towards your <span className="font-medium">{picked.instrumentType.toLowerCase()}</span>{" "}
+                    exposure, which has its own net-direction limit.
+                  </p>
+                </div>
+              )}
+
               <Button
                 type="submit"
                 className="w-full"
-                disabled={addMutation.isPending || atInstrumentCap}
+                disabled={addMutation.isPending || atInstrumentCap || !picked}
               >
-                {addMutation.isPending ? "Adding..." : "Add Instrument"}
+                {addMutation.isPending ? "Adding..." : picked ? `Add ${picked.epic}` : "Pick an instrument above"}
               </Button>
             </form>
         </CollapsibleSection>

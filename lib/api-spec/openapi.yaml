@@ -509,6 +509,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/Instrument"
 
+  /instruments/search:
+    get:
+      operationId: searchInstruments
+      tags: [instruments]
+      summary: Find tradeable instruments by name or symbol
+      description: >
+        Searches the broker's own catalogue and returns the identifier it actually
+        needs. The watchlist stores an "epic" — Capital.com's internal id — which
+        happens to equal the ticker for shares and does not for anything else:
+        crude oil is OIL_CRUDE, not "Crude Oil Spot" or "CL". An instrument saved
+        with a wrong epic looks correct in the list and silently never produces a
+        signal, so guessing it is not a viable way to add one.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: Part of an instrument's name or symbol.
+      responses:
+        "200":
+          description: Ranked matches, best first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InstrumentMatch"
+        "400":
+          description: No broker connected, or the broker exposes no catalogue
+
   /instruments/{id}:
     patch:
       operationId: updateInstrument
@@ -2526,6 +2558,19 @@ components:
           type: boolean
         addedAt:
           type: string
+
+    InstrumentMatch:
+      type: object
+      required: [epic, name, instrumentType]
+      properties:
+        epic:
+          type: string
+          description: The identifier to store as the watchlist ticker.
+        name:
+          type: string
+        instrumentType:
+          type: string
+          description: Asset class (SHARES, INDICES, COMMODITIES…), which also decides which per-class exposure bucket it joins.
 
     InstrumentInput:
       type: object

@@ -643,6 +643,14 @@ export interface Instrument {
   addedAt?: string;
 }
 
+export interface InstrumentMatch {
+  /** The identifier to store as the watchlist ticker. */
+  epic: string;
+  name: string;
+  /** Asset class (SHARES, INDICES, COMMODITIES…), which also decides which per-class exposure bucket it joins. */
+  instrumentType: string;
+}
+
 export interface InstrumentInput {
   ticker: string;
   name: string;
@@ -2113,6 +2121,14 @@ limit?: number;
 
 export type GetQuoteParams = {
 ticker: string;
+};
+
+export type SearchInstrumentsParams = {
+/**
+ * Part of an instrument's name or symbol.
+ * @minLength 1
+ */
+q: string;
 };
 
 export type ListSignalsParams = {
