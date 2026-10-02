@@ -1690,6 +1690,9 @@ async function runCycleUnlocked(
      * as "not applicable" for non-scalp modes.
      */
     expectedMovePct: number | null;
+    /** Regime ADX and mean-reversion RSI, so the AI guard can judge the signal it actually got. */
+    adx: number | null;
+    rsi: number | null;
   }
   const bars = requiredBars(longPeriod);
   const contexts: InstrumentContext[] = [];
@@ -1716,6 +1719,8 @@ async function runCycleUnlocked(
           strategy: "scalp",
           regime: null,
           expectedMovePct: scalp.expectedMovePct,
+          adx: null,
+          rsi: null,
         });
         continue;
       }
@@ -1739,6 +1744,8 @@ async function runCycleUnlocked(
         strategy: routed.strategy,
         regime: routed.regime,
         expectedMovePct: null,
+        adx: routed.adx,
+        rsi: routed.rsi,
       });
     } catch (err) {
       logger.error({ userId, ticker: instrument.ticker, broker: credentials.broker, err }, "Error processing instrument");
@@ -2011,6 +2018,14 @@ async function runCycleUnlocked(
               longPeriod,
               account,
               positions,
+              // Which strategy actually fired. Without it the guard was told
+              // every signal came from a crossover, and vetoed 35 of 35
+              // mean-reversion entries for "price is below both moving
+              // averages" — that strategy's own entry condition.
+              strategy: c.strategy,
+              regime: c.regime,
+              adx: c.adx,
+              rsi: c.rsi,
             },
             logger
           );

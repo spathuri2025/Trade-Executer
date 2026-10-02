@@ -92,6 +92,14 @@ export interface SignalReviewInput {
   longPeriod: number;
   account: AccountSnapshot | null;
   positions: PositionSnapshot[];
+  /**
+   * Which strategy produced this signal. Not optional: defaulting it is how the
+   * guard came to judge every mean-reversion entry as a failed crossover.
+   */
+  strategy: "trend_following" | "mean_reversion" | "scalp";
+  regime: "trending" | "ranging" | null;
+  adx: number | null;
+  rsi: number | null;
 }
 
 export interface SignalReview {
@@ -101,21 +109,47 @@ export interface SignalReview {
 }
 
 /**
- * Guard mode: a moving-average crossover has produced a BUY/SELL signal.
- * Claude reviews it against the market context and account state and decides
- * whether to approve or veto BEFORE any order is placed.
+ * Guard mode: a strategy has produced a BUY/SELL signal. Claude reviews it
+ * against the market context and account state and decides whether to approve
+ * or veto BEFORE any order is placed.
+ *
+ * The prompt MUST describe the strategy that actually fired. It used to say
+ * "a moving-average crossover strategy" for every signal, while the engine
+ * routes ranging instruments to mean-reversion instead. The guard then judged
+ * mean-reversion entries by trend-following logic and vetoed all 35 of them in
+ * 22 hours — every time for "price is below both moving averages", which is
+ * precisely what that strategy waits for. The reasoning was sound; the premise
+ * it was handed was false, and the engine placed no trade at all for a week.
  */
+export function describeStrategy(input: SignalReviewInput): string {
+  switch (input.strategy) {
+    case "mean_reversion":
+      return `A MEAN-REVERSION strategy has produced a ${input.side} signal for ${input.ticker}. It buys when price is oversold (RSI low AND at or below the lower Bollinger band) and sells when overbought, betting the move reverts. Price sitting beyond the moving averages is the SETUP for this strategy, not a contradiction — do not treat it as one. The moving averages below are context only; this signal did not come from a crossover.`;
+    case "scalp":
+      return `A fast MEAN-REVERSION scalp strategy has produced a ${input.side} signal for ${input.ticker}. It fades a stretched one-minute move back toward a short EMA, aiming for a fraction of a percent. Price being extended away from the EMA is the setup, not a contradiction.`;
+    case "trend_following":
+    default:
+      return `A MOVING-AVERAGE CROSSOVER strategy (short MA period ${input.shortPeriod}, long MA period ${input.longPeriod}) has produced a ${input.side} signal for ${input.ticker}. It follows the trend: a valid BUY needs the short MA above the long MA, and a valid SELL the reverse.`;
+  }
+}
+
 export async function reviewSignal(input: SignalReviewInput, log: Logger): Promise<SignalReview> {
-  const prompt = `You are a disciplined risk manager for an automated day-trading bot. A moving-average crossover strategy (short MA period ${input.shortPeriod}, long MA period ${input.longPeriod}) has produced a ${input.side} signal for ${input.ticker}.
+  const indicators = [
+    `- Latest price: ${fmtNum(input.price)}`,
+    `- Short MA: ${fmtNum(input.shortMa)}`,
+    `- Long MA: ${fmtNum(input.longMa)}`,
+    input.regime ? `- Market regime: ${input.regime}${input.adx !== null ? ` (ADX ${fmtNum(input.adx)})` : ""}` : null,
+    input.rsi !== null ? `- RSI: ${fmtNum(input.rsi)}` : null,
+  ].filter(Boolean) as string[];
+
+  const prompt = `You are a disciplined risk manager for an automated day-trading bot. ${describeStrategy(input)}
 
 Current data:
-- Latest price: ${fmtNum(input.price)}
-- Short MA: ${fmtNum(input.shortMa)}
-- Long MA: ${fmtNum(input.longMa)}
+${indicators.join("\n")}
 - ${accountLine(input.account)}
 - ${positionsLines(input.positions)}
 
-Decide whether this trade should be APPROVED or VETOED. Veto if the signal looks weak, contradicts the current position/exposure, or the risk is poor. Approve only if it is a reasonable, disciplined entry.
+Decide whether this trade should be APPROVED or VETOED. Judge it against the logic of the strategy that produced it, described above — not against a different strategy's rules. Veto if the signal looks weak ON ITS OWN TERMS, contradicts the current position/exposure, or the risk is poor. Approve only if it is a reasonable, disciplined entry.
 
 Respond with ONLY valid JSON (no markdown, no code fences) of the exact shape:
 {"approved": boolean, "confidence": "low" | "medium" | "high", "reason": string}
