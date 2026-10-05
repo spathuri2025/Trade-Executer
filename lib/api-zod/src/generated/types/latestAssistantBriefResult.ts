@@ -9,4 +9,9 @@ import type { UserAiBrief } from './userAiBrief';
 
 export interface LatestAssistantBriefResult {
   brief: UserAiBrief | null;
+  /** True when the brief returned was written for an earlier day. The route serves the most recent brief it has while a fresh one generates in the background, so without this the client cannot tell a week-old account balance from this morning's — which on 5 Oct 2026 showed GBP 4,963 against a real GBP 4,521.
+   */
+  stale: boolean;
+  /** True while a fresh brief is being written. The client polls until it arrives. */
+  generating: boolean;
 }

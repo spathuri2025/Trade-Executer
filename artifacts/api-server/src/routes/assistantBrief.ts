@@ -3,6 +3,7 @@ import { db, userAiBriefsTable, type UserAiBrief } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { generateAssistantDailyBrief } from "../lib/assistantDailyBriefService";
 import { logger } from "../lib/logger";
+import { briefStatus } from "../lib/briefStatus";
 
 const router: IRouter = Router();
 
@@ -64,7 +65,12 @@ router.get("/assistant/daily-brief", async (req, res): Promise<void> => {
       triggerBackgroundGeneration(userId);
     }
     res.set("Cache-Control", "no-store");
-    res.json({ brief: latest ? serialize(latest) : null });
+    // Say which brief this is. Returning an older one is deliberate — some
+    // briefing beats none while today's is written — but it must never be
+    // mistaken for today's, because the account balance inside it will be
+    // whatever it was when it was written.
+    const { stale, generating } = briefStatus(latest?.briefDate, todayUtc(), creatingByUser.has(userId));
+    res.json({ brief: latest ? serialize(latest) : null, stale, generating });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch assistant daily brief");
     res.status(500).json({ error: "Failed to fetch assistant daily brief" });
