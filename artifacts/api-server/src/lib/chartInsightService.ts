@@ -1,4 +1,5 @@
-import { getCapitalPriceHistory } from "./capitalcom";
+import { getCapitalCandles } from "./capitalcom";
+import { routeStrategy } from "./strategyRouter";
 import { sma, stdev, adx } from "./indicators";
 import { asString, clampInt, generateClaudeJson } from "./aiJson";
 import type { CapitalCredentials } from "./brokerCredentialsService";
@@ -18,6 +19,57 @@ export interface ChartInsight {
   confidence: number;
   explanation: string;
   riskWarning: string;
+  /**
+   * Latest bar volume against the bars before it. Null when the broker reports
+   * none. This is CFD volume from Capital.com — activity on their own book, not
+   * exchange or futures volume, and the UI says so rather than letting it imply
+   * more than it is.
+   */
+  volume: { latest: number; average: number; ratio: number } | null;
+  /**
+   * What the user's OWN bot makes of this instrument right now, computed with
+   * their configured periods, bar resolution and regime filter.
+   *
+   * Deliberately not the chart's own 10/30 hourly view: a card saying BUY while
+   * the Signals page sits on HOLD is worse than no card at all. Null when the
+   * signal could not be computed — not "HOLD", which is a real opinion.
+   */
+  botSignal: { action: "BUY" | "SELL" | "HOLD"; strategy: string; regime: string | null; resolution: string } | null;
+}
+
+/**
+ * The latest bar's volume against the bars before it.
+ *
+ * The comparison is the whole point: a raw figure means nothing without knowing
+ * what normal looks like for that instrument. "Drifting lower on volume 40%
+ * below average" says the move has little behind it; the same price action on
+ * double volume says the opposite.
+ *
+ * The average deliberately EXCLUDES the latest bar — including it would damp
+ * exactly the spike the comparison exists to reveal.
+ *
+ * Returns null when the broker reports no volume, rather than a zero. Those are
+ * different facts: Trading 212 supplies no volume at all, and a genuine
+ * zero-volume bar is a real observation about a quiet market.
+ */
+export function volumeSummary(
+  candles: Array<{ volume?: number }>,
+  lookback = 20
+): { latest: number; average: number; ratio: number } | null {
+  if (candles.length < 2) return null;
+  const latestRaw = candles[candles.length - 1]?.volume;
+  if (typeof latestRaw !== "number" || !Number.isFinite(latestRaw)) return null;
+
+  const prior = candles
+    .slice(Math.max(0, candles.length - 1 - lookback), candles.length - 1)
+    .map((c) => c.volume)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (prior.length === 0) return null;
+
+  const average = prior.reduce((t, v) => t + v, 0) / prior.length;
+  if (!(average > 0)) return null;
+
+  return { latest: latestRaw, average: Math.round(average), ratio: latestRaw / average };
 }
 
 function roundPrice(n: number): number {
@@ -37,11 +89,22 @@ export async function computeChartInsight(
   capitalCredentials: CapitalCredentials,
   epic: string,
   resolution = "HOUR",
+  /** The user's live bot settings, so the signal shown is the one their bot acts on. */
+  botConfig?: {
+    shortPeriod: number;
+    longPeriod: number;
+    regimeFilterEnabled: boolean;
+    barResolution: string;
+  } | null,
 ): Promise<ChartInsight> {
-  const prices = await getCapitalPriceHistory(userId, capitalCredentials, epic, resolution, 200);
+  // Candles rather than closes: identical price series, but they carry the
+  // volume the broker already sends and this card was discarding.
+  const candles = await getCapitalCandles(userId, capitalCredentials, epic, resolution, 200);
+  const prices = candles.map((c) => c.close);
   if (prices.length < 20) {
     throw new Error("Not enough price history to analyse this instrument");
   }
+  const volume = volumeSummary(candles);
 
   const last = prices[prices.length - 1];
   const shortMa = sma(prices, 10) ?? last;
@@ -66,6 +129,33 @@ export async function computeChartInsight(
 
   const adxVal = adx(prices, 14);
   const confidence = clampInt((adxVal ?? 15) * 2.2, 5, 95);
+
+  // What the user's own bot would say, using THEIR settings — not this card's.
+  // Computed on the bot's own bar resolution too, so it agrees with the Signals
+  // page; that needs a second fetch whenever the chart is showing a different
+  // timeframe from the one the engine trades on.
+  let botSignal: ChartInsight["botSignal"] = null;
+  try {
+    const cfg = botConfig ?? null;
+    if (cfg) {
+      const signalPrices =
+        cfg.barResolution === resolution
+          ? prices
+          : (await getCapitalCandles(userId, capitalCredentials, epic, cfg.barResolution, 200)).map((c) => c.close);
+      const routed = routeStrategy(signalPrices, cfg.shortPeriod, cfg.longPeriod, cfg.regimeFilterEnabled);
+      if (routed) {
+        botSignal = {
+          action: routed.signal,
+          strategy: routed.strategy,
+          regime: routed.regime,
+          resolution: cfg.barResolution,
+        };
+      }
+    }
+  } catch {
+    // A failed signal must not take the whole card down; null reads as
+    // "couldn't compute", which the UI states rather than showing HOLD.
+  }
 
   let explanation = `Price is in a ${trend.toLowerCase()} with ${volatility.toLowerCase()} volatility, trading near ${roundPrice(last)} between support ${support} and resistance ${resistance}.`;
   try {
@@ -97,5 +187,7 @@ Respond with ONLY JSON: { "explanation": string }  // one short sentence, plain 
     confidence,
     explanation,
     riskWarning: CHART_DISCLAIMER,
+    volume,
+    botSignal,
   };
 }

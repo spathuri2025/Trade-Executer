@@ -42,6 +42,25 @@ function Metric({ label, value, color }: { label: string; value: string; color?:
   );
 }
 
+/** "2.0× avg" / "40% below" — the comparison, in words a beginner reads at a glance. */
+function volumeLabel(ratio: number): string {
+  if (ratio >= 1.15) return `${ratio.toFixed(1)}× avg`;
+  if (ratio <= 0.85) return `${Math.round((1 - ratio) * 100)}% below`;
+  return "typical";
+}
+
+/** Unusual volume in either direction is the thing worth noticing, so both ends are coloured. */
+function volumeColor(ratio: number): string {
+  if (ratio >= 1.5) return amber;
+  if (ratio <= 0.5) return muted;
+  return "hsl(var(--foreground) / 0.9)";
+}
+
+function signalColor(action: string): string {
+  if (action === "BUY") return emerald;
+  if (action === "SELL") return red;
+  return muted;
+}
 export default function ChartInsightPanel({ epic, resolution }: { epic: string; resolution: string }) {
   const { data, isLoading, isError } = useGetChartInsight(
     { epic, resolution },
@@ -107,11 +126,51 @@ export default function ChartInsightPanel({ epic, resolution }: { epic: string; 
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 pt-1" style={{ borderTop: divider, paddingTop: 12 }}>
+          <div className="grid grid-cols-4 gap-4 pt-1" style={{ borderTop: divider, paddingTop: 12 }}>
             <Metric label="Support" value={data.support != null ? data.support.toFixed(2) : "—"} color={emerald} />
             <Metric label="Resistance" value={data.resistance != null ? data.resistance.toFixed(2) : "—"} color={red} />
             <Metric label="Volatility" value={data.volatility} color={volColor(data.volatility)} />
+            {/* The ratio, not the raw figure: a volume number means nothing
+                without knowing what normal looks like for this instrument. */}
+            <Metric
+              label="Volume"
+              value={data.volume ? volumeLabel(data.volume.ratio) : "—"}
+              color={data.volume ? volumeColor(data.volume.ratio) : muted}
+            />
           </div>
+
+          {data.volume && (
+            <p className="text-xs" style={{ color: mutedLo }}>
+              Latest bar {Math.round(data.volume.latest).toLocaleString()} against a recent average of{" "}
+              {Math.round(data.volume.average).toLocaleString()}. This is your broker&rsquo;s CFD volume &mdash;
+              activity on their own book, not exchange or futures volume.
+            </p>
+          )}
+
+          {data.botSignal && (
+            <div
+              className="flex items-start gap-2.5 rounded-lg p-3"
+              style={{ border: divider, backgroundColor: "hsl(var(--accent) / 0.25)" }}
+              data-testid="chart-bot-signal"
+            >
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded"
+                style={{
+                  color: signalColor(data.botSignal.action),
+                  border: `1px solid ${signalColor(data.botSignal.action)}`,
+                }}
+              >
+                {data.botSignal.action}
+              </span>
+              <span className="text-xs leading-snug" style={{ color: muted }}>
+                What <strong>your bot</strong> makes of this right now &mdash; its own settings, not this
+                chart&rsquo;s: {data.botSignal.strategy.replace(/_/g, " ")}
+                {data.botSignal.regime ? ` in a ${data.botSignal.regime} market` : ""}, on{" "}
+                {data.botSignal.resolution.replace(/_/g, " ").toLowerCase()} bars. This is the same figure
+                your Signals page shows.
+              </span>
+            </div>
+          )}
 
           <p className="text-sm leading-relaxed" style={{ color: "hsl(var(--foreground) / 0.9)" }}>
             {data.explanation}

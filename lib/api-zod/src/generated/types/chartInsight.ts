@@ -5,8 +5,10 @@
  * Trading bot API for Trading 212
  * OpenAPI spec version: 0.1.0
  */
+import type { ChartInsightBotSignal } from './chartInsightBotSignal';
 import type { ChartInsightTrend } from './chartInsightTrend';
 import type { ChartInsightVolatility } from './chartInsightVolatility';
+import type { ChartInsightVolume } from './chartInsightVolume';
 
 export interface ChartInsight {
   epic: string;
@@ -19,4 +21,16 @@ export interface ChartInsight {
   confidence: number;
   explanation: string;
   riskWarning: string;
+  /**
+     * Latest bar volume against the average of the bars before it (the latest is excluded from that average, so a spike still reads as a spike). This is Capital.com CFD volume — activity on their own book, not exchange or futures volume. Null when the broker reports none, which is different from a genuine zero-volume bar.
+
+     * @nullable
+     */
+  volume?: ChartInsightVolume;
+  /**
+     * What the user's OWN bot makes of this instrument, computed with their configured periods, bar resolution and regime filter — not the card's private 10/30 hourly view. A card reading BUY while the Signals page sits on HOLD is worse than no card. Null when it could not be computed, which is not the same as HOLD.
+
+     * @nullable
+     */
+  botSignal?: ChartInsightBotSignal;
 }

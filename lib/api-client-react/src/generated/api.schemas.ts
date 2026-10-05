@@ -1307,6 +1307,32 @@ export const ChartInsightVolatility = {
   High: 'High',
 } as const;
 
+/**
+ * Latest bar volume against the average of the bars before it (the latest is excluded from that average, so a spike still reads as a spike). This is Capital.com CFD volume — activity on their own book, not exchange or futures volume. Null when the broker reports none, which is different from a genuine zero-volume bar.
+
+ * @nullable
+ */
+export type ChartInsightVolume = {
+  latest: number;
+  average: number;
+  /** latest ÷ average. 1 is typical, 2 is double, 0.6 is 40% below. */
+  ratio: number;
+} | null;
+
+/**
+ * What the user's OWN bot makes of this instrument, computed with their configured periods, bar resolution and regime filter — not the card's private 10/30 hourly view. A card reading BUY while the Signals page sits on HOLD is worse than no card. Null when it could not be computed, which is not the same as HOLD.
+
+ * @nullable
+ */
+export type ChartInsightBotSignal = {
+  action: 'BUY' | 'SELL' | 'HOLD';
+  strategy: string;
+  /** @nullable */
+  regime?: string | null;
+  /** The bar resolution the bot trades on, which may differ from the chart's. */
+  resolution: string;
+} | null | null;
+
 export interface ChartInsight {
   epic: string;
   trend: ChartInsightTrend;
@@ -1318,6 +1344,18 @@ export interface ChartInsight {
   confidence: number;
   explanation: string;
   riskWarning: string;
+  /**
+     * Latest bar volume against the average of the bars before it (the latest is excluded from that average, so a spike still reads as a spike). This is Capital.com CFD volume — activity on their own book, not exchange or futures volume. Null when the broker reports none, which is different from a genuine zero-volume bar.
+
+     * @nullable
+     */
+  volume?: ChartInsightVolume;
+  /**
+     * What the user's OWN bot makes of this instrument, computed with their configured periods, bar resolution and regime filter — not the card's private 10/30 hourly view. A card reading BUY while the Signals page sits on HOLD is worse than no card. Null when it could not be computed, which is not the same as HOLD.
+
+     * @nullable
+     */
+  botSignal?: ChartInsightBotSignal;
 }
 
 export interface InstrumentPnl {

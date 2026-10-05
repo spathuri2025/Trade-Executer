@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { getBotStatus } from "../lib/botEngine";
 import { computeChartInsight } from "../lib/chartInsightService";
 import { getUserBrokerCredentials } from "../lib/brokerCredentialsService";
 import { consumeAiQuota, aiQuotaExceededBody } from "../lib/planService";
@@ -38,7 +39,15 @@ router.get("/charts/insight", async (req, res): Promise<void> => {
   }
 
   try {
-    const insight = await computeChartInsight(req.user!.id, credentials.capital, epic, resolution);
+    // The user's own settings, so the signal on the card is the one their bot
+    // acts on rather than this card's private view of the market.
+    const { config } = await getBotStatus(req.user!.id);
+    const insight = await computeChartInsight(req.user!.id, credentials.capital, epic, resolution, {
+      shortPeriod: config.shortPeriod,
+      longPeriod: config.longPeriod,
+      regimeFilterEnabled: config.regimeFilterEnabled,
+      barResolution: config.barResolution,
+    });
     res.set("Cache-Control", "no-store");
     res.json(insight);
   } catch (err) {

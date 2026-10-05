@@ -3353,6 +3353,41 @@ components:
           type: string
         riskWarning:
           type: string
+        volume:
+          type: ["object", "null"]
+          required: [latest, average, ratio]
+          description: >
+            Latest bar volume against the average of the bars before it (the latest is excluded
+            from that average, so a spike still reads as a spike). This is Capital.com CFD volume —
+            activity on their own book, not exchange or futures volume. Null when the broker
+            reports none, which is different from a genuine zero-volume bar.
+          properties:
+            latest:
+              type: number
+            average:
+              type: number
+            ratio:
+              type: number
+              description: latest ÷ average. 1 is typical, 2 is double, 0.6 is 40% below.
+        botSignal:
+          type: ["object", "null"]
+          required: [action, strategy, resolution]
+          description: >
+            What the user's OWN bot makes of this instrument, computed with their configured
+            periods, bar resolution and regime filter — not the card's private 10/30 hourly view.
+            A card reading BUY while the Signals page sits on HOLD is worse than no card. Null
+            when it could not be computed, which is not the same as HOLD.
+          properties:
+            action:
+              type: string
+              enum: [BUY, SELL, HOLD]
+            strategy:
+              type: string
+            regime:
+              type: ["string", "null"]
+            resolution:
+              type: string
+              description: The bar resolution the bot trades on, which may differ from the chart's.
 
     InstrumentPnl:
       type: object
