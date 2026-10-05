@@ -7,9 +7,32 @@ const DISCLAIMER =
 
 const MARKETS = ["Crude Oil WTI", "Gold", "S&P 500", "Bitcoin"];
 
-/** The analyst prompt — kept short and decision-focused per product owner. */
-const BASE_PROMPT =
-  "You are the TradeBuzz Daily Market Analyst. Create a SHORT, easy-to-read daily market brief for day traders covering Crude Oil WTI, Gold, S&P 500 and Bitcoin. For each market give the directional bias, the key support and resistance levels, and ONE short plain-language paragraph (2-3 sentences, max ~60 words) that a busy trader can skim to make a decision. That paragraph should fold together what matters most today: the outlook, any important news/events, high-risk periods to watch, and the main technical observation — in everyday language, no jargon, no walls of text. Do not give guaranteed buy/sell signals. Always include: Trading involves risk. This report is for educational purposes and is not financial advice.";
+/**
+ * The analyst prompt — kept short and decision-focused per product owner.
+ *
+ * It now REQUIRES searching, and that is not a refinement. Until 5 Oct 2026
+ * this prompt was sent with no tools at all, so every "key support and
+ * resistance level" and every "important news/event" was written from the
+ * model's training data and shown to the user as today's market. The briefing
+ * described "today's headlines about an AI reality check dragging the S&P 500
+ * to 5,000" on a day no such headline existed, while the assistant — asked the
+ * same thing — correctly said it had no news. The honest half of the product
+ * was the half that looked broken.
+ *
+ * Levels and events are claims about the world. They are either looked up or
+ * they are not stated.
+ */
+export function briefPrompt(): string {
+  return (
+    "You are the TradeBuzz Daily Market Analyst. Create a SHORT, easy-to-read daily market brief for day traders covering Crude Oil WTI, Gold, S&P 500 and Bitcoin. " +
+    "FIRST, use web search to find today's actual price action, levels and news for each of those four markets. " +
+    "Every number and every event you mention must come from something you found just now — never from memory, which is out of date. " +
+    "If you cannot find current information for one of the markets, say so for that market instead of estimating. " +
+    "For each market give the directional bias, the key support and resistance levels, and ONE short plain-language paragraph (2-3 sentences, max ~60 words) that a busy trader can skim to make a decision. " +
+    "That paragraph should fold together what matters most today: the outlook, any important news/events, high-risk periods to watch, and the main technical observation — in everyday language, no jargon, no walls of text. " +
+    "Do not give guaranteed buy/sell signals. Always include: Trading involves risk. This report is for educational purposes and is not financial advice."
+  );
+}
 
 /** Appended so the model returns parseable, structured JSON we can render per market. */
 const FORMAT_INSTRUCTION = `
@@ -67,10 +90,16 @@ function normalizeMarket(raw: unknown): MarketUpdate {
 }
 
 export async function generateDailyBrief(log: Logger): Promise<GeneratedBrief> {
+  // No fallback to a search-free call on purpose. A brief without search is a
+  // brief of invented levels and invented headlines, which is worse than no
+  // brief: the page would look identical and the reader could not tell. If the
+  // gateway ever stops offering the tool, this throws and the last real brief
+  // stays on the page.
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
-    messages: [{ role: "user", content: BASE_PROMPT + FORMAT_INSTRUCTION }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+    messages: [{ role: "user", content: briefPrompt() + FORMAT_INSTRUCTION }],
   });
 
   const textBlock = message.content.find((b) => b.type === "text");
