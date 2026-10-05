@@ -199,8 +199,6 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
     .where(eq(messages.conversationId, conversationId))
     .orderBy(asc(messages.createdAt));
 
-  const systemPrompt = await buildSystemPrompt(req.user!.id);
-
   // Only the most recent turns are replayed to the model — see the matching
   // comment in signalAnalyst.ts for why (a fresh account snapshot competing
   // against old, now-outdated figures from earlier in a long-lived thread).
@@ -229,17 +227,54 @@ router.post("/assistant/conversations/:id/messages", async (req, res): Promise<v
   };
   req.on("close", onClose);
 
-  try {
-    const stream = await anthropic.messages.create(
+  /**
+   * Open the stream, with Anthropic's server-side web search if the gateway
+   * allows it.
+   *
+   * Search is what lets the assistant answer WHY a market is moving. Asked that
+   * on 5 Oct 2026 it could only say it had no news — correctly, since nothing
+   * here subscribes to one. Meanwhile the daily briefing was describing
+   * "today's headlines" it had invented, so the honest half of the product was
+   * the half that looked broken.
+   *
+   * Whether this particular Anthropic gateway exposes the tool is not something
+   * we can know without asking it, so we ask: on a rejection we reopen without
+   * the tool AND with the prompt that tells the model it cannot look anything
+   * up. Those two must move together — a model told it can search, that then
+   * cannot, is exactly how invented headlines get written.
+   */
+  const openStream = async (webSearch: boolean) => {
+    const systemPrompt = await buildSystemPrompt(req.user!.id, { webSearch });
+    return anthropic.messages.create(
       {
         model: "claude-sonnet-4-6",
         max_tokens: 8192,
         system: systemPrompt,
         messages: chatMessages,
         stream: true,
+        ...(webSearch
+          ? {
+              // Capped: each search is billed, and three is enough to answer
+              // "why is this moving" without turning one question into a crawl.
+              tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
+            }
+          : {}),
       },
       { signal: ac.signal },
     );
+  };
+
+  try {
+    let stream;
+    try {
+      stream = await openStream(true);
+    } catch (err) {
+      if (clientGone) throw err;
+      // Reopening costs one extra round trip on a gateway without the tool.
+      // Worth it: the alternative is permanently assuming it is unavailable.
+      req.log.warn({ err }, "Web search unavailable on this Anthropic gateway — retrying without it");
+      stream = await openStream(false);
+    }
 
     for await (const event of stream) {
       if (clientGone) break;

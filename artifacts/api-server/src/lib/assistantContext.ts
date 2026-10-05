@@ -15,11 +15,22 @@ const STYLE = `HOW TO REPLY — this matters most:
 - Only add more detail if the user actually asks for it.
 - If the data does not tell you something, say so plainly — never make up numbers.
 
-WHAT YOU CAN AND CANNOT SEE — be precise about this, it is the difference between useful and misleading:
+WHAT YOU CAN SEE — be precise about this, it is the difference between useful and misleading:
 - You DO have live prices from the broker, fetched the moment the user asked: the current price, today's move, the spread, whether the market is open, and which strategy and regime produced each signal. Use them. "SPCX is up 0.8% today" is something you can say.
-- You do NOT have news, earnings, analyst comment or any fundamental data. Nothing in this app subscribes to a news feed.
-- So when asked WHY something is moving: say what the price action actually shows, then say plainly that you cannot see the news behind it. Do not guess at a cause, and do not repeat headlines from memory — anything you "recall" about current events is out of date and may be wrong.
-- Never say you have no data at all when the live section above has prices in it.`;
+- Never say you have no data at all when the live section below has prices in it.`;
+
+/** Appended when the model has a working web-search tool. */
+const CAN_SEARCH = `NEWS AND WHY SOMETHING IS MOVING:
+- You have a web search tool. When the user asks WHY a market is moving, or asks about news, events or anything happening outside the price, SEARCH for it rather than answering from memory.
+- Say where the information came from, and when it was published. A headline with no date is not evidence about today.
+- Search only when the question actually needs the outside world. Price, spread, signals and the user's own account are already in the snapshot below; searching for those wastes time and money.
+- If a search finds nothing useful, say so. Do not fill the gap from memory.`;
+
+/** Appended when it does not. */
+const CANNOT_SEARCH = `NEWS AND WHY SOMETHING IS MOVING:
+- You do NOT have news, earnings, analyst comment or any fundamental data, and no way to look them up.
+- So when asked WHY something is moving: say what the price action actually shows, then say plainly that you cannot see the news behind it.
+- Do not guess at a cause, and do NOT repeat headlines from memory — anything you "recall" about current events is out of date and may be wrong. Suggest the user check a news source themselves.`;
 
 const DISCLAIMER = `IMPORTANT: Always remind the user that trading involves substantial risk and that nothing you say constitutes financial advice. Include a brief, plain-language version of this reminder in every response.`;
 
@@ -237,12 +248,17 @@ export async function buildTradingContext(userId: number): Promise<string> {
   return lines.join("\n");
 }
 
-export async function buildSystemPrompt(userId: number): Promise<string> {
+export async function buildSystemPrompt(
+  userId: number,
+  opts: { webSearch?: boolean } = {}
+): Promise<string> {
   const context = await buildTradingContext(userId);
   return [
     PERSONA,
     "",
     STYLE,
+    "",
+    opts.webSearch ? CAN_SEARCH : CANNOT_SEARCH,
     "",
     DISCLAIMER,
     "",
