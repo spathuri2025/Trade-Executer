@@ -21,7 +21,7 @@ import {
   closeBrokerPosition,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
-import { summariseTransactions, parseUtc } from "./livePerformance";
+import { summariseTransactions, parseUtc, cashFlowSince, type BrokerTransaction } from "./livePerformance";
 import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
 import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
@@ -349,6 +349,45 @@ async function haltTrading(userId: number, state: BotState, reason: string, titl
  * Returns null when the history can't be read — an unknown streak must not halt
  * a bot, and the equity limits still bound the loss either way.
  */
+/**
+ * Money paid into or out of the account since the day's and the week's
+ * baselines, so the loss limits measure trading rather than banking.
+ *
+ * On 5 Oct 2026 a £1,000 withdrawal dropped equity by £1,000 and every
+ * equity-based guard read it as a loss — the breaker announced a "daily loss"
+ * that had not happened. A withdrawal is not a loss and must not halt trading.
+ *
+ * Cached for five minutes: cash movements are rare, and at five-minute cycles
+ * an extra broker call each time buys nothing. Returns zeros when the history
+ * cannot be read, which leaves the limits behaving exactly as before — never
+ * looser, since an unknown movement is treated as no movement.
+ */
+const cashFlowCache = new Map<number, { at: number; rows: BrokerTransaction[] }>();
+const CASH_FLOW_TTL_MS = 5 * 60_000;
+
+async function cashFlowSinceBaselines(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  dayStart: Date,
+  weekStart: Date
+): Promise<{ day: number; week: number }> {
+  try {
+    const cached = cashFlowCache.get(userId);
+    let rows = cached && Date.now() - cached.at < CASH_FLOW_TTL_MS ? cached.rows : null;
+    if (!rows) {
+      const to = new Date();
+      // Nine days back so the week's baseline is always inside the window.
+      const from = new Date(to.getTime() - 9 * 24 * 60 * 60 * 1000);
+      rows = (await getBrokerTransactions(userId, credentials, from, to)) ?? [];
+      cashFlowCache.set(userId, { at: Date.now(), rows });
+    }
+    return { day: cashFlowSince(rows, dayStart), week: cashFlowSince(rows, weekStart) };
+  } catch (err) {
+    logger.warn({ err, userId }, "Could not read cash movements — loss limits measured on raw equity this cycle");
+    return { day: 0, week: 0 };
+  }
+}
+
 const lossStreakCache = new Map<number, { at: number; streak: { count: number; loss: number } }>();
 const LOSS_STREAK_TTL_MS = 60_000;
 
@@ -1278,10 +1317,25 @@ async function runCycleUnlocked(
     const now = new Date();
     const beforeRoll = { dayKey: cb.dayKey, weekKey: cb.weekKey, peak: cb.dayPeakEquity };
 
+    // Take money paid in or out back off the equity these limits measure. A
+    // withdrawal lowers the balance without a losing trade; counting it as a
+    // loss is how a £1,000 transfer halted the bot on 5 Oct 2026.
+    const dayStartAt = new Date(`${utcDayKey(now)}T00:00:00.000Z`);
+    const weekStartAt = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const cash = await cashFlowSinceBaselines(userId, credentials, dayStartAt, weekStartAt);
+    const dayTradingEquity = equity - cash.day;
+    const weekTradingEquity = equity - cash.week;
+    if (cash.day !== 0 || cash.week !== 0) {
+      logger.info(
+        { userId, equity, cashToday: cash.day, cashThisWeek: cash.week },
+        "Cash movements excluded from the loss limits"
+      );
+    }
+
     // Roll the baselines first: a new high this cycle must raise the bar before
     // the drawdown check measures against it, and a new day or week must open
     // its baseline before anything is measured against the old one.
-    Object.assign(cb, rollMarks(cb, equity, now));
+    Object.assign(cb, rollMarks(cb, dayTradingEquity, weekTradingEquity, now));
     if (beforeRoll.dayKey !== cb.dayKey || beforeRoll.weekKey !== cb.weekKey || beforeRoll.peak !== cb.dayPeakEquity) {
       // Not awaited: this is bookkeeping, and a slow write must not delay an
       // order. persistEquityMarks never throws.
@@ -1291,7 +1345,10 @@ async function runCycleUnlocked(
     // The limits that are not day-scoped come first. An account under its floor
     // must stop whatever today's numbers say — that is what makes the floor the
     // only limit that means "never below this".
-    const hard = hardLimitBreach(cb, equity, {
+    // The floor takes RAW equity: it is a statement about how much money may be
+    // at risk, and after a withdrawal there genuinely is less. The weekly loss
+    // takes the trading figure, because a transfer is not a loss.
+    const hard = hardLimitBreach(cb, equity, weekTradingEquity, {
       equityFloor: cfg.equityFloor,
       maxWeeklyLossPercent: cfg.maxWeeklyLossPercent,
     });
@@ -1314,9 +1371,9 @@ async function runCycleUnlocked(
       cfg.maxIntradayDrawdownPercent > 0 &&
       cb.dayPeakEquity !== null &&
       cb.dayPeakEquity > 0 &&
-      ((cb.dayPeakEquity - equity) / cb.dayPeakEquity) * 100 >= cfg.maxIntradayDrawdownPercent
+      ((cb.dayPeakEquity - dayTradingEquity) / cb.dayPeakEquity) * 100 >= cfg.maxIntradayDrawdownPercent
     ) {
-      const ddPct = ((cb.dayPeakEquity - equity) / cb.dayPeakEquity) * 100;
+      const ddPct = ((cb.dayPeakEquity - dayTradingEquity) / cb.dayPeakEquity) * 100;
       const reason = `Equity fell ${ddPct.toFixed(2)}% from today's peak, past the ${cfg.maxIntradayDrawdownPercent}% intraday limit. Trading is halted until you resume it.`;
       logger.error(
         { userId, ddPct, limit: cfg.maxIntradayDrawdownPercent, peak: cb.dayPeakEquity, total: equity },
@@ -1327,7 +1384,7 @@ async function runCycleUnlocked(
     }
 
     if (cfg.maxDailyLossPercent > 0 && cb.dayStartEquity !== null && cb.dayStartEquity > 0) {
-      const lossPct = ((cb.dayStartEquity - equity) / cb.dayStartEquity) * 100;
+      const lossPct = ((cb.dayStartEquity - dayTradingEquity) / cb.dayStartEquity) * 100;
       if (lossPct >= cfg.maxDailyLossPercent) {
         const tripReason = `Daily loss of ${lossPct.toFixed(2)}% reached the ${cfg.maxDailyLossPercent}% limit. Trading is halted until you resume it.`;
         logger.error(

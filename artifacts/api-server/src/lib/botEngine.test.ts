@@ -1366,6 +1366,96 @@ describe("repeated closes — the runaway short", () => {
   });
 });
 
+describe("withdrawals are not losses", () => {
+  /** A cash movement as Capital.com reports it. */
+  const cashRow = (minutesAgo: number, type: string, size: string) => ({
+    dateUtc: new Date(Date.now() - minutesAgo * 60_000).toISOString().slice(0, 19),
+    instrumentName: "",
+    transactionType: type,
+    note: type === "WITHDRAWAL" ? "To bank" : "From bank",
+    size,
+    currency: "GBP",
+  });
+
+  it("does not halt on a withdrawal that looks like a daily loss", async () => {
+    // 5 Oct 2026: £1,000 withdrawn from a ~£5,000 account dropped equity 20%
+    // and the breaker announced a "daily loss" that had not happened.
+    mocks.equityBaselines = [
+      {
+        dayKey: new Date().toISOString().slice(0, 10),
+        dayStartEquity: 5000,
+        dayPeakEquity: 5000,
+        weekKey: utcWeekKeyOf(new Date()),
+        weekStartEquity: 5000,
+        profitLockedDayKey: null,
+        lossStreakResetAt: null,
+      },
+    ];
+    broker.getBrokerAccount.mockResolvedValue(account(4000)); // 5000 − 1000 withdrawn
+    broker.getBrokerTransactions.mockResolvedValue([cashRow(30, "WITHDRAWAL", "-1000")]);
+
+    await startLiveBot({ maxDailyLossPercent: 2, maxIntradayDrawdownPercent: 2, maxWeeklyLossPercent: 5 });
+    await engine.runCycle(TEST_USER_ID);
+
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+  });
+
+  it("still halts on a real trading loss of the same size", async () => {
+    // Same equity, same baselines — but no withdrawal to explain it.
+    mocks.equityBaselines = [
+      {
+        dayKey: new Date().toISOString().slice(0, 10),
+        dayStartEquity: 5000,
+        dayPeakEquity: 5000,
+        weekKey: utcWeekKeyOf(new Date()),
+        weekStartEquity: 5000,
+        profitLockedDayKey: null,
+        lossStreakResetAt: null,
+      },
+    ];
+    broker.getBrokerAccount.mockResolvedValue(account(4000));
+    broker.getBrokerTransactions.mockResolvedValue([]);
+
+    await startLiveBot({ maxDailyLossPercent: 2, maxIntradayDrawdownPercent: 0, maxWeeklyLossPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/Daily loss/i);
+  });
+
+  it("opens the day's baseline on the trading figure, not on a deposit", async () => {
+    // No stored marks, so this cycle OPENS the day — which is the only moment
+    // the baseline is set from the equity passed in. A deposit of £3,500 into a
+    // £5,000 account must open the day at £5,000, not £8,500; otherwise every
+    // later comparison is against money that was never traded.
+    mocks.equityBaselines = [];
+    broker.getBrokerAccount.mockResolvedValue(account(8500));
+    broker.getBrokerTransactions.mockResolvedValue([cashRow(30, "DEPOSIT", "3500")]);
+
+    await startLiveBot({ maxIntradayDrawdownPercent: 2, maxDailyLossPercent: 2, maxWeeklyLossPercent: 5 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.dayStartEquity).toBe(5000);
+    expect(status.circuitBreaker.tripped).toBe(false);
+  });
+
+  it("the FLOOR still counts a withdrawal — there really is less money", async () => {
+    // Deliberately different from the loss limits. The floor says how much may
+    // be at risk, and after a transfer the account genuinely holds less.
+    broker.getBrokerAccount.mockResolvedValue(account(4400));
+    broker.getBrokerTransactions.mockResolvedValue([cashRow(30, "WITHDRAWAL", "-1000")]);
+
+    await startLiveBot({ equityFloor: 4500, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0, maxWeeklyLossPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/floor/i);
+  });
+});
+
 describe("equity floor and the weekly loss limit", () => {
   it("halts at the equity floor even on a day that has lost nothing", async () => {
     // Every percentage limit here re-bases daily. Only the floor is absolute,

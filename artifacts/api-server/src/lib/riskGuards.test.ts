@@ -40,37 +40,37 @@ describe("utcWeekKey", () => {
 
 describe("rollMarks", () => {
   it("opens both baselines on the first observation", () => {
-    const m = rollMarks(noMarks, 5000, at("2026-09-21T08:00:00"));
+    const m = rollMarks(noMarks, 5000, 5000, at("2026-09-21T08:00:00"));
     expect(m.dayStartEquity).toBe(5000);
     expect(m.dayPeakEquity).toBe(5000);
     expect(m.weekStartEquity).toBe(5000);
   });
 
   it("raises the day's peak but never lowers it", () => {
-    let m = rollMarks(noMarks, 5000, at("2026-09-21T08:00:00"));
-    m = rollMarks(m, 5200, at("2026-09-21T09:00:00"));
-    m = rollMarks(m, 4900, at("2026-09-21T10:00:00"));
+    let m = rollMarks(noMarks, 5000, 5000, at("2026-09-21T08:00:00"));
+    m = rollMarks(m, 5200, 5200, at("2026-09-21T09:00:00"));
+    m = rollMarks(m, 4900, 4900, at("2026-09-21T10:00:00"));
     expect(m.dayPeakEquity).toBe(5200);
     expect(m.dayStartEquity).toBe(5000);
   });
 
   it("keeps the week's baseline when the day rolls", () => {
-    let m = rollMarks(noMarks, 5000, at("2026-09-21T08:00:00")); // Monday
-    m = rollMarks(m, 4800, at("2026-09-22T08:00:00")); // Tuesday
+    let m = rollMarks(noMarks, 5000, 5000, at("2026-09-21T08:00:00")); // Monday
+    m = rollMarks(m, 4800, 4800, at("2026-09-22T08:00:00")); // Tuesday
     expect(m.dayStartEquity).toBe(4800);
     expect(m.weekStartEquity).toBe(5000);
   });
 
   it("re-bases the week on Monday", () => {
-    let m = rollMarks(noMarks, 5000, at("2026-09-25T08:00:00")); // Friday
-    m = rollMarks(m, 4700, at("2026-09-28T08:00:00")); // the Monday after
+    let m = rollMarks(noMarks, 5000, 5000, at("2026-09-25T08:00:00")); // Friday
+    m = rollMarks(m, 4700, 4700, at("2026-09-28T08:00:00")); // the Monday after
     expect(m.weekStartEquity).toBe(4700);
   });
 
   it("survives a restart: given the persisted marks it does not re-open the day", () => {
-    const persisted = rollMarks(noMarks, 5000, at("2026-09-21T08:00:00"));
+    const persisted = rollMarks(noMarks, 5000, 5000, at("2026-09-21T08:00:00"));
     // Same day, new process, equity already down £80.
-    const afterRestart = rollMarks(persisted, 4920, at("2026-09-21T14:00:00"));
+    const afterRestart = rollMarks(persisted, 4920, 4920, at("2026-09-21T14:00:00"));
     expect(afterRestart.dayStartEquity).toBe(5000);
   });
 });
@@ -80,28 +80,28 @@ describe("hardLimitBreach", () => {
   const week: EquityMarks = { ...noMarks, weekKey: "2026-W39", weekStartEquity: 5000 };
 
   it("passes an account above both limits", () => {
-    expect(hardLimitBreach(week, 4900, cfg)).toBeNull();
+    expect(hardLimitBreach(week, 4900, 4900, cfg)).toBeNull();
   });
 
   it("halts at the floor, not only below it", () => {
-    expect(hardLimitBreach(week, 4500, cfg)?.code).toBe("equity_floor");
+    expect(hardLimitBreach(week, 4500, 4500, cfg)?.code).toBe("equity_floor");
   });
 
   it("puts the floor ahead of the weekly limit when both are breached", () => {
-    expect(hardLimitBreach(week, 4000, cfg)?.code).toBe("equity_floor");
+    expect(hardLimitBreach(week, 4000, 4000, cfg)?.code).toBe("equity_floor");
   });
 
   it("halts on the weekly loss while still above the floor", () => {
     // 5% of 5000 is 250, so 4750 is exactly the limit.
-    expect(hardLimitBreach(week, 4750, cfg)?.code).toBe("weekly_loss");
+    expect(hardLimitBreach(week, 4750, 4750, cfg)?.code).toBe("weekly_loss");
   });
 
   it("is off when the limits are zero", () => {
-    expect(hardLimitBreach(week, 1, { equityFloor: 0, maxWeeklyLossPercent: 0 })).toBeNull();
+    expect(hardLimitBreach(week, 1, 1, { equityFloor: 0, maxWeeklyLossPercent: 0 })).toBeNull();
   });
 
   it("does not halt before a week's baseline has been observed", () => {
-    expect(hardLimitBreach(noMarks, 1000, { equityFloor: 0, maxWeeklyLossPercent: 5 })).toBeNull();
+    expect(hardLimitBreach(noMarks, 1000, 1000, { equityFloor: 0, maxWeeklyLossPercent: 5 })).toBeNull();
   });
 });
 

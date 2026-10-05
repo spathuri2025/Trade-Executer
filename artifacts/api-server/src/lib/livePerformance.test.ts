@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { summariseTransactions, closeTypeFromNote, parseUtc, type BrokerTransaction } from "./livePerformance";
+import { summariseTransactions, closeTypeFromNote, parseUtc, cashFlowSince, type BrokerTransaction } from "./livePerformance";
 
 const row = (dateUtc: string, instrumentName: string, transactionType: string, note: string, size: string): BrokerTransaction => ({
   dateUtc,
@@ -157,5 +157,50 @@ describe("helpers", () => {
     expect(closeTypeFromNote("Take Profit")).toBe("take-profit");
     expect(closeTypeFromNote("Trade closed: stop-loss")).toBe("stop-loss");
     expect(closeTypeFromNote("Trade closed")).toBe("closed");
+  });
+});
+
+describe("cashFlowSince", () => {
+  const at = (iso: string) => new Date(`${iso}Z`);
+
+  it("counts a withdrawal as money out, not as a loss", () => {
+    // 5 Oct 2026: a £1,000 withdrawal read as a £1,000 trading loss and halted
+    // the bot, with the breaker reporting a daily loss that never happened.
+    const rows = [row("2026-10-05T09:00:00.000", "", "WITHDRAWAL", "To bank", "-1000")];
+    expect(cashFlowSince(rows, at("2026-10-05T00:00:00.000"))).toBe(-1000);
+  });
+
+  it("counts a deposit as money in", () => {
+    const rows = [row("2026-10-05T09:00:00.000", "", "DEPOSIT", "From bank", "3500")];
+    expect(cashFlowSince(rows, at("2026-10-05T00:00:00.000"))).toBe(3500);
+  });
+
+  it("ignores trades, funding and fees — those ARE performance", () => {
+    const rows = [
+      row("2026-10-05T09:00:00.000", "GOLD", "TRADE", "Trade closed", "250"),
+      row("2026-10-05T09:30:00.000", "GOLD", "SWAP", "Overnight funding", "-9.91"),
+      row("2026-10-05T09:40:00.000", "GOLD", "TRADE_COMMISSION", "Commission", "-2"),
+    ];
+    expect(cashFlowSince(rows, at("2026-10-05T00:00:00.000"))).toBe(0);
+  });
+
+  it("ignores movements before the baseline it is measuring from", () => {
+    const rows = [
+      row("2026-10-04T09:00:00.000", "", "WITHDRAWAL", "Yesterday", "-500"),
+      row("2026-10-05T09:00:00.000", "", "WITHDRAWAL", "Today", "-1000"),
+    ];
+    expect(cashFlowSince(rows, at("2026-10-05T00:00:00.000"))).toBe(-1000);
+  });
+
+  it("nets a deposit against a withdrawal", () => {
+    const rows = [
+      row("2026-10-05T09:00:00.000", "", "DEPOSIT", "In", "3500"),
+      row("2026-10-05T10:00:00.000", "", "WITHDRAWAL", "Out", "-1000"),
+    ];
+    expect(cashFlowSince(rows, at("2026-10-05T00:00:00.000"))).toBe(2500);
+  });
+
+  it("is zero when nothing moved", () => {
+    expect(cashFlowSince([], at("2026-10-05T00:00:00.000"))).toBe(0);
   });
 });

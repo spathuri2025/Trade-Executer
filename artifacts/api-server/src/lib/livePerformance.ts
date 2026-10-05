@@ -113,6 +113,31 @@ export function closeTypeFromNote(note: string): CloseType {
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Money moved into or out of the account since `since` — deposits positive,
+ * withdrawals negative. Trading results, funding and fees are excluded, because
+ * those ARE performance.
+ *
+ * Every equity guard measures the account against a baseline: the day's open,
+ * the day's peak, the week's open. A withdrawal moves equity without a single
+ * losing trade, so on 5 Oct 2026 a £1,000 withdrawal read as a £1,000 loss and
+ * tripped the limits — with the breaker announcing a "daily loss" that had not
+ * happened. Subtracting this from equity is what makes those limits measure
+ * trading rather than banking.
+ */
+export function cashFlowSince(rows: BrokerTransaction[], since: Date): number {
+  let net = 0;
+  for (const row of rows) {
+    const type = row.transactionType;
+    if (type === "TRADE" || type === "SWAP" || FEE_TYPES.has(type)) continue;
+    const when = parseUtc(row.dateUtc);
+    if (!Number.isFinite(when.getTime()) || when < since) continue;
+    const amount = Number(row.size);
+    if (Number.isFinite(amount)) net += amount;
+  }
+  return round(net);
+}
+
 export function summariseTransactions(rows: BrokerTransaction[]): LivePerformance {
   const trades: Array<{ dateUtc: string; instrumentName: string; result: number; closeType: CloseType }> = [];
   /** The broker's raw wording per trade, kept only to report labels we failed to classify. */

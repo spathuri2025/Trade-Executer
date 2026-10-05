@@ -73,22 +73,32 @@ export function utcWeekKey(d: Date): string {
  * A new day inside the same week keeps the week's baseline: that is the whole
  * point of having one.
  */
-export function rollMarks(marks: EquityMarks, equity: number, now: Date): EquityMarks {
+export function rollMarks(
+  marks: EquityMarks,
+  /**
+   * Equity with money paid in or out SINCE THE DAY'S BASELINE removed, so the
+   * day's figures measure trading. See cashFlowSince().
+   */
+  dayEquity: number,
+  /** The same, with cash movements since the WEEK'S baseline removed. */
+  weekEquity: number,
+  now: Date
+): EquityMarks {
   const dayKey = utcDayKey(now);
   const weekKey = utcWeekKey(now);
   const next: EquityMarks = { ...marks };
 
   if (next.dayKey !== dayKey || next.dayStartEquity === null) {
     next.dayKey = dayKey;
-    next.dayStartEquity = equity;
-    next.dayPeakEquity = equity;
-  } else if (next.dayPeakEquity === null || equity > next.dayPeakEquity) {
-    next.dayPeakEquity = equity;
+    next.dayStartEquity = dayEquity;
+    next.dayPeakEquity = dayEquity;
+  } else if (next.dayPeakEquity === null || dayEquity > next.dayPeakEquity) {
+    next.dayPeakEquity = dayEquity;
   }
 
   if (next.weekKey !== weekKey || next.weekStartEquity === null) {
     next.weekKey = weekKey;
-    next.weekStartEquity = equity;
+    next.weekStartEquity = weekEquity;
   }
 
   return next;
@@ -99,7 +109,19 @@ export function rollMarks(marks: EquityMarks, equity: number, now: Date): Equity
  * the daily limits: an account under its floor must stop whatever today's
  * numbers look like.
  */
-export function hardLimitBreach(marks: EquityMarks, equity: number, cfg: HardLimitConfig): LimitBreach | null {
+export function hardLimitBreach(
+  marks: EquityMarks,
+  /**
+   * The account's ACTUAL equity, used for the floor. The floor is a statement
+   * about how much money may be at risk, so a withdrawal that takes the account
+   * below it genuinely counts — there really is less there. The loss limits are
+   * different: those measure trading, and a withdrawal is not a loss.
+   */
+  equity: number,
+  /** Equity less cash movements since the week's baseline, for the weekly loss. */
+  weekTradingEquity: number,
+  cfg: HardLimitConfig
+): LimitBreach | null {
   if (cfg.equityFloor > 0 && equity <= cfg.equityFloor) {
     return {
       code: "equity_floor",
@@ -110,7 +132,7 @@ export function hardLimitBreach(marks: EquityMarks, equity: number, cfg: HardLim
   }
 
   if (cfg.maxWeeklyLossPercent > 0 && marks.weekStartEquity !== null && marks.weekStartEquity > 0) {
-    const lossPct = ((marks.weekStartEquity - equity) / marks.weekStartEquity) * 100;
+    const lossPct = ((marks.weekStartEquity - weekTradingEquity) / marks.weekStartEquity) * 100;
     if (lossPct >= cfg.maxWeeklyLossPercent) {
       return {
         code: "weekly_loss",
