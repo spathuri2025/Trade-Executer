@@ -161,6 +161,36 @@ export function buildDailyReport(
     lines.push(exitsLine(yesterday));
   }
 
+  /**
+   * Every pound that moved the balance over the period, trading and otherwise.
+   *
+   * Without this the report measured trading and the account measured reality,
+   * and the two disagreed by £780 over the week to 5 Oct 2026 — +£243.61 of
+   * realised profit against an account £537 lower, with nothing on the page
+   * able to explain it. Money moved in or out still has no business in
+   * netResult; it has every business being visible.
+   */
+  const reconciliation = (s: ReturnType<typeof summariseTransactions>): string[] => {
+    const rows: Array<[string, number]> = [
+      ["Closed trades", s.tradingResult],
+      ["Funding", s.funding],
+      ["Fees", s.fees],
+      ...s.otherMovements.map((m) => [m.type.toLowerCase().replace(/_/g, " "), m.total] as [string, number]),
+    ];
+    const moved = rows.filter(([, v]) => Math.abs(v) >= 0.005);
+    if (moved.length === 0) return [];
+
+    const total = rows.reduce((t, [, v]) => t + v, 0);
+    const lines = ["", "What moved your balance"];
+    for (const [label, value] of moved) {
+      lines.push(`  ${label.padEnd(22)}${money(value, currency)}`);
+    }
+    lines.push(`  ${"".padEnd(22)}${"—".repeat(10)}`);
+    lines.push(`  ${"Net movement".padEnd(22)}${money(total, currency)}`);
+    lines.push("  Open positions are not in these figures — unrealised profit or loss sits outside them.");
+    return lines;
+  };
+
   const block = (name: string, s: ReturnType<typeof summariseTransactions>) => {
     lines.push("");
     lines.push(name);
@@ -173,6 +203,7 @@ export function buildDailyReport(
     lines.push(`  Average win:  ${money(s.averageWin, currency)}      Average loss: ${money(s.averageLoss, currency)}`);
     lines.push(exitsLine(s));
     lines.push(`  Costs:        funding ${money(s.funding, currency)}, fees ${money(s.fees, currency)}`);
+    lines.push(...reconciliation(s));
     if (s.byInstrument.length === 1) {
       // One instrument is neither best nor worst. Labelling it "Best" framed a
       // £2.17 LOSS as the good news in the report of 24 Sep 2026 — the only

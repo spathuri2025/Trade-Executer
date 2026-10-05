@@ -83,6 +83,19 @@ export interface LivePerformance {
    * bucket.
    */
   unrecognisedCloseLabels: string[];
+  /**
+   * Everything that moved the balance but is not a trade, a funding charge or a
+   * fee — withdrawals, deposits, transfers, adjustments — summed per type and
+   * named by whatever the broker calls it.
+   *
+   * These are deliberately excluded from `netResult`, because money you moved
+   * in or out is not trading performance. But excluding them from the REPORT is
+   * how a week could show +£243.61 of realised profit against an account that
+   * fell £537, with nothing on the page to explain the difference. Listed by
+   * the broker's own type name rather than a guessed-at list, so a movement we
+   * have never seen before still appears instead of vanishing.
+   */
+  otherMovements: Array<{ type: string; total: number }>;
 }
 
 const FEE_TYPES = new Set(["TRADE_COMMISSION", "TRADE_COMMISSION_GSL", "FX_COMMISSION", "INACTIVITY_FEE"]);
@@ -104,6 +117,8 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
   const trades: Array<{ dateUtc: string; instrumentName: string; result: number; closeType: CloseType }> = [];
   /** The broker's raw wording per trade, kept only to report labels we failed to classify. */
   const noteByTrade = new Map<(typeof trades)[number], string>();
+  /** Non-trading balance movements, summed per broker type name. */
+  const otherByType = new Map<string, number>();
   let funding = 0;
   let fees = 0;
   const dayNet = new Map<string, { net: number; trades: number }>();
@@ -147,9 +162,12 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
     } else if (FEE_TYPES.has(row.transactionType)) {
       fees += amount;
       addDay(row.dateUtc, amount, false);
+    } else {
+      // Not trading performance, so still kept out of netResult — but recorded,
+      // so the report can account for every pound that moved the balance.
+      const type = (row.transactionType || "").trim() || "(unlabelled)";
+      otherByType.set(type, (otherByType.get(type) ?? 0) + amount);
     }
-    // Deposits, withdrawals, transfers and adjustments are not trading
-    // performance and are deliberately left out.
   }
 
   const exits = { takeProfit: 0, stopLoss: 0, closedEarly: 0 };
@@ -200,6 +218,9 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
       .sort((a, b) => a.net - b.net),
     exits,
     unrecognisedCloseLabels: [...unrecognised],
+    otherMovements: [...otherByType.entries()]
+      .map(([type, total]) => ({ type, total: round(total) }))
+      .sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
     recentTrades: [...trades]
       .sort((a, b) => parseUtc(b.dateUtc).getTime() - parseUtc(a.dateUtc).getTime())
       .slice(0, 50)

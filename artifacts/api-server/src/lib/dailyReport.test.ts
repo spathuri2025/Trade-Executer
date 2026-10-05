@@ -82,6 +82,36 @@ describe("daily report", () => {
     expect(report.text).toMatch(/Worst:\s+SMCI/);
   });
 
+  it("accounts for a withdrawal that trading figures alone cannot explain", () => {
+    // The week to 5 Oct 2026: +£243.61 realised while the account fell £537.
+    const withCash = buildDailyReport(
+      [
+        row("2026-09-21T10:00:00.000", "GOLD", "243.61"),
+        row("2026-09-21T12:00:00.000", "", "-780.70", "Withdrawal to bank", "WITHDRAWAL"),
+      ],
+      NOW,
+      CONTEXT,
+    );
+    expect(withCash.text).toContain("What moved your balance");
+    expect(withCash.text).toMatch(/closed trades\s+\+£243\.61/i);
+    expect(withCash.text).toMatch(/withdrawal\s+−£780\.70/i);
+    expect(withCash.text).toMatch(/Net movement\s+−£537\.09/);
+  });
+
+  it("warns that open positions are outside the reconciliation", () => {
+    const withCash = buildDailyReport(
+      [row("2026-09-21T10:00:00.000", "GOLD", "10.00")],
+      NOW,
+      CONTEXT,
+    );
+    expect(withCash.text).toContain("Open positions are not in these figures");
+  });
+
+  it("says nothing about movement when nothing moved", () => {
+    const quiet = buildDailyReport([], NOW, CONTEXT);
+    expect(quiet.text).not.toContain("What moved your balance");
+  });
+
   it("says how trades ended, so an exit level that never fires is visible", () => {
     // Yesterday's three closes: one take-profit, one stop-loss, one plain.
     expect(report.text).toMatch(/Exits:\s+1 take-profit, 1 stop-loss, 1 closed early/);

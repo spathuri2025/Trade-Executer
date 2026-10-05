@@ -94,6 +94,42 @@ describe("summariseTransactions", () => {
     expect(allKnown.unrecognisedCloseLabels).toEqual([]);
   });
 
+  it("records a withdrawal so the account can be reconciled, without counting it as performance", () => {
+    // The week to 5 Oct 2026: +£243.61 realised against an account £537 lower.
+    // A withdrawal explains it, and nothing in the report could show one.
+    const withCash = summariseTransactions([
+      row("2026-09-29T10:00:00.000", "GOLD", "TRADE", "Trade closed", "243.61"),
+      row("2026-09-30T10:00:00.000", "", "WITHDRAWAL", "Withdrawal to bank", "-780.70"),
+    ]);
+    expect(withCash.otherMovements).toEqual([{ type: "WITHDRAWAL", total: -780.7 }]);
+    // Money you moved is not trading performance, so it stays out of the result.
+    expect(withCash.netResult).toBeCloseTo(243.61, 2);
+    expect(withCash.closedTrades).toBe(1);
+  });
+
+  it("names a movement type it has never seen rather than dropping it", () => {
+    const odd = summariseTransactions([
+      row("2026-09-29T10:00:00.000", "", "CHARGEBACK_ADJUSTMENT", "Who knows", "-12.5"),
+    ]);
+    expect(odd.otherMovements).toEqual([{ type: "CHARGEBACK_ADJUSTMENT", total: -12.5 }]);
+  });
+
+  it("sums repeats of one type and orders by size", () => {
+    const many = summariseTransactions([
+      row("2026-09-29T10:00:00.000", "", "WITHDRAWAL", "x", "-100"),
+      row("2026-09-29T11:00:00.000", "", "WITHDRAWAL", "x", "-50"),
+      row("2026-09-29T12:00:00.000", "", "DEPOSIT", "x", "500"),
+    ]);
+    expect(many.otherMovements).toEqual([
+      { type: "DEPOSIT", total: 500 },
+      { type: "WITHDRAWAL", total: -150 },
+    ]);
+  });
+
+  it("has no other movements when every row is a trade", () => {
+    expect(s.otherMovements.some((m) => m.type === "DEPOSIT")).toBe(true); // the fixture has one
+  });
+
   it("counts every close as early when none carries a label", () => {
     const plain = summariseTransactions([
       row("2026-09-21T15:00:00.000", "GOLD", "TRADE", "Trade closed", "0.10"),
