@@ -1,7 +1,7 @@
 import { db, tradesTable, signalsTable, instrumentsTable, scannerResultsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { getBotStatus } from "./botEngine";
-import { getBrokerAccount, getBrokerPositions } from "./broker";
+import { getBrokerAccount, getBrokerPositions, getBrokerQuote } from "./broker";
 import { getUserBrokerCredentials } from "./brokerCredentialsService";
 import { logger } from "./logger";
 
@@ -13,7 +13,13 @@ const STYLE = `HOW TO REPLY — this matters most:
 - Avoid jargon. If you must use a trading term, add a plain-words explanation in brackets right after it.
 - Lead with the bottom line first, then the main reason in one simple sentence.
 - Only add more detail if the user actually asks for it.
-- If the data does not tell you something, say so plainly — never make up numbers.`;
+- If the data does not tell you something, say so plainly — never make up numbers.
+
+WHAT YOU CAN AND CANNOT SEE — be precise about this, it is the difference between useful and misleading:
+- You DO have live prices from the broker, fetched the moment the user asked: the current price, today's move, the spread, whether the market is open, and which strategy and regime produced each signal. Use them. "SPCX is up 0.8% today" is something you can say.
+- You do NOT have news, earnings, analyst comment or any fundamental data. Nothing in this app subscribes to a news feed.
+- So when asked WHY something is moving: say what the price action actually shows, then say plainly that you cannot see the news behind it. Do not guess at a cause, and do not repeat headlines from memory — anything you "recall" about current events is out of date and may be wrong.
+- Never say you have no data at all when the live section above has prices in it.`;
 
 const DISCLAIMER = `IMPORTANT: Always remind the user that trading involves substantial risk and that nothing you say constitutes financial advice. Include a brief, plain-language version of this reminder in every response.`;
 
@@ -107,6 +113,68 @@ export async function buildTradingContext(userId: number): Promise<string> {
     }
   }
 
+  // Live prices, fetched at the moment the user asks.
+  //
+  // Until now the assistant's freshest price was whatever the last cycle wrote
+  // into the signals table — up to five minutes old — and it had no spread, no
+  // intraday move and no idea whether the market was even open. Asked "why is
+  // SPCX moving?", it could only say it had no data, which was true and
+  // unhelpful: the broker will answer "is it moving, which way, and by how
+  // much" in one call. It still cannot answer WHY, because nothing here
+  // subscribes to news, and the prompt says so rather than letting the model
+  // reach for its training data.
+  const enabled = (
+    await db.select().from(instrumentsTable).where(eq(instrumentsTable.userId, userId))
+  ).filter((i) => i.enabled);
+
+  if (credentials && enabled.length > 0) {
+    // Today's first recorded price per instrument, for the intraday move. Taken
+    // from our own signal log rather than a second broker call each — the bot
+    // has been writing a price every cycle since the market opened.
+    const since = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+    const todaysSignals = await db
+      .select({ ticker: signalsTable.ticker, price: signalsTable.price, createdAt: signalsTable.createdAt })
+      .from(signalsTable)
+      .where(and(eq(signalsTable.userId, userId), gte(signalsTable.createdAt, since)))
+      .orderBy(signalsTable.createdAt);
+    const firstToday = new Map<string, { price: number; at: Date }>();
+    for (const row of todaysSignals) {
+      if (!firstToday.has(row.ticker)) firstToday.set(row.ticker, { price: Number(row.price), at: row.createdAt });
+    }
+
+    lines.push("");
+    lines.push("## Live market (fetched just now, straight from the broker)");
+    const quotes = await Promise.all(
+      enabled.slice(0, 15).map(async (i) => {
+        try {
+          return { ticker: i.ticker, quote: await getBrokerQuote(userId, credentials, i.ticker) };
+        } catch {
+          return { ticker: i.ticker, quote: null };
+        }
+      }),
+    );
+
+    for (const { ticker, quote } of quotes) {
+      if (!quote) {
+        lines.push(`- ${ticker}: live price unavailable right now.`);
+        continue;
+      }
+      const parts = [`price ${quote.price}`];
+      const open = firstToday.get(ticker);
+      if (open && open.price > 0) {
+        const movePct = ((quote.price - open.price) / open.price) * 100;
+        const dir = movePct > 0 ? "up" : movePct < 0 ? "down" : "flat";
+        parts.push(`${dir} ${Math.abs(movePct).toFixed(2)}% today (from ${open.price} at ${open.at.toISOString().slice(11, 16)})`);
+      }
+      if (quote.price > 0 && quote.offer > quote.bid) {
+        parts.push(`spread ${(((quote.offer - quote.bid) / quote.price) * 100).toFixed(3)}%`);
+      }
+      if (quote.marketStatus) parts.push(`market ${quote.marketStatus}`);
+      if (quote.instrumentType) parts.push(quote.instrumentType.toLowerCase());
+      lines.push(`- ${ticker}: ${parts.join(", ")}`);
+    }
+  }
+
   const trades = await db
     .select()
     .from(tradesTable)
@@ -137,8 +205,13 @@ export async function buildTradingContext(userId: number): Promise<string> {
     lines.push("- None yet.");
   } else {
     for (const s of signals) {
+      // The strategy matters: a mean-reversion BUY with price below both moving
+      // averages is the setup, not a contradiction, and without naming it the
+      // reader judges every signal by crossover rules.
+      const how = [s.strategy, s.regime].filter(Boolean).join("/");
+      const spread = s.spreadPct !== null ? `, spread ${(s.spreadPct * 100).toFixed(3)}%` : "";
       lines.push(
-        `- ${s.createdAt.toISOString().slice(0, 16).replace("T", " ")} ${s.ticker}: ${s.signal} (shortMA ${s.shortMa}, longMA ${s.longMa}, price ${s.price})${s.tradeExecuted ? " → traded" : ""}`,
+        `- ${s.createdAt.toISOString().slice(0, 16).replace("T", " ")} ${s.ticker}: ${s.signal}${how ? ` [${how}]` : ""} (shortMA ${s.shortMa}, longMA ${s.longMa}, price ${s.price}${spread})${s.tradeExecuted ? " → traded" : ""}`,
       );
     }
   }
