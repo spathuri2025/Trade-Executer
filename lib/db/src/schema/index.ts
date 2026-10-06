@@ -28,3 +28,4 @@ export * from "./backtestSweeps";
 export * from "./engineLeases";
 export * from "./tradingProfiles";
 export * from "./equityBaselines";
+export * from "./paperPositions";

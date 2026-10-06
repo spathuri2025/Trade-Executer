@@ -96,6 +96,46 @@ export function spreadSection(
   return lines;
 }
 
+/**
+ * Dry-run results, from simulated positions resolved against real bars.
+ *
+ * Reported separately and labelled, because these are not money. The broker
+ * figures above are what the account actually did; this is what the strategy
+ * would have done with nothing at risk — and it is GROSS of spread, since paper
+ * entries and exits come from mid-price bars. On this account's instruments
+ * that is between 0.085% and 0.5% a trade, so live results would be worse.
+ */
+export function paperSection(
+  paper: {
+    closed: number;
+    wins: number;
+    losses: number;
+    winRate: number | null;
+    netPnl: number;
+    averageWin: number | null;
+    averageLoss: number | null;
+    byReason: { stopLoss: number; takeProfit: number };
+  } | null,
+  open: number,
+  currency: string | null
+): string[] {
+  if (!paper || (paper.closed === 0 && open === 0)) return [];
+
+  const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
+  const lines = ["", "Dry run — what the strategy would have done (no money at risk)"];
+  if (paper.closed === 0) {
+    lines.push(`  ${open} position${open === 1 ? "" : "s"} open, none closed yet.`);
+    return lines;
+  }
+  lines.push(`  Result:       ${money(paper.netPnl, currency)}`);
+  lines.push(`  Trades:       ${paper.closed} (${paper.wins} won, ${paper.losses} lost)   win rate ${pct(paper.winRate)}`);
+  lines.push(`  Average win:  ${money(paper.averageWin, currency)}      Average loss: ${money(paper.averageLoss, currency)}`);
+  lines.push(`  Exits:        ${paper.byReason.takeProfit} take-profit, ${paper.byReason.stopLoss} stop-loss`);
+  if (open > 0) lines.push(`  Still open:   ${open}`);
+  lines.push("  Gross of spread — live trading would be worse by the spread on every trade.");
+  return lines;
+}
+
 export function buildDailyReport(
   rows: BrokerTransaction[],
   now: Date,
@@ -108,6 +148,9 @@ export function buildDailyReport(
     spreads?: Array<{ ticker: string; spreadPct: number; samples: number }>;
     stopLossPercent?: number;
     takeProfitPercent?: number;
+    /** Dry-run results, when the bot is paper trading. */
+    paper?: Parameters<typeof paperSection>[0];
+    paperOpen?: number;
   }
 ): DailyReport {
   const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -228,6 +271,8 @@ export function buildDailyReport(
   lines.push(
     ...spreadSection(context.spreads ?? [], context.stopLossPercent ?? 0, context.takeProfitPercent ?? 0)
   );
+
+  lines.push(...paperSection(context.paper ?? null, context.paperOpen ?? 0, currency));
 
   lines.push("");
   lines.push(`Bot: ${context.botRunning ? "running" : "STOPPED"}${context.dryRun ? ", dry run (no real orders)" : ""}`);

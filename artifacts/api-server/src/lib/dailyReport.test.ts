@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDailyReport, breakEvenWinRate, spreadSection } from "./dailyReport";
+import { buildDailyReport, breakEvenWinRate, spreadSection, paperSection } from "./dailyReport";
 import type { BrokerTransaction } from "./livePerformance";
 
 const row = (dateUtc: string, instrumentName: string, size: string, note = "Trade closed", transactionType = "TRADE"): BrokerTransaction => ({
@@ -229,5 +229,45 @@ describe("spreadSection", () => {
 
   it("says nothing at all when no spread has been measured", () => {
     expect(spreadSection([], 0.3, 0.3)).toEqual([]);
+  });
+});
+
+describe("paperSection", () => {
+  const paper = {
+    closed: 10, wins: 6, losses: 4, winRate: 0.6, netPnl: 42.5,
+    averageWin: 19.5, averageLoss: -12.6, byReason: { stopLoss: 4, takeProfit: 6 },
+  };
+
+  it("reports dry-run results separately from the account's own", () => {
+    const text = paperSection(paper, 2, "GBP").join("\n");
+    expect(text).toContain("Dry run — what the strategy would have done (no money at risk)");
+    expect(text).toMatch(/Result:\s+\+£42\.50/);
+    expect(text).toMatch(/win rate 60%/);
+    expect(text).toMatch(/Still open:\s+2/);
+  });
+
+  it("warns that paper results are gross of spread", () => {
+    // Entries and exits come from mid-price bars, so live is worse on every
+    // trade — between 0.085% and 0.5% on this account's instruments.
+    expect(paperSection(paper, 0, "GBP").join("\n")).toContain("Gross of spread");
+  });
+
+  it("says positions are open but undecided rather than reporting a zero result", () => {
+    const none = { ...paper, closed: 0, wins: 0, losses: 0, winRate: null, netPnl: 0, averageWin: null, averageLoss: null, byReason: { stopLoss: 0, takeProfit: 0 } };
+    const text = paperSection(none, 3, "GBP").join("\n");
+    expect(text).toContain("3 positions open, none closed yet.");
+    expect(text).not.toMatch(/Result:/);
+  });
+
+  it("says nothing at all when there is no dry run to report", () => {
+    expect(paperSection(null, 0, "GBP")).toEqual([]);
+    const none = { ...paper, closed: 0, byReason: { stopLoss: 0, takeProfit: 0 } };
+    expect(paperSection(none, 0, "GBP")).toEqual([]);
+  });
+
+  it("counts how trades ended, which paper CAN answer and the broker cannot", () => {
+    // The live report says "not reported" because Capital.com labels every
+    // close "Trade closed". A simulated exit knows exactly why it closed.
+    expect(paperSection(paper, 0, "GBP").join("\n")).toMatch(/Exits:\s+6 take-profit, 4 stop-loss/);
   });
 });

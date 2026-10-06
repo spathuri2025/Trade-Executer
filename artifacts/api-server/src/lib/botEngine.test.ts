@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   tradeInserts: [] as Array<Record<string, unknown>>,
   /** Every row written to the signals table — carries the reason a trade was skipped. */
   signalInserts: [] as Array<Record<string, unknown>>,
+  /** Simulated positions opened during a dry run. */
+  paperInserts: [] as Array<Record<string, unknown>>,
   /** Every `running` value written via persistRunning, in order. */
   runningWrites: [] as boolean[],
   broker: {
@@ -96,6 +98,7 @@ vi.mock("@workspace/db", () => ({
         // what happened rather than which mechanism carried it.
         if (table?.__name === "trades") mocks.tradeInserts.push(values);
         if (table?.__name === "signals") mocks.signalInserts.push(values);
+        if (table?.__name === "paper_positions") mocks.paperInserts.push(values);
         return insertResult();
       },
     }),
@@ -113,6 +116,14 @@ vi.mock("@workspace/db", () => ({
   tradesTable: { __name: "trades" },
   signalsTable: { __name: "signals" },
   equityBaselinesTable: { __name: "equity_baselines", userId: "user_id" },
+  paperPositionsTable: {
+    __name: "paper_positions",
+    userId: "user_id",
+    ticker: "ticker",
+    side: "side",
+    closedAt: "closed_at",
+    id: "id",
+  },
   botConfigTable: { __name: "bot_config", userId: "user_id", running: "running" },
 }));
 
@@ -264,6 +275,7 @@ beforeEach(async () => {
   mocks.equityBaselines = [];
   mocks.tradeInserts = [];
   mocks.signalInserts = [];
+  mocks.paperInserts = [];
   mocks.runningWrites = [];
   // mockReset, not just clearAllMocks: clearing resets call history but leaves
   // any queued mockReturnValueOnce/mockResolvedValueOnce values in place. A
@@ -1363,6 +1375,49 @@ describe("repeated closes — the runaway short", () => {
     await engine.runCycle(TEST_USER_ID);
 
     expect(traded()).toHaveLength(1);
+  });
+});
+
+describe("dry run actually simulates a position", () => {
+  it("opens a paper position with the stop and target the order would have carried", async () => {
+    // Dry run used to write an entry row and nothing else: open positions come
+    // from the broker, which has none in dry run, so nothing ever closed and a
+    // week of it measured no profit or loss at all.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    mocks.enabledInstruments = [];
+    await engine.updateConfig(TEST_USER_ID, buildConfig({ dryRun: true, stopLossPercent: 1.5, takeProfitPercent: 3 }));
+    await engine.startBot(TEST_USER_ID);
+    await flush();
+
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    mocks.paperInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(mocks.paperInserts).toHaveLength(1);
+    const pos = mocks.paperInserts[0]!;
+    expect(pos["ticker"]).toBe("GOLD");
+    expect(pos["side"]).toBe("BUY");
+    // defaultPrices is a flat series at 100, so the levels are exact.
+    expect(Number(pos["entryPrice"])).toBeCloseTo(100, 6);
+    expect(Number(pos["stopLevel"])).toBeCloseTo(98.5, 6);
+    expect(Number(pos["targetLevel"])).toBeCloseTo(103, 6);
+  });
+
+  it("opens no paper position when trading live", async () => {
+    // Live positions are the broker's; simulating them too would double-count.
+    broker.getBrokerAccount.mockResolvedValue(account(5000));
+    broker.getBrokerPositions.mockResolvedValue([]);
+    ma.computeMASignal.mockReturnValue({ signal: "BUY", shortMa: 2, longMa: 1 });
+
+    await startLiveBot();
+    mocks.enabledInstruments = [{ ticker: "GOLD", enabled: true }];
+    mocks.paperInserts = [];
+    await engine.runCycle(TEST_USER_ID);
+
+    expect(mocks.paperInserts).toHaveLength(0);
   });
 });
 

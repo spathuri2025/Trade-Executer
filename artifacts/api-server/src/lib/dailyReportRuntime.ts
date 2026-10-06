@@ -1,10 +1,11 @@
-import { and, eq, gte, sql } from "drizzle-orm";
-import { db, notificationsTable, signalsTable } from "@workspace/db";
+import { and, eq, gte, isNull, isNotNull, sql } from "drizzle-orm";
+import { db, notificationsTable, signalsTable, paperPositionsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { getUserBrokerCredentials } from "./brokerCredentialsService";
 import { getBrokerTransactions } from "./broker";
 import { notifyUser } from "./notificationService";
 import { buildDailyReport } from "./dailyReport";
+import { summarisePaper } from "./paperTrading";
 import { modesActiveBetween } from "./tradingProfiles";
 
 /**
@@ -96,6 +97,27 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
           return [] as Array<{ ticker: string; spreadPct: number; samples: number }>;
         });
 
+      // Dry-run results live in paper_positions, not in the broker's history —
+      // nothing about a simulated trade ever reaches Capital.com.
+      const paperRows = await db
+        .select({ pnl: paperPositionsTable.pnl, exitReason: paperPositionsTable.exitReason })
+        .from(paperPositionsTable)
+        .where(and(eq(paperPositionsTable.userId, userId), isNotNull(paperPositionsTable.closedAt)))
+        .catch(() => [] as Array<{ pnl: number | null; exitReason: string | null }>);
+      const [{ count: paperOpen } = { count: 0 }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(paperPositionsTable)
+        .where(and(eq(paperPositionsTable.userId, userId), isNull(paperPositionsTable.closedAt)))
+        .catch(() => [{ count: 0 }]);
+
+      const paper = paperRows.length > 0 || paperOpen > 0
+        ? summarisePaper(
+            paperRows
+              .filter((r) => r.pnl !== null)
+              .map((r) => ({ pnl: Number(r.pnl), exitReason: r.exitReason ?? "" }))
+          )
+        : null;
+
       const report = buildDailyReport(rows, now, {
         modes,
         botRunning: Boolean(r["running"]),
@@ -108,6 +130,8 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
         })),
         stopLossPercent: Number(r["stop_loss_percent"] ?? 0),
         takeProfitPercent: Number(r["take_profit_percent"] ?? 0),
+        paper,
+        paperOpen: Number(paperOpen ?? 0),
       });
 
       // notifyUser writes the in-app copy AND emails it — one path, so the

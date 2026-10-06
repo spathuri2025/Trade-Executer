@@ -5,9 +5,10 @@ import {
   signalsTable,
   botConfigTable,
   equityBaselinesTable,
+  paperPositionsTable,
   type BotConfigRow,
 } from "@workspace/db";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   placeBrokerOrder,
@@ -22,6 +23,7 @@ import {
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import { summariseTransactions, parseUtc, cashFlowSince, type BrokerTransaction } from "./livePerformance";
+import { paperLevels, resolvePaperExit, paperPnl } from "./paperTrading";
 import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
 import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
@@ -318,6 +320,98 @@ async function persistEquityMarks(userId: number, cb: CircuitBreakerState): Prom
       });
   } catch (err) {
     logger.error({ err, userId }, "Could not persist equity baselines");
+  }
+}
+
+/**
+ * Closes simulated positions on an instrument, in the direction an order would
+ * have closed: a SELL closes longs, a BUY closes shorts. Mirrors the live
+ * engine, so a dry run exits for the same reasons at the same moments.
+ */
+async function closePaperPositions(
+  userId: number,
+  ticker: string,
+  side: "BUY" | "SELL",
+  price: number,
+  reason: string
+): Promise<void> {
+  const closes = side === "SELL" ? "BUY" : "SELL";
+  const open = await db
+    .select()
+    .from(paperPositionsTable)
+    .where(
+      and(
+        eq(paperPositionsTable.userId, userId),
+        eq(paperPositionsTable.ticker, ticker),
+        eq(paperPositionsTable.side, closes),
+        isNull(paperPositionsTable.closedAt)
+      )
+    );
+
+  for (const pos of open) {
+    await db
+      .update(paperPositionsTable)
+      .set({
+        exitPrice: price,
+        closedAt: new Date(),
+        exitReason: reason,
+        pnl: paperPnl({ side: pos.side, entryPrice: pos.entryPrice, quantity: pos.quantity, stopLevel: null, targetLevel: null }, price),
+      })
+      .where(eq(paperPositionsTable.id, pos.id));
+  }
+}
+
+/**
+ * Resolves open simulated positions against real bars since they were opened.
+ *
+ * Run before signals each cycle, so a paper position that would already have
+ * been stopped out does not linger and block a new entry — the live engine
+ * would have had it closed by the broker long before the next cycle.
+ */
+async function settlePaperPositions(
+  userId: number,
+  credentials: UserBrokerCredentials,
+  resolution: BotConfig["barResolution"]
+): Promise<void> {
+  const open = await db
+    .select()
+    .from(paperPositionsTable)
+    .where(and(eq(paperPositionsTable.userId, userId), isNull(paperPositionsTable.closedAt)));
+  if (open.length === 0) return;
+
+  const byTicker = new Map<string, typeof open>();
+  for (const p of open) byTicker.set(p.ticker, [...(byTicker.get(p.ticker) ?? []), p]);
+
+  for (const [ticker, positions] of byTicker) {
+    let candles;
+    try {
+      candles = await getBrokerCandles(userId, credentials, ticker, 200, resolution);
+    } catch (err) {
+      logger.warn({ err, userId, ticker }, "Could not fetch bars to settle paper positions");
+      continue;
+    }
+
+    for (const pos of positions) {
+      // Only bars since the position opened: an earlier bar that touched the
+      // level says nothing about a trade entered after it.
+      const since = candles.filter((c) => c.time >= pos.openedAt.getTime());
+      const exit = resolvePaperExit(
+        { side: pos.side, entryPrice: pos.entryPrice, quantity: pos.quantity, stopLevel: pos.stopLevel, targetLevel: pos.targetLevel },
+        since
+      );
+      if (!exit) continue;
+
+      await db
+        .update(paperPositionsTable)
+        .set({
+          exitPrice: exit.price,
+          closedAt: new Date(),
+          exitReason: exit.reason,
+          pnl: paperPnl({ side: pos.side, entryPrice: pos.entryPrice, quantity: pos.quantity, stopLevel: null, targetLevel: null }, exit.price),
+        })
+        .where(eq(paperPositionsTable.id, pos.id));
+      logger.info({ userId, ticker, reason: exit.reason, price: exit.price }, "Paper position settled");
+    }
   }
 }
 
@@ -1482,6 +1576,15 @@ async function runCycleUnlocked(
   // the orders, so trades_table rows for the UTC day are an exact count, and at
   // one-minute cycles a per-candidate query would be a needless hammering of
   // the database. A cap reached mid-cycle simply blocks the rest of it.
+  // Resolve simulated positions against real bars before anything else, so one
+  // that would already have been stopped out does not linger and block a new
+  // entry. Dry run only — live positions are the broker's to close.
+  if (dryRun) {
+    await settlePaperPositions(userId, credentials, cfg.barResolution).catch((err: unknown) =>
+      logger.error({ err, userId }, "Could not settle paper positions")
+    );
+  }
+
   // When each instrument was last sent an order on each side, for the repeat
   // guard. Read from our own order log rather than the broker's positions,
   // because the positions list lags a fill by seconds — and every cycle sizes
@@ -2015,6 +2118,8 @@ async function runCycleUnlocked(
             // position left for them to protect.
             isClose: closing,
             closeDeals: closing ? dealsToClose(rawPositions, c.ticker, decision.action) : undefined,
+            paperStrategy: c.strategy,
+            paperRegime: c.regime,
           });
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
@@ -2258,6 +2363,8 @@ async function runCycleUnlocked(
             aiConfidence,
             isClose: closing,
             closeDeals: closing ? dealsToClose(rawPositions, ticker, signal) : undefined,
+            paperStrategy: c.strategy,
+            paperRegime: c.regime,
           });
           if (tradeExecuted) {
             if (exposureIncreasing && isBuy) deployedThisCycle += positionValue;
@@ -2561,8 +2668,11 @@ async function placeAndRecord(args: {
    * positions net (Trading 212) and was catastrophic where they do not.
    */
   closeDeals?: NormalizedPosition[];
+  /** Recorded against a simulated position so dry-run results can be attributed per strategy. */
+  paperStrategy?: string | null;
+  paperRegime?: string | null;
 }): Promise<boolean> {
-  const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence, isClose, closeDeals } = args;
+  const { userId, credentials, ticker, side, quantity, positionValue, currentPrice, cfg, dryRun, aiReason, aiConfidence, isClose, closeDeals, paperStrategy, paperRegime } = args;
   const { stopLossPercent, takeProfitPercent } = cfg;
 
   // Last line of defence, covering every caller including future ones: an order
@@ -2577,6 +2687,30 @@ async function placeAndRecord(args: {
 
   if (dryRun) {
     logger.info({ userId, ticker, side, broker: credentials.broker, dryRun: true }, "Dry-run signal");
+    // A simulated position, with the stop and target this order would have
+    // carried. Without it a dry run records entries that never close and
+    // measures nothing — see paperPositions.ts.
+    try {
+      if (isClose) {
+        await closePaperPositions(userId, ticker, side, currentPrice, "signal");
+      } else {
+        const levels = paperLevels(side, currentPrice, cfg.stopLossPercent, cfg.takeProfitPercent);
+        await db.insert(paperPositionsTable).values({
+          userId,
+          ticker,
+          side,
+          quantity,
+          entryPrice: currentPrice,
+          stopLevel: levels.stopLevel,
+          targetLevel: levels.targetLevel,
+          strategy: paperStrategy ?? null,
+          regime: paperRegime ?? null,
+        });
+      }
+    } catch (err) {
+      // Bookkeeping must never break a cycle.
+      logger.error({ err, userId, ticker }, "Could not record the paper position");
+    }
     await db.insert(tradesTable).values({
       userId,
       ticker,
