@@ -143,6 +143,11 @@ export const getBotStatusResponseConfigMaxNetDirectionalPercentMax = 100;
 export const getBotStatusResponseConfigMaxGroupNetDirectionalPercentMin = 0;
 export const getBotStatusResponseConfigMaxGroupNetDirectionalPercentMax = 100;
 
+export const getBotStatusResponseConfigRiskWatchMaxInstrumentPercentMin = 0;
+
+export const getBotStatusResponseConfigRiskWatchOpenLossPercentMin = 0;
+export const getBotStatusResponseConfigRiskWatchOpenLossPercentMax = 100;
+
 
 
 export const GetBotStatusResponse = zod.object({
@@ -182,6 +187,9 @@ export const GetBotStatusResponse = zod.object({
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(getBotStatusResponseConfigMaxNetDirectionalPercentMin).max(getBotStatusResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
   "maxGroupNetDirectionalPercent": zod.number().min(getBotStatusResponseConfigMaxGroupNetDirectionalPercentMin).max(getBotStatusResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
+  "riskWatchEnabled": zod.boolean().optional().describe('Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.'),
+  "riskWatchMaxInstrumentPercent": zod.number().min(getBotStatusResponseConfigRiskWatchMaxInstrumentPercentMin).optional().describe('Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.'),
+  "riskWatchOpenLossPercent": zod.number().min(getBotStatusResponseConfigRiskWatchOpenLossPercentMin).max(getBotStatusResponseConfigRiskWatchOpenLossPercentMax).optional().describe('Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -227,6 +235,11 @@ export const startBotResponseConfigMaxNetDirectionalPercentMax = 100;
 export const startBotResponseConfigMaxGroupNetDirectionalPercentMin = 0;
 export const startBotResponseConfigMaxGroupNetDirectionalPercentMax = 100;
 
+export const startBotResponseConfigRiskWatchMaxInstrumentPercentMin = 0;
+
+export const startBotResponseConfigRiskWatchOpenLossPercentMin = 0;
+export const startBotResponseConfigRiskWatchOpenLossPercentMax = 100;
+
 
 
 export const StartBotResponse = zod.object({
@@ -266,6 +279,9 @@ export const StartBotResponse = zod.object({
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(startBotResponseConfigMaxNetDirectionalPercentMin).max(startBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
   "maxGroupNetDirectionalPercent": zod.number().min(startBotResponseConfigMaxGroupNetDirectionalPercentMin).max(startBotResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
+  "riskWatchEnabled": zod.boolean().optional().describe('Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.'),
+  "riskWatchMaxInstrumentPercent": zod.number().min(startBotResponseConfigRiskWatchMaxInstrumentPercentMin).optional().describe('Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.'),
+  "riskWatchOpenLossPercent": zod.number().min(startBotResponseConfigRiskWatchOpenLossPercentMin).max(startBotResponseConfigRiskWatchOpenLossPercentMax).optional().describe('Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -311,6 +327,11 @@ export const stopBotResponseConfigMaxNetDirectionalPercentMax = 100;
 export const stopBotResponseConfigMaxGroupNetDirectionalPercentMin = 0;
 export const stopBotResponseConfigMaxGroupNetDirectionalPercentMax = 100;
 
+export const stopBotResponseConfigRiskWatchMaxInstrumentPercentMin = 0;
+
+export const stopBotResponseConfigRiskWatchOpenLossPercentMin = 0;
+export const stopBotResponseConfigRiskWatchOpenLossPercentMax = 100;
+
 
 
 export const StopBotResponse = zod.object({
@@ -350,6 +371,9 @@ export const StopBotResponse = zod.object({
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(stopBotResponseConfigMaxNetDirectionalPercentMin).max(stopBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
   "maxGroupNetDirectionalPercent": zod.number().min(stopBotResponseConfigMaxGroupNetDirectionalPercentMin).max(stopBotResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
+  "riskWatchEnabled": zod.boolean().optional().describe('Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.'),
+  "riskWatchMaxInstrumentPercent": zod.number().min(stopBotResponseConfigRiskWatchMaxInstrumentPercentMin).optional().describe('Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.'),
+  "riskWatchOpenLossPercent": zod.number().min(stopBotResponseConfigRiskWatchOpenLossPercentMin).max(stopBotResponseConfigRiskWatchOpenLossPercentMax).optional().describe('Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -395,6 +419,11 @@ export const resumeBotResponseConfigMaxNetDirectionalPercentMax = 100;
 export const resumeBotResponseConfigMaxGroupNetDirectionalPercentMin = 0;
 export const resumeBotResponseConfigMaxGroupNetDirectionalPercentMax = 100;
 
+export const resumeBotResponseConfigRiskWatchMaxInstrumentPercentMin = 0;
+
+export const resumeBotResponseConfigRiskWatchOpenLossPercentMin = 0;
+export const resumeBotResponseConfigRiskWatchOpenLossPercentMax = 100;
+
 
 
 export const ResumeBotResponse = zod.object({
@@ -434,6 +463,9 @@ export const ResumeBotResponse = zod.object({
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(resumeBotResponseConfigMaxNetDirectionalPercentMin).max(resumeBotResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
   "maxGroupNetDirectionalPercent": zod.number().min(resumeBotResponseConfigMaxGroupNetDirectionalPercentMin).max(resumeBotResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
+  "riskWatchEnabled": zod.boolean().optional().describe('Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.'),
+  "riskWatchMaxInstrumentPercent": zod.number().min(resumeBotResponseConfigRiskWatchMaxInstrumentPercentMin).optional().describe('Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.'),
+  "riskWatchOpenLossPercent": zod.number().min(resumeBotResponseConfigRiskWatchOpenLossPercentMin).max(resumeBotResponseConfigRiskWatchOpenLossPercentMax).optional().describe('Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -479,6 +511,11 @@ export const updateBotConfigBodyMaxNetDirectionalPercentMax = 100;
 export const updateBotConfigBodyMaxGroupNetDirectionalPercentMin = 0;
 export const updateBotConfigBodyMaxGroupNetDirectionalPercentMax = 100;
 
+export const updateBotConfigBodyRiskWatchMaxInstrumentPercentMin = 0;
+
+export const updateBotConfigBodyRiskWatchOpenLossPercentMin = 0;
+export const updateBotConfigBodyRiskWatchOpenLossPercentMax = 100;
+
 
 
 export const UpdateBotConfigBody = zod.object({
@@ -513,6 +550,9 @@ export const UpdateBotConfigBody = zod.object({
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(updateBotConfigBodyMaxNetDirectionalPercentMin).max(updateBotConfigBodyMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
   "maxGroupNetDirectionalPercent": zod.number().min(updateBotConfigBodyMaxGroupNetDirectionalPercentMin).max(updateBotConfigBodyMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
+  "riskWatchEnabled": zod.boolean().optional().describe('Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.'),
+  "riskWatchMaxInstrumentPercent": zod.number().min(updateBotConfigBodyRiskWatchMaxInstrumentPercentMin).optional().describe('Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.'),
+  "riskWatchOpenLossPercent": zod.number().min(updateBotConfigBodyRiskWatchOpenLossPercentMin).max(updateBotConfigBodyRiskWatchOpenLossPercentMax).optional().describe('Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().optional().describe('Enable automatic trending\/ranging routing between trend-following and mean-reversion.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).optional().describe('Capital.com candle resolution the bot fetches signals at.')
 })
@@ -546,6 +586,11 @@ export const updateBotConfigResponseConfigMaxNetDirectionalPercentMax = 100;
 
 export const updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMin = 0;
 export const updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMax = 100;
+
+export const updateBotConfigResponseConfigRiskWatchMaxInstrumentPercentMin = 0;
+
+export const updateBotConfigResponseConfigRiskWatchOpenLossPercentMin = 0;
+export const updateBotConfigResponseConfigRiskWatchOpenLossPercentMax = 100;
 
 
 
@@ -586,6 +631,9 @@ export const UpdateBotConfigResponse = zod.object({
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(updateBotConfigResponseConfigMaxNetDirectionalPercentMin).max(updateBotConfigResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
   "maxGroupNetDirectionalPercent": zod.number().min(updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMin).max(updateBotConfigResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
+  "riskWatchEnabled": zod.boolean().optional().describe('Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.'),
+  "riskWatchMaxInstrumentPercent": zod.number().min(updateBotConfigResponseConfigRiskWatchMaxInstrumentPercentMin).optional().describe('Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.'),
+  "riskWatchOpenLossPercent": zod.number().min(updateBotConfigResponseConfigRiskWatchOpenLossPercentMin).max(updateBotConfigResponseConfigRiskWatchOpenLossPercentMax).optional().describe('Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 }),
@@ -1431,6 +1479,25 @@ export const GetPerformanceCoachResponse = zod.object({
 
 
 /**
+ * Every current risk-watch finding on the open book, manual trades included: positions with no stop-loss, deals added to a losing position, concentration in one instrument, and the open loss against the cash balance. Read-only; alerts are sent separately, once each.
+ * @summary What is dangerous about the open positions right now
+ */
+export const GetRiskWatchResponse = zod.object({
+  "enabled": zod.boolean(),
+  "checkedAt": zod.string(),
+  "currency": zod.string().nullable(),
+  "equity": zod.number().nullable(),
+  "cashBalance": zod.number().nullable(),
+  "findings": zod.array(zod.object({
+  "kind": zod.enum(['no_stop', 'added_to_loser', 'concentration', 'open_loss']),
+  "ticker": zod.string().nullable(),
+  "title": zod.string(),
+  "detail": zod.string()
+}))
+})
+
+
+/**
  * Computed from Capital.com's transaction history rather than the bot's own trade log, because take-profit, stop-loss and manual closes happen at the broker and never pass through the bot. Trade results include the spread; overnight funding and fees are netted into netResult.
  * @summary Real trading results from the broker's own transaction history
  */
@@ -1543,6 +1610,11 @@ export const activateTradingProfileResponseConfigMaxNetDirectionalPercentMax = 1
 export const activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMin = 0;
 export const activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMax = 100;
 
+export const activateTradingProfileResponseConfigRiskWatchMaxInstrumentPercentMin = 0;
+
+export const activateTradingProfileResponseConfigRiskWatchOpenLossPercentMin = 0;
+export const activateTradingProfileResponseConfigRiskWatchOpenLossPercentMax = 100;
+
 
 
 export const ActivateTradingProfileResponse = zod.object({
@@ -1581,6 +1653,9 @@ export const ActivateTradingProfileResponse = zod.object({
   "onePositionPerInstrument": zod.boolean().optional().describe('When true, a same-side order in an instrument already held is refused, so positions cannot be pyramided one compliant order at a time. Closes are unaffected.'),
   "maxNetDirectionalPercent": zod.number().min(activateTradingProfileResponseConfigMaxNetDirectionalPercentMin).max(activateTradingProfileResponseConfigMaxNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure — longs minus shorts — as a percent of account value. The per-instrument and total caps are blind to several positions being the same bet; three £250 shorts in gold and two US indices are £750 gross and −£750 net. Only refuses an order that worsens the imbalance, so a position over the cap can always be corrected. 0 disables.'),
   "maxGroupNetDirectionalPercent": zod.number().min(activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMin).max(activateTradingProfileResponseConfigMaxGroupNetDirectionalPercentMax).optional().describe('Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.'),
+  "riskWatchEnabled": zod.boolean().optional().describe('Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.'),
+  "riskWatchMaxInstrumentPercent": zod.number().min(activateTradingProfileResponseConfigRiskWatchMaxInstrumentPercentMin).optional().describe('Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.'),
+  "riskWatchOpenLossPercent": zod.number().min(activateTradingProfileResponseConfigRiskWatchOpenLossPercentMin).max(activateTradingProfileResponseConfigRiskWatchOpenLossPercentMax).optional().describe('Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.'),
   "regimeFilterEnabled": zod.boolean().describe('When true, each instrument is classified trending\/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.'),
   "barResolution": zod.enum(['MINUTE', 'MINUTE_5', 'MINUTE_15', 'MINUTE_30', 'HOUR', 'HOUR_4', 'DAY', 'WEEK']).describe('Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them.')
 })
@@ -1731,7 +1806,7 @@ export const ListNotificationsResponse = zod.object({
   "unreadCount": zod.number(),
   "notifications": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['support_reply', 'support_message', 'announcement', 'circuit_breaker', 'upgrade_handled', 'profit_target', 'daily_report']),
+  "type": zod.enum(['support_reply', 'support_message', 'announcement', 'circuit_breaker', 'upgrade_handled', 'profit_target', 'daily_report', 'risk_watch']),
   "title": zod.string(),
   "body": zod.string(),
   "link": zod.string().nullable().describe('In-app path this notification points at.'),

@@ -269,6 +269,19 @@ export interface BotConfig {
      * @maximum 100
      */
   maxGroupNetDirectionalPercent?: number;
+  /** Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything. */
+  riskWatchEnabled?: boolean;
+  /**
+     * Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.
+     * @minimum 0
+     */
+  riskWatchMaxInstrumentPercent?: number;
+  /**
+     * Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.
+     * @minimum 0
+     * @maximum 100
+     */
+  riskWatchOpenLossPercent?: number;
   /** When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs. */
   regimeFilterEnabled: boolean;
   /** Capital.com candle resolution the bot fetches signals at. The scanner and backtest always mirror this same value — there is no separate setting for them. */
@@ -467,6 +480,19 @@ export interface BotConfigInput {
      * @maximum 100
      */
   maxGroupNetDirectionalPercent?: number;
+  /** Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything. */
+  riskWatchEnabled?: boolean;
+  /**
+     * Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.
+     * @minimum 0
+     */
+  riskWatchMaxInstrumentPercent?: number;
+  /**
+     * Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.
+     * @minimum 0
+     * @maximum 100
+     */
+  riskWatchOpenLossPercent?: number;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
   /** Capital.com candle resolution the bot fetches signals at. */
@@ -1465,6 +1491,7 @@ export const AppNotificationType = {
   upgrade_handled: 'upgrade_handled',
   profit_target: 'profit_target',
   daily_report: 'daily_report',
+  risk_watch: 'risk_watch',
 } as const;
 
 export interface AppNotification {
@@ -2246,6 +2273,36 @@ limit?: number;
 export type GetChartInsightParams = {
 epic: string;
 resolution?: string;
+};
+
+export type GetRiskWatch200FindingsItemKind = typeof GetRiskWatch200FindingsItemKind[keyof typeof GetRiskWatch200FindingsItemKind];
+
+
+export const GetRiskWatch200FindingsItemKind = {
+  no_stop: 'no_stop',
+  added_to_loser: 'added_to_loser',
+  concentration: 'concentration',
+  open_loss: 'open_loss',
+} as const;
+
+export type GetRiskWatch200FindingsItem = {
+  kind: GetRiskWatch200FindingsItemKind;
+  /** @nullable */
+  ticker: string | null;
+  title: string;
+  detail: string;
+};
+
+export type GetRiskWatch200 = {
+  enabled: boolean;
+  checkedAt: string;
+  /** @nullable */
+  currency: string | null;
+  /** @nullable */
+  equity: number | null;
+  /** @nullable */
+  cashBalance: number | null;
+  findings: GetRiskWatch200FindingsItem[];
 };
 
 export type GetLivePerformanceParams = {

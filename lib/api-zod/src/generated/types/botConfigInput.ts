@@ -110,6 +110,19 @@ export interface BotConfigInput {
      * @maximum 100
      */
   maxGroupNetDirectionalPercent?: number;
+  /** Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything. */
+  riskWatchEnabled?: boolean;
+  /**
+     * Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.
+     * @minimum 0
+     */
+  riskWatchMaxInstrumentPercent?: number;
+  /**
+     * Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.
+     * @minimum 0
+     * @maximum 100
+     */
+  riskWatchOpenLossPercent?: number;
   /** Enable automatic trending/ranging routing between trend-following and mean-reversion. */
   regimeFilterEnabled?: boolean;
   /** Capital.com candle resolution the bot fetches signals at. */

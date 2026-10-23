@@ -37,6 +37,8 @@ export interface PositionPnl {
    * broker's figure); otherwise the instrument's quote currency (computed).
    */
   pnlCurrency: string | null;
+  /** The same P&L worked out from prices, in the instrument's quote currency. */
+  computedPnl: number;
 }
 
 export function capitalPositionPnl(
@@ -55,6 +57,38 @@ export function capitalPositionPnl(
     typeof upl === "number" && Number.isFinite(upl) && (computed === 0 || upl === 0 || Math.sign(upl) === Math.sign(computed));
 
   return uplAgrees
-    ? { currentPrice, pnl: upl, pnlPercent, pnlCurrency: null }
-    : { currentPrice, pnl: computed, pnlPercent, pnlCurrency: pos.currency ?? null };
+    ? { currentPrice, pnl: upl, pnlPercent, pnlCurrency: null, computedPnl: computed }
+    : { currentPrice, pnl: computed, pnlPercent, pnlCurrency: pos.currency ?? null, computedPnl: computed };
+}
+
+/**
+ * Each position's size × price converted into the ACCOUNT's currency.
+ *
+ * Capital.com gives prices in the instrument's currency (oil in USD) and the
+ * P&L in the account's (GBP) — so each position's own broker P&L divided by
+ * the same P&L worked out from prices IS the exchange rate it is being
+ * settled at. A position whose rate cannot be read (P&L near zero, just
+ * opened) borrows the median rate of others in the same currency; with none,
+ * it stays null and nothing is guessed.
+ */
+export function accountNotionals(
+  items: Array<{ notional: number; currency: string | null; pnl: number; pnlCurrency: string | null; computedPnl: number }>
+): Array<number | null> {
+  const rateOf = (i: (typeof items)[number]): number | null => {
+    if (i.pnlCurrency !== null || Math.abs(i.computedPnl) < 1) return null;
+    const r = i.pnl / i.computedPnl;
+    return Number.isFinite(r) && r > 0.05 && r < 20 ? r : null;
+  };
+  const byCurrency = new Map<string, number[]>();
+  for (const i of items) {
+    const r = rateOf(i);
+    if (r !== null) byCurrency.set(i.currency ?? "", [...(byCurrency.get(i.currency ?? "") ?? []), r]);
+  }
+  const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+  return items.map((i) => {
+    const own = rateOf(i);
+    if (own !== null) return i.notional * own;
+    const others = byCurrency.get(i.currency ?? "");
+    return others && others.length > 0 ? i.notional * median(others) : null;
+  });
 }

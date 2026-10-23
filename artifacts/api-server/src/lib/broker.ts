@@ -1,5 +1,5 @@
 import type { OpeningHours } from "./marketHours";
-import { capitalPositionPnl } from "./positionPnl";
+import { capitalPositionPnl, accountNotionals } from "./positionPnl";
 import type { BrokerTransaction } from "./livePerformance";
 import {
   getPositions as t212GetPositions,
@@ -39,6 +39,10 @@ export interface NormalizedPosition {
   pnlPercent: number;
   /** Currency of `pnl`: null = the account's own currency, else the instrument's. */
   pnlCurrency: string | null;
+  /** When the deal was opened (ISO, UTC), where the broker says. */
+  openedAt: string | null;
+  /** Size × price in the account's currency, where it can be worked out — see accountNotionals. */
+  notionalAccount: number | null;
   /** BUY = long, SELL = short. */
   direction: "BUY" | "SELL";
   /**
@@ -80,11 +84,19 @@ export interface NormalizedOrder {
 export async function getBrokerPositions(userId: number, credentials: UserBrokerCredentials): Promise<NormalizedPosition[]> {
   if (credentials.broker === "capitalcom") {
     const positions = await getCapitalPositions(userId, credentials.capital);
-    return positions.map((p) => {
+    const pnls = positions.map((p) => capitalPositionPnl(p.position, p.market));
+    const notionals = accountNotionals(
+      positions.map((p, i) => ({
+        notional: p.position.size * (p.position.contractSize ?? 1) * pnls[i]!.currentPrice,
+        currency: p.position.currency ?? null,
+        ...pnls[i]!,
+      }))
+    );
+    return positions.map((p, i) => {
       const avgPrice = p.position.level;
       // Direction-aware, at the price the position would close at — see
       // positionPnl.ts for the shorts this used to show as profits.
-      const { currentPrice, pnl, pnlPercent, pnlCurrency } = capitalPositionPnl(p.position, p.market);
+      const { currentPrice, pnl, pnlPercent, pnlCurrency } = pnls[i]!;
       return {
         ticker: p.market.epic,
         quantity: p.position.size,
@@ -100,6 +112,9 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
         // Capital.com names take-profit `limitLevel` on a POSITION but
         // `profitLevel` when placing an order — same concept, two names.
         takeProfitLevel: p.position.limitLevel,
+        // Capital.com's dateUtc fields carry no zone suffix; they are UTC.
+        openedAt: p.position.createdDateUTC ? `${p.position.createdDateUTC.replace(/Z$/, "")}Z` : null,
+        notionalAccount: notionals[i] ?? null,
       };
     });
   }
@@ -127,6 +142,11 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
     // implying protection that isn't there.
     stopLevel: null,
     takeProfitLevel: null,
+    // T212's API gives no opening time per position, and its prices are in
+    // the instrument's currency (US shares in dollars) with nothing here to
+    // convert them by. The risk watch skips what it cannot measure.
+    openedAt: null,
+    notionalAccount: null,
   }));
 }
 

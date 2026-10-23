@@ -17,4 +17,5 @@ export const AppNotificationType = {
   upgrade_handled: 'upgrade_handled',
   profit_target: 'profit_target',
   daily_report: 'daily_report',
+  risk_watch: 'risk_watch',
 } as const;

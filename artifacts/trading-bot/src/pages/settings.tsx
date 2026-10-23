@@ -119,6 +119,9 @@ export default function Settings() {
     onePositionPerInstrument: true,
     maxNetDirectionalPercent: 0,
     maxGroupNetDirectionalPercent: 0,
+    riskWatchEnabled: true,
+    riskWatchMaxInstrumentPercent: 300,
+    riskWatchOpenLossPercent: 10,
     noOpenAfterSessionStartMinutes: 0,
     regimeFilterEnabled: true,
     barResolution: "MINUTE_5" as BarResolution,
@@ -157,6 +160,9 @@ export default function Settings() {
         onePositionPerInstrument: botStatus.config.onePositionPerInstrument ?? true,
         maxNetDirectionalPercent: botStatus.config.maxNetDirectionalPercent ?? 0,
         maxGroupNetDirectionalPercent: botStatus.config.maxGroupNetDirectionalPercent ?? 0,
+        riskWatchEnabled: botStatus.config.riskWatchEnabled ?? true,
+        riskWatchMaxInstrumentPercent: botStatus.config.riskWatchMaxInstrumentPercent ?? 300,
+        riskWatchOpenLossPercent: botStatus.config.riskWatchOpenLossPercent ?? 10,
         noOpenAfterSessionStartMinutes: botStatus.config.noOpenAfterSessionStartMinutes ?? 0,
         regimeFilterEnabled: botStatus.config.regimeFilterEnabled ?? true,
         barResolution: (botStatus.config.barResolution as BarResolution) ?? "MINUTE_5",
@@ -845,6 +851,73 @@ export default function Settings() {
             onCheckedChange={(checked) => setConfig({ ...config, onePositionPerInstrument: checked })}
             data-testid="switch-one-position-per-instrument"
           />
+        </div>
+      </CollapsibleSection>
+
+      {/* Risk watch — alerts about the open book, manual trades included */}
+      <CollapsibleSection
+        id="settings.riskWatch"
+        title="Risk Watch"
+        defaultOpen={false}
+        description={
+          <>
+            Watches every open position — yours and the bot&rsquo;s, whether or not the bot is running — and
+            tells you once when something is dangerous. It never places, changes or closes anything.
+          </>
+        }
+        contentClassName="space-y-5"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Risk alerts</p>
+            <p className="text-xs text-muted-foreground max-w-md">
+              Always flags a position with no stop-loss, and a deal added at a worse price to a position
+              that is already losing. In October four oil shorts, each added as the price rose and none with
+              a stop, reached &minus;&pound;6,786 while every closed trade looked like a win.
+            </p>
+          </div>
+          <Switch
+            checked={config.riskWatchEnabled}
+            onCheckedChange={(checked) => setConfig({ ...config, riskWatchEnabled: checked })}
+            data-testid="switch-risk-watch"
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="risk-watch-instrument">One instrument, max (% of equity)</Label>
+            <Input
+              id="risk-watch-instrument"
+              type="number"
+              step="25"
+              min="0"
+              value={config.riskWatchMaxInstrumentPercent}
+              onChange={(e) => setConfig({ ...config, riskWatchMaxInstrumentPercent: Number(e.target.value) })}
+              disabled={!config.riskWatchEnabled}
+              data-testid="input-risk-watch-instrument"
+            />
+            <p className="text-xs text-muted-foreground">
+              Net size of your position in one instrument against your account. With leverage this can pass
+              100%: at 300%, a 3.3% move in that one market moves your account 10%. 0 turns this check off.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="risk-watch-open-loss">Open loss alert (% of balance)</Label>
+            <Input
+              id="risk-watch-open-loss"
+              type="number"
+              step="1"
+              min="0"
+              max="100"
+              value={config.riskWatchOpenLossPercent}
+              onChange={(e) => setConfig({ ...config, riskWatchOpenLossPercent: Number(e.target.value) })}
+              disabled={!config.riskWatchEnabled}
+              data-testid="input-risk-watch-open-loss"
+            />
+            <p className="text-xs text-muted-foreground">
+              Alerts when open positions are down this share of your cash balance, and again at each further
+              step — at 10%, again past 20%, 30% and so on. 0 turns this check off.
+            </p>
+          </div>
         </div>
       </CollapsibleSection>
 

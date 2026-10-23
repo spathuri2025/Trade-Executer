@@ -140,6 +140,12 @@ export interface BotConfig {
   maxNetDirectionalPercent: number;
   /** Ceiling on NET directional exposure within one asset class, percent of account value; 0 = off. */
   maxGroupNetDirectionalPercent: number;
+  /** Risk watch on the open book (manual trades included); notifies only. See riskWatch.ts. */
+  riskWatchEnabled: boolean;
+  /** Net exposure to one instrument, % of equity, that raises a risk-watch flag; 0 = off. */
+  riskWatchMaxInstrumentPercent: number;
+  /** Open loss, % of the cash balance, that raises a risk-watch flag; 0 = off. */
+  riskWatchOpenLossPercent: number;
   /**
    * When true, each instrument is classified as trending or ranging (close-based
    * ADX) and routed to trend-following or mean-reversion automatically. When
@@ -183,6 +189,9 @@ const DEFAULT_CONFIG: BotConfig = {
   onePositionPerInstrument: true,
   maxNetDirectionalPercent: 0,
   maxGroupNetDirectionalPercent: 0,
+  riskWatchEnabled: true,
+  riskWatchMaxInstrumentPercent: 300,
+  riskWatchOpenLossPercent: 10,
   regimeFilterEnabled: true,
   barResolution: "MINUTE_5",
 };
@@ -608,6 +617,9 @@ function rowToConfig(row: BotConfigRow): BotConfig {
     onePositionPerInstrument: row.onePositionPerInstrument,
     maxNetDirectionalPercent: row.maxNetDirectionalPercent,
     maxGroupNetDirectionalPercent: row.maxGroupNetDirectionalPercent,
+    riskWatchEnabled: row.riskWatchEnabled,
+    riskWatchMaxInstrumentPercent: row.riskWatchMaxInstrumentPercent,
+    riskWatchOpenLossPercent: row.riskWatchOpenLossPercent,
     regimeFilterEnabled: row.regimeFilterEnabled,
     barResolution: row.barResolution,
   };

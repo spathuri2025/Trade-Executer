@@ -12,6 +12,7 @@ import { releaseAllLeases, INSTANCE_ID } from "./lib/engineLease";
 import { gracefulShutdown } from "./lib/shutdown";
 import { startWatchdog, stopWatchdog } from "./lib/watchdogRuntime";
 import { startDailyReports, stopDailyReports } from "./lib/dailyReportRuntime";
+import { startRiskWatch, stopRiskWatch } from "./lib/riskWatchRuntime";
 
 const rawPort = process.env["PORT"];
 
@@ -55,6 +56,9 @@ const server = app.listen(port, (err) => {
   // not in app.ts, so tests importing the app never send alerts.
   startWatchdog();
   startDailyReports();
+  // Watches open positions, manual ones included, and notifies once per
+  // problem — see lib/riskWatch.ts. Never trades.
+  startRiskWatch();
 });
 
 /**
@@ -76,6 +80,7 @@ async function shutdown(signal: string): Promise<void> {
       // process that's leaving report one.
       stopWatchdog();
       stopDailyReports();
+      stopRiskWatch();
     },
     standDownEngines: async () => (await standDownAllBots()) + (await standDownAllScanners()),
     stopServer: () => server.close(),

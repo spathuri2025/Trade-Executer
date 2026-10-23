@@ -174,6 +174,15 @@ export const botConfigTable = pgTable("bot_config", {
    * unknown must not silently join a bucket it may not belong to.
    */
   maxGroupNetDirectionalPercent: real("max_group_net_directional_percent").notNull().default(0),
+  /**
+   * Risk watch — alerts about the OPEN book, manual trades included, whether
+   * or not the bot is running. It only ever notifies; see lib/riskWatch.ts.
+   */
+  riskWatchEnabled: boolean("risk_watch_enabled").notNull().default(true),
+  /** Net exposure to one instrument, as % of equity, that raises a flag. 0 = off. */
+  riskWatchMaxInstrumentPercent: real("risk_watch_max_instrument_percent").notNull().default(300),
+  /** Open loss, as % of the cash balance, that raises a flag — and each further step. 0 = off. */
+  riskWatchOpenLossPercent: real("risk_watch_open_loss_percent").notNull().default(10),
   regimeFilterEnabled: boolean("regime_filter_enabled").notNull().default(true),
   costPerTradePercent: real("cost_per_trade_percent").notNull().default(0),
   /** Capital.com candle resolution the bot/scanner/backtest all fetch bars at. */

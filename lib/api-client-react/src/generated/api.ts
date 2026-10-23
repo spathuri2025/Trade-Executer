@@ -58,6 +58,7 @@ import type {
   GetLivePerformanceParams,
   GetMarketNewsParams,
   GetQuoteParams,
+  GetRiskWatch200,
   GetScannerResultsParams,
   HealthStatus,
   Instrument,
@@ -4569,6 +4570,84 @@ export function useGetPerformanceCoach<TData = Awaited<ReturnType<typeof getPerf
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPerformanceCoachQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetRiskWatchUrl = () => {
+
+
+
+
+  return `/api/risk-watch`
+}
+
+/**
+ * Every current risk-watch finding on the open book, manual trades included: positions with no stop-loss, deals added to a losing position, concentration in one instrument, and the open loss against the cash balance. Read-only; alerts are sent separately, once each.
+ * @summary What is dangerous about the open positions right now
+ */
+export const getRiskWatch = async ( options?: RequestInit): Promise<GetRiskWatch200> => {
+
+  return customFetch<GetRiskWatch200>(getGetRiskWatchUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRiskWatchQueryKey = () => {
+    return [
+    `/api/risk-watch`
+    ] as const;
+    }
+
+
+export const getGetRiskWatchQueryOptions = <TData = Awaited<ReturnType<typeof getRiskWatch>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRiskWatch>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRiskWatchQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRiskWatch>>> = ({ signal }) => getRiskWatch({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRiskWatch>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRiskWatchQueryResult = NonNullable<Awaited<ReturnType<typeof getRiskWatch>>>
+export type GetRiskWatchQueryError = ErrorType<void>
+
+
+/**
+ * @summary What is dangerous about the open positions right now
+ */
+
+export function useGetRiskWatch<TData = Awaited<ReturnType<typeof getRiskWatch>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRiskWatch>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRiskWatchQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -21,7 +21,8 @@ export type NotificationType =
   | "circuit_breaker"
   | "upgrade_handled"
   | "profit_target"
-  | "daily_report";
+  | "daily_report"
+  | "risk_watch";
 
 export interface NotifyInput {
   type: NotificationType;
@@ -47,6 +48,9 @@ const EMAILED_TYPES: Record<NotificationType, boolean> = {
   profit_target: true,
   // The morning report IS an email; the in-app copy is the record of it.
   daily_report: true,
+  // Each fires once per problem (see risk_alerts), and the problems are ones
+  // that cost money while unnoticed — an unprotected position, a growing bet.
+  risk_watch: true,
 };
 
 function emailFooter(link?: string): string {

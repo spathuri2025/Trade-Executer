@@ -168,6 +168,7 @@ export interface CapitalPosition {
   position: {
     contractSize: number;
     createdDate: string;
+    createdDateUTC?: string;
     dealId: string;
     dealReference: string;
     size: number;

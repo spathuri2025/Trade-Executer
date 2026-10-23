@@ -21,6 +21,7 @@ import DailyMarketBrief from "@/components/DailyMarketBrief";
 import MarketBrain from "@/components/MarketBrain";
 import ActivityFeed from "@/components/ActivityFeed";
 import LiveTickerStrip from "@/components/LiveTickerStrip";
+import { RiskWatchPanel } from "@/components/RiskWatchPanel";
 
 /* ── design tokens ── */
 const card = "hsl(var(--card))";
@@ -283,6 +284,9 @@ export default function Dashboard() {
 
       {/* ── AI Daily Market Brief ── */}
       <DailyMarketBrief />
+
+      {/* ── Risk watch: above the positions it is about ── */}
+      <RiskWatchPanel />
 
       {/* ── Positions + Signals ── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">

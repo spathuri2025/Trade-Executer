@@ -1260,6 +1260,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/PerformanceCoach"
 
+  /risk-watch:
+    get:
+      operationId: getRiskWatch
+      tags: [performance]
+      summary: What is dangerous about the open positions right now
+      description: >-
+        Every current risk-watch finding on the open book, manual trades
+        included: positions with no stop-loss, deals added to a losing
+        position, concentration in one instrument, and the open loss against
+        the cash balance. Read-only; alerts are sent separately, once each.
+      responses:
+        "200":
+          description: Current findings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, checkedAt, currency, equity, cashBalance, findings]
+                properties:
+                  enabled:
+                    type: boolean
+                  checkedAt:
+                    type: string
+                  currency:
+                    type: ["string", "null"]
+                  equity:
+                    type: ["number", "null"]
+                  cashBalance:
+                    type: ["number", "null"]
+                  findings:
+                    type: array
+                    items:
+                      type: object
+                      required: [kind, ticker, title, detail]
+                      properties:
+                        kind:
+                          type: string
+                          enum: [no_stop, added_to_loser, concentration, open_loss]
+                        ticker:
+                          type: ["string", "null"]
+                        title:
+                          type: string
+                        detail:
+                          type: string
+        "400":
+          description: No broker connected
+        "502":
+          description: The broker could not be read
+
   /performance/live:
     get:
       operationId: getLivePerformance
@@ -2313,6 +2362,18 @@ components:
           minimum: 0
           maximum: 100
           description: Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.
+        riskWatchEnabled:
+          type: boolean
+          description: Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.
+        riskWatchMaxInstrumentPercent:
+          type: number
+          minimum: 0
+          description: Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.
+        riskWatchOpenLossPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.
         regimeFilterEnabled:
           type: boolean
           description: When true, each instrument is classified trending/ranging (close-based ADX) and routed to trend-following or mean-reversion automatically. When false, only trend-following runs.
@@ -2433,6 +2494,18 @@ components:
           minimum: 0
           maximum: 100
           description: Ceiling on NET directional exposure within a SINGLE asset class (SHARES, INDICES, COMMODITIES…), as a percent of account value. The account-wide net cap bounds how one-way the book is; this bounds how concentrated that bet is. Instruments whose class the broker does not report are never grouped. 0 disables.
+        riskWatchEnabled:
+          type: boolean
+          description: Risk watch on the open book, manual trades included, whether or not the bot runs. Notifies about positions with no stop-loss, deals added to a losing position, concentration in one instrument and the open loss. Never places, changes or closes anything.
+        riskWatchMaxInstrumentPercent:
+          type: number
+          minimum: 0
+          description: Net exposure to one instrument, as a percent of equity, that raises a risk-watch alert. Can exceed 100 on a leveraged account. 0 disables.
+        riskWatchOpenLossPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Open loss, as a percent of the cash balance, that raises a risk-watch alert — and again at each further step of the same size. 0 disables.
         regimeFilterEnabled:
           type: boolean
           description: Enable automatic trending/ranging routing between trend-following and mean-reversion.
@@ -3568,7 +3641,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [support_reply, support_message, announcement, circuit_breaker, upgrade_handled, profit_target, daily_report]
+          enum: [support_reply, support_message, announcement, circuit_breaker, upgrade_handled, profit_target, daily_report, risk_watch]
         title:
           type: string
         body:
