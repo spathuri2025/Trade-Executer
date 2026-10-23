@@ -1949,6 +1949,9 @@ export interface LivePerformance {
   tradingResult: number;
   /** Overnight funding, usually negative. */
   funding: number;
+  /** Charges or credits on positions while open, other than funding — on spot commodities, the broker's daily price adjustment. Counted in netResult.
+   */
+  adjustments: number;
   fees: number;
   /** tradingResult + funding + fees. */
   netResult: number;
@@ -2278,6 +2281,28 @@ export type ListAdminSupportThreads200 = {
 
 export type SendDailyReportNow200 = {
   sent: number;
+};
+
+export type GetAdminTransactionsSummaryParams = {
+/**
+ * @minimum 1
+ * @maximum 30
+ */
+days?: number;
+};
+
+export type GetAdminTransactionsSummary200LabelsItem = {
+  transactionType: string;
+  note: string;
+  count: number;
+  total: number;
+};
+
+export type GetAdminTransactionsSummary200 = {
+  from: string;
+  to: string;
+  rows: number;
+  labels: GetAdminTransactionsSummary200LabelsItem[];
 };
 
 export type ListAuditLog200 = {

@@ -1453,6 +1453,7 @@ export const GetLivePerformanceResponse = zod.object({
   "profitFactor": zod.number().nullable().describe('Total won ÷ total lost. Null when nothing was lost.'),
   "tradingResult": zod.number().describe('Sum of realised trade results, spread included.'),
   "funding": zod.number().describe('Overnight funding, usually negative.'),
+  "adjustments": zod.number().describe('Charges or credits on positions while open, other than funding — on spot commodities, the broker\'s daily price adjustment. Counted in netResult.\n'),
   "fees": zod.number(),
   "netResult": zod.number().describe('tradingResult + funding + fees.'),
   "averagePerTrade": zod.number().nullable(),
@@ -1825,6 +1826,33 @@ export const SendAdminSupportReplyBody = zod.object({
  */
 export const SendDailyReportNowResponse = zod.object({
   "sent": zod.number()
+})
+
+
+/**
+ * Read-only, and only ever the calling admin's own account. For checking how the broker labels each kind of row against its exported history.
+
+ * @summary The admin's own broker transaction feed, grouped by type and note
+ */
+export const getAdminTransactionsSummaryQueryDaysDefault = 7;
+export const getAdminTransactionsSummaryQueryDaysMax = 30;
+
+
+
+export const GetAdminTransactionsSummaryQueryParams = zod.object({
+  "days": zod.coerce.number().min(1).max(getAdminTransactionsSummaryQueryDaysMax).default(getAdminTransactionsSummaryQueryDaysDefault)
+})
+
+export const GetAdminTransactionsSummaryResponse = zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "rows": zod.number(),
+  "labels": zod.array(zod.object({
+  "transactionType": zod.string(),
+  "note": zod.string(),
+  "count": zod.number(),
+  "total": zod.number()
+}))
 })
 
 

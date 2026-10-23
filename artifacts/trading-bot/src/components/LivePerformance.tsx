@@ -102,7 +102,7 @@ export function LivePerformance() {
       description={
         <>
           From Capital.com&rsquo;s own history, so it includes take-profits, stop-losses and anything you
-          close yourself. Results include the spread; funding and fees are counted in the net.
+          close yourself. Results include the spread; funding, adjustments and fees are counted in the net.
         </>
       }
       contentClassName="space-y-5"
@@ -162,6 +162,17 @@ export function LivePerformance() {
               value={money(data.funding + data.fees, data.currency)}
               color={signColor(data.funding + data.fees)}
             />
+            {/* Spot commodities are charged a daily price adjustment while a
+                position is open. Shown only when there is one, so accounts
+                that never hold oil overnight see no empty tile. */}
+            {data.adjustments !== 0 && (
+              <Tile
+                label="Adjustments on open"
+                value={money(data.adjustments, data.currency)}
+                color={signColor(data.adjustments)}
+                hint="daily price adjustment while held"
+              />
+            )}
           </div>
 
           <div className="grid gap-5 lg:grid-cols-2">

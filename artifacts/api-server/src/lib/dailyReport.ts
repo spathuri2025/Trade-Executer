@@ -302,6 +302,7 @@ export function buildDailyReport(
     const rows: Array<[string, number]> = [
       ["Closed trades", s.tradingResult],
       ["Funding", s.funding],
+      ["Adjustments on open", s.adjustments],
       ["Fees", s.fees],
       ...s.otherMovements.map((m) => [m.type.toLowerCase().replace(/_/g, " "), m.total] as [string, number]),
     ];
@@ -330,7 +331,11 @@ export function buildDailyReport(
     lines.push(`  Trades:       ${s.closedTrades}   win rate ${pct(s.winRate)}`);
     lines.push(`  Average win:  ${money(s.averageWin, currency)}      Average loss: ${money(s.averageLoss, currency)}`);
     lines.push(exitsLine(s));
-    lines.push(`  Costs:        funding ${money(s.funding, currency)}, fees ${money(s.fees, currency)}`);
+    lines.push(
+      `  Costs:        funding ${money(s.funding, currency)}, ` +
+        (s.adjustments !== 0 ? `adjustments on open positions ${money(s.adjustments, currency)}, ` : "") +
+        `fees ${money(s.fees, currency)}`
+    );
     lines.push(...reconciliation(s));
     if (s.byInstrument.length === 1) {
       // One instrument is neither best nor worst. Labelling it "Best" framed a

@@ -40,6 +40,9 @@ export interface LivePerformance {
   tradingResult: number;
   /** Overnight funding, usually negative. */
   funding: number;
+  /** Charges or credits on positions while open, other than funding — on spot commodities, the broker's daily price adjustment. Counted in netResult.
+   */
+  adjustments: number;
   fees: number;
   /** tradingResult + funding + fees. */
   netResult: number;

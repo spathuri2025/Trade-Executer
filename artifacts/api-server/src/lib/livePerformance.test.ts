@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { summariseTransactions, closeTypeFromNote, parseUtc, cashFlowSince, type BrokerTransaction } from "./livePerformance";
+import { summariseTransactions, closeTypeFromNote, parseUtc, cashFlowSince, transactionLabels, type BrokerTransaction } from "./livePerformance";
 
 const row = (dateUtc: string, instrumentName: string, transactionType: string, note: string, size: string): BrokerTransaction => ({
   dateUtc,
@@ -202,5 +202,55 @@ describe("cashFlowSince", () => {
 
   it("is zero when nothing moved", () => {
     expect(cashFlowSince([], at("2026-10-05T00:00:00.000"))).toBe(0);
+  });
+});
+
+describe("money on open positions", () => {
+  // 16 Oct 2026: −£649 of spot-oil price adjustments on four open shorts, in
+  // the account's own export and in no figure the app showed. The exact
+  // wording Capital.com's feed uses for these rows is still being confirmed
+  // (see /admin/transactions-summary); what matters here is the rule — a row
+  // about an open position that carries money is never discarded.
+  const oct16 = [
+    row("2026-10-16T20:59:00.000", "Crude Oil Spot", "TRADE", "Trade opened", "0"),
+    row("2026-10-16T20:59:00.000", "Crude Oil Spot", "TRADE", "Price adjustment on open position", "-162.25"),
+    row("2026-10-16T20:59:00.000", "Crude Oil Spot", "TRADE", "Price adjustment on open position", "-162.25"),
+    row("2026-10-16T15:50:00.000", "Crude Oil Spot", "TRADE", "Trade closed", "42.00"),
+    row("2026-10-16T21:00:00.000", "Crude Oil Spot", "SWAP", "Overnight funding adjustment", "-7.79"),
+  ];
+  const s = summariseTransactions(oct16);
+
+  it("counts them as adjustments, not as trades and not as nothing", () => {
+    expect(s.adjustments).toBeCloseTo(-324.5, 2);
+    expect(s.closedTrades).toBe(1);
+  });
+
+  it("includes them in what the account actually made", () => {
+    expect(s.netResult).toBeCloseTo(42 - 7.79 - 324.5, 2);
+    expect(s.tradingResult).toBeCloseTo(42, 2); // trading itself unchanged
+  });
+
+  it("charges them to the day and the instrument", () => {
+    expect(s.byDay[0]).toMatchObject({ date: "2026-10-16", trades: 1 });
+    expect(s.byDay[0]!.net).toBeCloseTo(42 - 7.79 - 324.5, 2);
+    expect(s.byInstrument.find((i) => i.instrumentName === "Crude Oil Spot")!.net).toBeCloseTo(42 - 7.79 - 324.5, 2);
+  });
+
+  it("still skips an empty opening leg", () => {
+    expect(summariseTransactions([row("2026-10-16T09:00:00.000", "Gold", "TRADE", "Trade opened", "0")]).adjustments).toBe(0);
+  });
+});
+
+describe("transactionLabels", () => {
+  it("groups the feed by type and note, largest money first, and names blanks", () => {
+    const labels = transactionLabels([
+      row("2026-10-16T21:00:00.000", "Oil", "SWAP", "Overnight funding adjustment", "-7.79"),
+      row("2026-10-16T21:00:00.000", "Oil", "SWAP", "Overnight funding adjustment", "-2.21"),
+      row("2026-10-16T20:59:00.000", "Oil", "TRADE", "Price adjustment on open position", "-649"),
+      row("2026-10-16T10:00:00.000", "", "", "", "5"),
+    ]);
+    expect(labels[0]).toEqual({ transactionType: "TRADE", note: "Price adjustment on open position", count: 1, total: -649 });
+    expect(labels[1]).toEqual({ transactionType: "SWAP", note: "Overnight funding adjustment", count: 2, total: -10 });
+    expect(labels[2]).toMatchObject({ transactionType: "(unlabelled)", note: "(no note)" });
   });
 });

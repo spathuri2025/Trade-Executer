@@ -1627,6 +1627,53 @@ paths:
                   sent:
                     type: integer
 
+  /admin/transactions-summary:
+    get:
+      operationId: getAdminTransactionsSummary
+      tags: [admin]
+      summary: The admin's own broker transaction feed, grouped by type and note
+      description: >
+        Read-only, and only ever the calling admin's own account. For checking
+        how the broker labels each kind of row against its exported history.
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+            default: 7
+      responses:
+        "200":
+          description: Rows grouped by transactionType and note
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, rows, labels]
+                properties:
+                  from:
+                    type: string
+                  to:
+                    type: string
+                  rows:
+                    type: integer
+                  labels:
+                    type: array
+                    items:
+                      type: object
+                      required: [transactionType, note, count, total]
+                      properties:
+                        transactionType:
+                          type: string
+                        note:
+                          type: string
+                        count:
+                          type: integer
+                        total:
+                          type: number
+
   /admin/watchdog/test-alert:
     post:
       operationId: sendWatchdogTestAlert
@@ -3951,7 +3998,7 @@ components:
 
     LivePerformance:
       type: object
-      required: [currency, closedTrades, wins, losses, winRate, averageWin, averageLoss, largestWin, largestLoss, profitFactor, tradingResult, funding, fees, netResult, averagePerTrade, tradingDays, averagePerTradingDay, byDay, byInstrument, recentTrades, from, to, days]
+      required: [currency, closedTrades, wins, losses, winRate, averageWin, averageLoss, largestWin, largestLoss, profitFactor, tradingResult, funding, adjustments, fees, netResult, averagePerTrade, tradingDays, averagePerTradingDay, byDay, byInstrument, recentTrades, from, to, days]
       properties:
         currency:
           type: ["string", "null"]
@@ -3982,6 +4029,12 @@ components:
         funding:
           type: number
           description: Overnight funding, usually negative.
+        adjustments:
+          type: number
+          description: >
+            Charges or credits on positions while open, other than funding — on
+            spot commodities, the broker's daily price adjustment. Counted in
+            netResult.
         fees:
           type: number
         netResult:

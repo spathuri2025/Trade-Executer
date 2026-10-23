@@ -15,7 +15,7 @@ import {
   type SubscriptionRow,
 } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAdmin";
-import { getUserBrokerConnectionStatus } from "../lib/brokerCredentialsService";
+import { getUserBrokerConnectionStatus, getUserBrokerCredentials } from "../lib/brokerCredentialsService";
 import { peekBotRunning, stopBot } from "../lib/botEngine";
 import { evictCapitalStream } from "../lib/capitalStream";
 import { notifyUser, broadcastAnnouncement } from "../lib/notificationService";
@@ -23,6 +23,8 @@ import { recordAudit, listAudit, lookupEmail } from "../lib/auditService";
 import { getEffectivePlan } from "../lib/planService";
 import { sendWatchdogTestAlert } from "../lib/watchdogRuntime";
 import { sendDailyReports } from "../lib/dailyReportRuntime";
+import { getBrokerTransactions } from "../lib/broker";
+import { transactionLabels } from "../lib/livePerformance";
 
 const router: IRouter = Router();
 // Scoped to /admin paths, NOT router.use(requireAdmin) bare. This router is
@@ -59,6 +61,34 @@ router.post("/admin/daily-report/send-now", async (_req, res): Promise<void> => 
   // one — the guard only looks for a report already sent.
   const sent = await sendDailyReports(new Date(), true);
   res.json({ sent });
+});
+
+/**
+ * The admin's OWN broker transaction feed, grouped by type and note. Read-only
+ * and never another account's: it exists to check what the broker actually
+ * sends against its own exported history — added on 23 Oct 2026 when a month
+ * of oil price adjustments turned out to be missing from every figure.
+ */
+router.get("/admin/transactions-summary", async (req, res): Promise<void> => {
+  const days = req.query["days"] === undefined ? 7 : Number(req.query["days"]);
+  if (!Number.isInteger(days) || days < 1 || days > 30) {
+    res.status(400).json({ error: "days must be a whole number from 1 to 30" });
+    return;
+  }
+  const credentials = await getUserBrokerCredentials(req.user!.id);
+  if (!credentials) {
+    res.status(400).json({ error: "No broker connected to this account" });
+    return;
+  }
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  try {
+    const rows = (await getBrokerTransactions(req.user!.id, credentials, from, to)) ?? [];
+    res.json({ from: from.toISOString(), to: to.toISOString(), rows: rows.length, labels: transactionLabels(rows) });
+  } catch (err) {
+    req.log.error({ err }, "Admin transactions summary failed");
+    res.status(502).json({ error: "Could not read the broker's transaction history" });
+  }
 });
 
 router.get("/admin/customers", async (_req, res): Promise<void> => {

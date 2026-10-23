@@ -25,6 +25,8 @@ export interface BrokerTransaction {
   note: string;
   size: string;
   currency: string;
+  /** The broker's id for the row. Optional: only used to tell genuine duplicates apart. */
+  reference?: string;
 }
 
 export type CloseType = "take-profit" | "stop-loss" | "closed";
@@ -47,9 +49,17 @@ export interface LivePerformance {
   tradingResult: number;
   /** Overnight funding charged (negative) or credited. */
   funding: number;
+  /**
+   * Money charged or credited on positions while they are OPEN, other than
+   * funding — on spot commodities, Capital.com's daily price adjustment.
+   * Until 23 Oct 2026 these rows were dropped as "opening legs" and never
+   * reached any figure: −£696 on four oil shorts in the week to 22 Oct, while
+   * the report showed only −£52.55 of funding.
+   */
+  adjustments: number;
   /** Commissions and fees. */
   fees: number;
-  /** tradingResult + funding + fees: what the account actually made. */
+  /** tradingResult + funding + adjustments + fees: what the account actually made. */
   netResult: number;
   /** netResult ÷ closedTrades. */
   averagePerTrade: number | null;
@@ -145,6 +155,7 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
   /** Non-trading balance movements, summed per broker type name. */
   const otherByType = new Map<string, number>();
   let funding = 0;
+  let adjustments = 0;
   let fees = 0;
   const dayNet = new Map<string, { net: number; trades: number }>();
   const instrumentNet = new Map<string, { trades: number; net: number }>();
@@ -168,8 +179,17 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
     if (!Number.isFinite(amount)) continue;
 
     if (row.transactionType === "TRADE") {
-      // An opening leg carries no realised result; only closes are trades here.
-      if (/open/i.test(row.note)) continue;
+      if (/open/i.test(row.note)) {
+        // An opening leg carries no result, and that is all this used to skip.
+        // But a row about an OPEN position with money attached is a charge or
+        // credit for holding it, and dropping it hid real costs from every
+        // figure. Only an empty one is an opening leg.
+        if (amount === 0) continue;
+        adjustments += amount;
+        addDay(row.dateUtc, amount, false);
+        addInstrument(row.instrumentName, amount, false);
+        continue;
+      }
       const trade = {
         dateUtc: row.dateUtc,
         instrumentName: row.instrumentName,
@@ -213,7 +233,7 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
   const losers = trades.filter((t) => t.result < 0).map((t) => t.result);
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   const tradingResult = sum(trades.map((t) => t.result));
-  const netResult = tradingResult + funding + fees;
+  const netResult = tradingResult + funding + adjustments + fees;
   const tradingDays = [...dayNet.values()].filter((d) => d.trades > 0).length;
   const decided = winners.length + losers.length;
 
@@ -230,6 +250,7 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
     profitFactor: losers.length ? round(sum(winners) / Math.abs(sum(losers))) : null,
     tradingResult: round(tradingResult),
     funding: round(funding),
+    adjustments: round(adjustments),
     fees: round(fees),
     netResult: round(netResult),
     averagePerTrade: trades.length ? round(netResult / trades.length) : null,
@@ -251,4 +272,29 @@ export function summariseTransactions(rows: BrokerTransaction[]): LivePerformanc
       .slice(0, 50)
       .map((t) => ({ ...t, result: round(t.result) })),
   };
+}
+
+/**
+ * The feed as the broker labels it: one line per (type, note) with how many
+ * rows and how much money. For checking classification against the broker's
+ * own records — this is how a whole category of charge can be seen arriving,
+ * or seen to be absent, instead of being inferred from totals that disagree.
+ */
+export function transactionLabels(
+  rows: BrokerTransaction[]
+): Array<{ transactionType: string; note: string; count: number; total: number }> {
+  const groups = new Map<string, { transactionType: string; note: string; count: number; total: number }>();
+  for (const row of rows) {
+    const transactionType = (row.transactionType || "").trim() || "(unlabelled)";
+    const note = (row.note || "").trim() || "(no note)";
+    const key = `${transactionType}\u0000${note}`;
+    const g = groups.get(key) ?? { transactionType, note, count: 0, total: 0 };
+    g.count += 1;
+    const amount = Number(row.size);
+    if (Number.isFinite(amount)) g.total += amount;
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, total: round(g.total) }))
+    .sort((a, b) => Math.abs(b.total) - Math.abs(a.total) || b.count - a.count);
 }

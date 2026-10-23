@@ -50,6 +50,8 @@ import type {
   ExecuteTradeInput,
   ForgotPasswordInput,
   GetActivityFeedParams,
+  GetAdminTransactionsSummary200,
+  GetAdminTransactionsSummaryParams,
   GetBacktestSweep200,
   GetCandlesParams,
   GetChartInsightParams,
@@ -5854,6 +5856,92 @@ export const useSendDailyReportNow = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSendDailyReportNowMutationOptions(options));
     }
+
+export const getGetAdminTransactionsSummaryUrl = (params?: GetAdminTransactionsSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/transactions-summary?${stringifiedParams}` : `/api/admin/transactions-summary`
+}
+
+/**
+ * Read-only, and only ever the calling admin's own account. For checking how the broker labels each kind of row against its exported history.
+
+ * @summary The admin's own broker transaction feed, grouped by type and note
+ */
+export const getAdminTransactionsSummary = async (params?: GetAdminTransactionsSummaryParams, options?: RequestInit): Promise<GetAdminTransactionsSummary200> => {
+
+  return customFetch<GetAdminTransactionsSummary200>(getGetAdminTransactionsSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminTransactionsSummaryQueryKey = (params?: GetAdminTransactionsSummaryParams,) => {
+    return [
+    `/api/admin/transactions-summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAdminTransactionsSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getAdminTransactionsSummary>>, TError = ErrorType<unknown>>(params?: GetAdminTransactionsSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminTransactionsSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminTransactionsSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminTransactionsSummary>>> = ({ signal }) => getAdminTransactionsSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminTransactionsSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminTransactionsSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminTransactionsSummary>>>
+export type GetAdminTransactionsSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The admin's own broker transaction feed, grouped by type and note
+ */
+
+export function useGetAdminTransactionsSummary<TData = Awaited<ReturnType<typeof getAdminTransactionsSummary>>, TError = ErrorType<unknown>>(
+ params?: GetAdminTransactionsSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminTransactionsSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminTransactionsSummaryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getSendWatchdogTestAlertUrl = () => {
 
