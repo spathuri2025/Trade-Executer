@@ -311,6 +311,9 @@ export default function Dashboard() {
                       <div>
                         <div className="text-sm font-medium">{pos.ticker}</div>
                         <div className="text-xs tabular-nums mt-0.5" style={{ color: muted }}>
+                          <span style={{ color: pos.direction === "SELL" ? red : undefined }} data-testid={`direction-${pos.ticker}`}>
+                            {pos.direction === "SELL" ? "Short" : "Long"}
+                          </span>{" "}
                           {pos.quantity} units · avg {pos.averagePrice.toFixed(2)}
                         </div>
                         {/* Where this position exits WITHOUT the bot — these sit
@@ -344,7 +347,11 @@ export default function Dashboard() {
                         className="text-sm font-medium tabular-nums"
                         style={profit ? { color: emerald, textShadow: emeraldGlow } : { color: red }}
                       >
-                        {profit ? "+" : ""}£{pos.pnl.toFixed(2)}
+                        {/* The figure's own currency: the broker's P&L is in the
+                            account's, a computed fallback in the instrument's
+                            (oil is priced in USD). A hard-coded £ printed
+                            dollars as pounds until 23 Oct 2026. */}
+                        {profit ? "+" : ""}{pos.pnl.toFixed(2)} {pos.pnlCurrency ?? account?.currency ?? ""}
                       </div>
                       <div className="text-xs tabular-nums mt-0.5" style={{ color: profit ? "rgba(16,185,129,0.8)" : "rgba(248,113,113,0.8)" }}>
                         {profit ? "+" : ""}{pos.pnlPercent.toFixed(2)}%

@@ -13,7 +13,14 @@ export interface Position {
   averagePrice: number;
   currentPrice: number;
   pnl: number;
+  /** Move in the position's favour, as a percent of entry. Negative = losing, for longs and shorts alike. */
   pnlPercent: number;
+  /**
+     * Currency of pnl. Null = the account's own currency (the broker's figure). Otherwise the instrument's quote currency (e.g. USD), when the broker's figure was missing or contradicted the price move.
+
+     * @nullable
+     */
+  pnlCurrency: string | null;
   /** BUY = long, SELL = short. */
   direction: PositionDirection;
   /**

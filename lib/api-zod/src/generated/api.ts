@@ -694,7 +694,8 @@ export const ListPositionsResponseItem = zod.object({
   "averagePrice": zod.number(),
   "currentPrice": zod.number(),
   "pnl": zod.number(),
-  "pnlPercent": zod.number(),
+  "pnlPercent": zod.number().describe('Move in the position\'s favour, as a percent of entry. Negative = losing, for longs and shorts alike.'),
+  "pnlCurrency": zod.string().nullable().describe('Currency of pnl. Null = the account\'s own currency (the broker\'s figure). Otherwise the instrument\'s quote currency (e.g. USD), when the broker\'s figure was missing or contradicted the price move.\n'),
   "direction": zod.enum(['BUY', 'SELL']).describe('BUY = long, SELL = short.'),
   "stopLevel": zod.number().nullable().describe('Broker-side stop-loss price. The broker closes the position here without the bot\'s involvement — it holds even if this app is offline or stopped. Null means no stop is set.\n'),
   "takeProfitLevel": zod.number().nullable().describe('Broker-side take-profit price, with the same guarantee as stopLevel. Null means no target is set.\n')

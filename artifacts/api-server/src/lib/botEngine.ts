@@ -1849,6 +1849,7 @@ async function runCycleUnlocked(
     averagePrice: p.averagePrice,
     currentPrice: p.currentPrice,
     pnlPercent: p.pnlPercent,
+    direction: p.direction,
   }));
 
   // Fail-closed: if we can't read the data a limit depends on, block any

@@ -2499,7 +2499,7 @@ components:
 
     Position:
       type: object
-      required: [ticker, quantity, averagePrice, currentPrice, pnl, pnlPercent, direction, stopLevel, takeProfitLevel]
+      required: [ticker, quantity, averagePrice, currentPrice, pnl, pnlPercent, pnlCurrency, direction, stopLevel, takeProfitLevel]
       properties:
         ticker:
           type: string
@@ -2513,6 +2513,13 @@ components:
           type: number
         pnlPercent:
           type: number
+          description: Move in the position's favour, as a percent of entry. Negative = losing, for longs and shorts alike.
+        pnlCurrency:
+          type: ["string", "null"]
+          description: >
+            Currency of pnl. Null = the account's own currency (the broker's
+            figure). Otherwise the instrument's quote currency (e.g. USD), when
+            the broker's figure was missing or contradicted the price move.
         direction:
           type: string
           enum: [BUY, SELL]

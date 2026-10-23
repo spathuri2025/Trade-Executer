@@ -180,6 +180,8 @@ export interface CapitalPosition {
     trailingStep: number | null;
     trailingStopDistance: number | null;
     limitedRiskPremium: number | null;
+    /** The broker's unrealised P&L. Currency undocumented — see positionPnl.ts. */
+    upl?: number | null;
   };
   market: {
     instrumentName: string;

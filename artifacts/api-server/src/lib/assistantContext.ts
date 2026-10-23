@@ -101,7 +101,11 @@ export async function buildTradingContext(userId: number): Promise<string> {
       } else {
         for (const p of positions.slice(0, 25)) {
           lines.push(
-            `- ${p.ticker}: qty ${p.quantity}, avg ${p.averagePrice}, current ${p.currentPrice}, P/L ${p.pnl.toFixed(2)} (${p.pnlPercent.toFixed(2)}%)`,
+            // Direction stated in words: a bare quantity is how the Assistant
+            // came to describe losing OIL_CRUDE shorts as profitable longs.
+            `- ${p.ticker}: ${p.direction === "SELL" ? "SHORT" : "LONG"} ${p.quantity}, avg ${p.averagePrice}, close price ${p.currentPrice}, ` +
+              `P/L ${p.pnl.toFixed(2)} ${p.pnlCurrency ?? "(account currency)"} (${p.pnlPercent.toFixed(2)}%), ` +
+              `stop ${p.stopLevel ?? "NONE"}, target ${p.takeProfitLevel ?? "none"}`,
           );
         }
       }

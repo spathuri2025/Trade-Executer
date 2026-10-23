@@ -187,6 +187,7 @@ function position(
     currentPrice: 100,
     pnl: 0,
     pnlPercent: 0,
+    pnlCurrency: null,
     direction,
     // Exit levels are display-only — the engine never reads them, so the
     // default of "none set" keeps every existing call site meaningful.

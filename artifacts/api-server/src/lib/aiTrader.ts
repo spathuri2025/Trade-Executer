@@ -15,6 +15,8 @@ export interface PositionSnapshot {
   averagePrice: number;
   currentPrice: number;
   pnlPercent: number;
+  /** BUY = long, SELL = short. Without it a short's quantity reads as a long. */
+  direction: "BUY" | "SELL";
 }
 
 function extractJson(text: string): unknown {
@@ -72,7 +74,7 @@ function positionsLines(positions: PositionSnapshot[]): string {
     positions
       .map(
         (p) =>
-          `- ${p.ticker}: qty ${fmtNum(p.quantity)}, avg ${fmtNum(p.averagePrice)}, now ${fmtNum(
+          `- ${p.ticker}: ${p.direction === "SELL" ? "SHORT" : "LONG"} ${fmtNum(p.quantity)}, avg ${fmtNum(p.averagePrice)}, now ${fmtNum(
             p.currentPrice
           )}, P/L ${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(2)}%`
       )

@@ -1,4 +1,5 @@
 import type { OpeningHours } from "./marketHours";
+import { capitalPositionPnl } from "./positionPnl";
 import type { BrokerTransaction } from "./livePerformance";
 import {
   getPositions as t212GetPositions,
@@ -36,6 +37,8 @@ export interface NormalizedPosition {
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
+  /** Currency of `pnl`: null = the account's own currency, else the instrument's. */
+  pnlCurrency: string | null;
   /** BUY = long, SELL = short. */
   direction: "BUY" | "SELL";
   /**
@@ -79,9 +82,9 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
     const positions = await getCapitalPositions(userId, credentials.capital);
     return positions.map((p) => {
       const avgPrice = p.position.level;
-      const currentPrice = (p.market.bid + p.market.offer) / 2;
-      const pnl = (currentPrice - avgPrice) * p.position.size * p.position.contractSize;
-      const pnlPercent = avgPrice > 0 ? ((currentPrice - avgPrice) / avgPrice) * 100 : 0;
+      // Direction-aware, at the price the position would close at — see
+      // positionPnl.ts for the shorts this used to show as profits.
+      const { currentPrice, pnl, pnlPercent, pnlCurrency } = capitalPositionPnl(p.position, p.market);
       return {
         ticker: p.market.epic,
         quantity: p.position.size,
@@ -89,6 +92,7 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
         currentPrice,
         pnl,
         pnlPercent,
+        pnlCurrency,
         direction: p.position.direction,
         instrumentType: p.market.instrumentType ?? null,
         dealId: p.position.dealId,
@@ -108,6 +112,8 @@ export async function getBrokerPositions(userId: number, credentials: UserBroker
     currentPrice: p.currentPrice,
     pnl: p.ppl,
     pnlPercent: p.averagePrice > 0 ? ((p.currentPrice - p.averagePrice) / p.averagePrice) * 100 : 0,
+    // Trading 212 reports `ppl` in the account's currency.
+    pnlCurrency: null,
     // Trading 212's Invest/ISA API has no short-selling and no direction field
     // of its own — every position returned here is structurally long.
     direction: "BUY" as const,
