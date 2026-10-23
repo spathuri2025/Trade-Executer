@@ -141,6 +141,80 @@ export function paperSection(
   return lines;
 }
 
+/** An open position as the report needs it — a subset of NormalizedPosition. */
+export interface OpenPositionLine {
+  ticker: string;
+  direction: "BUY" | "SELL";
+  quantity: number;
+  pnl: number;
+  /** Null = the account's currency; otherwise the instrument's. */
+  pnlCurrency: string | null;
+  stopLevel: number | null;
+}
+
+/**
+ * What is open right now, and what it is worth.
+ *
+ * The report measured closed trades only. On 23 Oct 2026 it read "+£417.66 on
+ * 3 trades" while four OIL_CRUDE shorts with no stop-loss were £6,564.60 down
+ * — a footnote saying open positions "sit outside" the figures was the only
+ * hint. An open loss that size belongs next to yesterday's result, not under it.
+ *
+ * Grouped by instrument and direction (Capital.com opens a deal per order, so
+ * four orders are four rows of the same bet). Worst first. Only figures in the
+ * account's currency are totalled; anything else is shown in its own currency
+ * and named as left out, never summed into pounds.
+ *
+ * `positions` null means they could not be read — said plainly, because an
+ * empty section would read as "nothing open".
+ */
+export function openPositionsSection(
+  positions: OpenPositionLine[] | null,
+  currency: string | null
+): { lines: string[]; total: number | null } {
+  if (positions === null) {
+    return { lines: ["", "Open now", "  Could not be read from the broker this morning — check the app."], total: null };
+  }
+  if (positions.length === 0) return { lines: [], total: null };
+
+  const groups = new Map<string, { ticker: string; direction: "BUY" | "SELL"; quantity: number; pnl: number; cur: string | null; count: number; unprotected: number }>();
+  for (const p of positions) {
+    const cur = p.pnlCurrency ?? currency;
+    const key = `${p.ticker}|${p.direction}|${cur ?? ""}`;
+    const g = groups.get(key) ?? { ticker: p.ticker, direction: p.direction, quantity: 0, pnl: 0, cur, count: 0, unprotected: 0 };
+    g.quantity += p.quantity;
+    g.pnl += p.pnl;
+    g.count += 1;
+    if (p.stopLevel === null) g.unprotected += 1;
+    groups.set(key, g);
+  }
+  const rows = [...groups.values()].sort((a, b) => a.pnl - b.pnl);
+
+  const lines = ["", "Open now (unrealised — not in any figure above)"];
+  for (const g of rows.slice(0, 10)) {
+    const qty = Number(g.quantity.toFixed(4));
+    const stops =
+      g.unprotected === 0
+        ? "stop set"
+        : g.unprotected === g.count
+          ? g.count === 1 ? "NO stop-loss" : `NO stop-loss on any of ${g.count}`
+          : `no stop-loss on ${g.unprotected} of ${g.count}`;
+    lines.push(
+      `  ${g.ticker.padEnd(10)} ${(g.direction === "SELL" ? "Short" : "Long").padEnd(6)}${String(qty).padEnd(9)}${money(g.pnl, g.cur).padEnd(13)} ${stops}`
+    );
+  }
+  if (rows.length > 10) lines.push(`  …and ${rows.length - 10} more in the app`);
+
+  const inAccount = rows.filter((g) => g.cur === currency);
+  const total = inAccount.length > 0 ? inAccount.reduce((t, g) => t + g.pnl, 0) : null;
+  if (total !== null) lines.push(`  Total open:  ${money(total, currency)}`);
+  const other = rows.filter((g) => g.cur !== currency);
+  if (other.length > 0) {
+    lines.push(`  ${other.length === 1 ? "One line is" : `${other.length} lines are`} in another currency and left out of the total.`);
+  }
+  return { lines, total };
+}
+
 export function buildDailyReport(
   rows: BrokerTransaction[],
   now: Date,
@@ -157,6 +231,8 @@ export function buildDailyReport(
     paper?: Parameters<typeof paperSection>[0];
     paperOpen?: number;
     paperUnmeasured?: number;
+    /** Open positions now; null = could not be read; undefined = not supplied. */
+    openPositions?: OpenPositionLine[] | null;
   }
 ): DailyReport {
   const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -209,6 +285,9 @@ export function buildDailyReport(
     }
     lines.push(exitsLine(yesterday));
   }
+
+  const open = context.openPositions === undefined ? null : openPositionsSection(context.openPositions, currency);
+  if (open) lines.push(...open.lines);
 
   /**
    * Every pound that moved the balance over the period, trading and otherwise.
@@ -308,8 +387,12 @@ export function buildDailyReport(
       ? "no trades closed"
       : `${money(yesterday.netResult, currency)} on ${yesterday.closedTrades} trade${yesterday.closedTrades === 1 ? "" : "s"}`;
 
+  // The open total rides in the subject: a good day closed must not read as a
+  // good morning when far more is open against you.
+  const openNote = open && open.total !== null ? ` · open ${money(open.total, currency)}` : "";
+
   return {
-    subject: `TradeBuzz daily: ${headline}`,
+    subject: `TradeBuzz daily: ${headline}${openNote}`,
     text: lines.join("\n"),
     yesterdayNet: yesterday.netResult,
     yesterdayTrades: yesterday.closedTrades,

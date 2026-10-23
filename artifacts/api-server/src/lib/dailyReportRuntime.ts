@@ -2,7 +2,7 @@ import { and, eq, gte, isNull, isNotNull, sql } from "drizzle-orm";
 import { db, notificationsTable, signalsTable, paperPositionsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { getUserBrokerCredentials } from "./brokerCredentialsService";
-import { getBrokerTransactions } from "./broker";
+import { getBrokerTransactions, getBrokerPositions } from "./broker";
 import { notifyUser } from "./notificationService";
 import { buildDailyReport } from "./dailyReport";
 import { summarisePaper } from "./paperTrading";
@@ -119,6 +119,13 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
           )
         : null;
 
+      // Read separately from the transactions: a positions failure must not
+      // cost the whole report, and must not pass for "nothing open" either.
+      const openPositions = await getBrokerPositions(userId, credentials).catch((err: unknown) => {
+        logger.warn({ err, userId }, "Could not read open positions for the morning report");
+        return null;
+      });
+
       const report = buildDailyReport(rows, now, {
         modes,
         botRunning: Boolean(r["running"]),
@@ -134,6 +141,7 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
         paper,
         paperOpen: Number(paperOpen ?? 0),
         paperUnmeasured,
+        openPositions,
       });
 
       // notifyUser writes the in-app copy AND emails it — one path, so the

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDailyReport, breakEvenWinRate, spreadSection, paperSection } from "./dailyReport";
+import { buildDailyReport, breakEvenWinRate, spreadSection, paperSection, openPositionsSection } from "./dailyReport";
 import type { BrokerTransaction } from "./livePerformance";
 
 const row = (dateUtc: string, instrumentName: string, size: string, note = "Trade closed", transactionType = "TRADE"): BrokerTransaction => ({
@@ -284,5 +284,63 @@ describe("paperSection", () => {
     // The live report says "not reported" because Capital.com labels every
     // close "Trade closed". A simulated exit knows exactly why it closed.
     expect(paperSection(paper, 0, "GBP").join("\n")).toMatch(/Exits:\s+6 take-profit, 4 stop-loss/);
+  });
+});
+
+describe("open positions", () => {
+  // 23 Oct 2026, from the user's Capital.com screen: four OIL_CRUDE shorts,
+  // 200 each, no stop-loss, together −£6,564.60. The report that morning said
+  // "+£417.66 on 3 trades" and nothing else.
+  const oil = (pnl: number) => ({ ticker: "OIL_CRUDE", direction: "SELL" as const, quantity: 200, pnl, pnlCurrency: null, stopLevel: null });
+  const shorts = [oil(-1217.68), oil(-1498.82), oil(-1799.84), oil(-2048.26)];
+  const yesterday = [row("2026-09-23T14:05:00.000", "OIL_CRUDE", "417.66")];
+
+  it("puts the open loss in the subject, so a good day closed cannot read as a good morning", () => {
+    const r = buildDailyReport(yesterday, NOW, { ...CONTEXT, openPositions: shorts });
+    expect(r.subject).toBe("TradeBuzz daily: +£417.66 on 1 trade · open −£6564.60");
+  });
+
+  it("groups the deals of one bet into one line, says it is short, and that nothing protects it", () => {
+    const { lines, total } = openPositionsSection(shorts, "GBP");
+    const text = lines.join("\n");
+    expect(text).toMatch(/OIL_CRUDE\s+Short\s+800\s+−£6564\.60\s+NO stop-loss on any of 4/);
+    expect(text).toMatch(/Total open:\s+−£6564\.60/);
+    expect(total).toBeCloseTo(-6564.6, 2);
+  });
+
+  it("sits directly under yesterday's result, above the weekly figures", () => {
+    const text = buildDailyReport(yesterday, NOW, { ...CONTEXT, openPositions: shorts }).text;
+    expect(text.indexOf("Open now")).toBeGreaterThan(text.indexOf("Yesterday"));
+    expect(text.indexOf("Open now")).toBeLessThan(text.indexOf("Last 7 days"));
+  });
+
+  it("lists the worst first and counts partial protection", () => {
+    const gold = { ticker: "GOLD", direction: "BUY" as const, quantity: 0.2, pnl: 12.3, pnlCurrency: null, stopLevel: 4000 };
+    const silver = (stop: number | null) => ({ ticker: "SILVER", direction: "BUY" as const, quantity: 10, pnl: -5, pnlCurrency: null, stopLevel: stop });
+    const text = openPositionsSection([gold, silver(59), silver(null)], "GBP").lines.join("\n");
+    expect(text.indexOf("SILVER")).toBeLessThan(text.indexOf("GOLD"));
+    expect(text).toMatch(/SILVER.*no stop-loss on 1 of 2/);
+    expect(text).toMatch(/GOLD.*stop set/);
+  });
+
+  it("never adds dollars into a pounds total", () => {
+    const usd = { ticker: "OIL_CRUDE", direction: "SELL" as const, quantity: 200, pnl: -1629.4, pnlCurrency: "USD", stopLevel: null };
+    const { lines, total } = openPositionsSection([usd, oil(-100)], "GBP");
+    const text = lines.join("\n");
+    expect(text).toContain("−$1629.40");
+    expect(total).toBeCloseTo(-100, 6);
+    expect(text).toMatch(/One line is in another currency and left out of the total/);
+  });
+
+  it("says when positions could not be read, rather than implying nothing is open", () => {
+    const r = buildDailyReport(yesterday, NOW, { ...CONTEXT, openPositions: null });
+    expect(r.text).toMatch(/Open now\n\s+Could not be read from the broker/);
+    expect(r.subject).not.toContain("open");
+  });
+
+  it("adds nothing when nothing is open", () => {
+    const r = buildDailyReport(yesterday, NOW, { ...CONTEXT, openPositions: [] });
+    expect(r.text).not.toContain("Open now");
+    expect(r.subject).toBe("TradeBuzz daily: +£417.66 on 1 trade");
   });
 });
