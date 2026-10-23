@@ -1825,7 +1825,8 @@ export const SendAdminSupportReplyBody = zod.object({
  * @summary Send the morning report immediately
  */
 export const SendDailyReportNowResponse = zod.object({
-  "sent": zod.number()
+  "sent": zod.number(),
+  "failed": zod.number().describe('Accounts whose report could not be built — usually the broker refusing a request.')
 })
 
 

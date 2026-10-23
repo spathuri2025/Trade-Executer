@@ -97,8 +97,11 @@ async function measureUnitemised(
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** One pass. Exported for the admin "send now" path and for tests. */
-export async function sendDailyReports(now: Date = new Date(), force = false): Promise<number> {
-  if (!force && now.getUTCHours() < sendHourUtc()) return 0;
+export async function sendDailyReports(
+  now: Date = new Date(),
+  force = false
+): Promise<{ sent: number; failed: number }> {
+  if (!force && now.getUTCHours() < sendHourUtc()) return { sent: 0, failed: 0 };
 
   const recipients = await db.execute(sql`
     select c.user_id, c.running, c.dry_run, c.daily_profit_target,
@@ -109,6 +112,9 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
   `);
 
   let sent = 0;
+  // Counted so "send now" can say a report FAILED, not that nobody has a broker
+  // — on 23 Oct 2026 it said the latter while the history read was failing.
+  let failed = 0;
   for (const r of recipients.rows as Array<Record<string, unknown>>) {
     const userId = Number(r["user_id"]);
     try {
@@ -208,9 +214,10 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
     } catch (err) {
       // One account's broker being unreachable must not stop everyone else's.
       logger.error({ userId, err }, "Could not send daily report");
+      failed += 1;
     }
   }
-  return sent;
+  return { sent, failed };
 }
 
 export function startDailyReports(): void {

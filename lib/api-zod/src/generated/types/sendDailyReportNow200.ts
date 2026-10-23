@@ -8,4 +8,6 @@
 
 export type SendDailyReportNow200 = {
   sent: number;
+  /** Accounts whose report could not be built — usually the broker refusing a request. */
+  failed: number;
 };

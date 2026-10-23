@@ -59,8 +59,7 @@ router.post("/admin/daily-report/send-now", async (_req, res): Promise<void> => 
   // force: ignores both the send hour and the once-a-day guard, so it can be
   // used to see today's report immediately. It does not suppress the scheduled
   // one — the guard only looks for a report already sent.
-  const sent = await sendDailyReports(new Date(), true);
-  res.json({ sent });
+  res.json(await sendDailyReports(new Date(), true));
 });
 
 /**

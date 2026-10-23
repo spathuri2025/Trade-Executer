@@ -590,19 +590,59 @@ function capitalHistoryDate(d: Date): string {
   return d.toISOString().slice(0, 19);
 }
 
-/** Longest window asked for in one request — see getCapitalTransactions. */
-export const TRANSACTION_WINDOW_MS = 24 * 60 * 60 * 1000;
-
 /**
- * [from, to] cut into consecutive windows of at most `windowMs`. Adjacent
- * windows share their boundary instant, so nothing between them can be missed;
- * mergeTransactionWindows removes what the shared instant returns twice.
+ * Most rows Capital.com returns for one /history/transactions request, newest
+ * first. Not documented: measured on 23 Oct 2026, when a 30-day request
+ * returned exactly 100 rows (48 closes, 50 overnight fees, 2 deposits) — back
+ * to 13 Oct 07:57 — and silently left out the rest of the month.
  */
+export const TRANSACTION_ROW_CAP = 100;
+/** First window size tried; a window that comes back full is split. */
+export const TRANSACTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** Below this a full window is accepted as it is — it cannot be split usefully. */
+const MIN_WINDOW_MS = 60 * 1000;
+
+/** [from, to] cut into consecutive windows of at most `windowMs`, sharing their edges. */
 export function transactionWindows(from: Date, to: Date, windowMs = TRANSACTION_WINDOW_MS): Array<[Date, Date]> {
   const out: Array<[Date, Date]> = [];
   for (let start = from.getTime(); start < to.getTime(); start += windowMs) {
     out.push([new Date(start), new Date(Math.min(start + windowMs, to.getTime()))]);
   }
+  return out;
+}
+
+/**
+ * Every row in [from, to], however many there are.
+ *
+ * Asks a week at a time. A window that comes back holding the cap may have
+ * been cut short, so it is halved and both halves asked again, until every
+ * answer is below the cap. Returns the leaf windows in time order for
+ * mergeTransactionWindows. Requests go one at a time: Capital.com allows about
+ * ten a second per account, and five in parallel tripped it (23 Oct 2026 —
+ * the morning report failed outright).
+ */
+export async function collectTransactionWindows(
+  from: Date,
+  to: Date,
+  fetchWindow: (start: Date, end: Date) => Promise<BrokerTransaction[]>,
+  cap = TRANSACTION_ROW_CAP,
+  windowMs = TRANSACTION_WINDOW_MS
+): Promise<Array<{ to: Date; rows: BrokerTransaction[] }>> {
+  const out: Array<{ to: Date; rows: BrokerTransaction[] }> = [];
+  const visit = async (start: Date, end: Date): Promise<void> => {
+    const rows = await fetchWindow(start, end);
+    const span = end.getTime() - start.getTime();
+    if (rows.length >= cap && span > MIN_WINDOW_MS) {
+      // Whole seconds: the broker takes times to the second.
+      const mid = new Date(start.getTime() + Math.floor(span / 2000) * 1000);
+      await visit(start, mid);
+      await visit(mid, end);
+      return;
+    }
+    if (rows.length >= cap) logger.warn({ start, end, rows: rows.length }, "Transaction window still full at its smallest — rows may be missing");
+    out.push({ to: end, rows });
+  };
+  for (const [start, end] of transactionWindows(from, to, windowMs)) await visit(start, end);
   return out;
 }
 
@@ -644,12 +684,8 @@ export function mergeTransactionWindows(batches: Array<{ to: Date; rows: BrokerT
  * take-profit and stop-loss closes happen at the broker and never pass through
  * the bot, so our own trades table cannot answer that question.
  *
- * Asked for one day at a time. One request for 30 days came back holding only
- * the newest part: the morning report of 23 Oct 2026 showed "38 trades" for a
- * month that had 221, and its figures match the newest 38 closes in the
- * account's own export to the penny — everything before 13 Oct was missing.
- * Capital.com documents no limit for this endpoint, so the windows are kept
- * small enough that whatever the limit is, a day does not reach it.
+ * Complete however long the range: see collectTransactionWindows for the
+ * 100-row cap this works around.
  */
 export async function getCapitalTransactions(
   userId: number,
@@ -657,31 +693,38 @@ export async function getCapitalTransactions(
   from: Date,
   to: Date
 ): Promise<BrokerTransaction[]> {
-  const fetchWindow = async ([start, end]: [Date, Date]) => {
+  let lastCall = 0;
+  const fetchWindow = async (start: Date, end: Date): Promise<BrokerTransaction[]> => {
     const qs = new URLSearchParams({ from: capitalHistoryDate(start), to: capitalHistoryDate(end) });
-    const data = (await capitalFetch(userId, credentials, `/history/transactions?${qs}`)) as {
-      transactions?: Array<Partial<BrokerTransaction>>;
+    const call = async () => {
+      // At most ~6 a second, comfortably inside Capital.com's ~10.
+      const wait = lastCall + 160 - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastCall = Date.now();
+      return (await capitalFetch(userId, credentials, `/history/transactions?${qs}`)) as {
+        transactions?: Array<Partial<BrokerTransaction>>;
+      };
     };
-    return {
-      to: end,
-      rows: (data?.transactions ?? []).map((t) => ({
-        dateUtc: t.dateUtc ?? "",
-        instrumentName: t.instrumentName ?? "",
-        transactionType: t.transactionType ?? "",
-        note: t.note ?? "",
-        size: t.size ?? "0",
-        currency: t.currency ?? "",
-        reference: t.reference ?? "",
-      })),
-    };
+    let data;
+    try {
+      data = await call();
+    } catch (err) {
+      // One retry after a pause if the broker said "too many"; anything else,
+      // or a second refusal, fails the whole read — an incomplete history must
+      // not pass for a complete one.
+      if (!(err instanceof Error && /rate limit/i.test(err.message))) throw err;
+      await new Promise((r) => setTimeout(r, 1500));
+      data = await call();
+    }
+    return (data?.transactions ?? []).map((t) => ({
+      dateUtc: t.dateUtc ?? "",
+      instrumentName: t.instrumentName ?? "",
+      transactionType: t.transactionType ?? "",
+      note: t.note ?? "",
+      size: t.size ?? "0",
+      currency: t.currency ?? "",
+      reference: t.reference ?? "",
+    }));
   };
-
-  // A few at a time, in order: a month is 30 requests, and one after another
-  // made the performance page wait seconds for them.
-  const windows = transactionWindows(from, to);
-  const batches: Array<{ to: Date; rows: BrokerTransaction[] }> = [];
-  for (let i = 0; i < windows.length; i += 5) {
-    batches.push(...(await Promise.all(windows.slice(i, i + 5).map(fetchWindow))));
-  }
-  return mergeTransactionWindows(batches);
+  return mergeTransactionWindows(await collectTransactionWindows(from, to, fetchWindow));
 }

@@ -97,12 +97,21 @@ export function AdminOutageAlerts() {
         </div>
       )}
 
-      {report.data && (
+      {report.data && report.data.sent > 0 && (
         <p className="flex items-start gap-2 text-sm text-primary" data-testid="daily-report-result">
           <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
-          {report.data.sent > 0
-            ? `Report sent to ${report.data.sent} account${report.data.sent === 1 ? "" : "s"}. It's also in your Inbox.`
-            : "Nothing sent — no account has a broker connected with transaction history."}
+          {`Report sent to ${report.data.sent} account${report.data.sent === 1 ? "" : "s"}. It's also in your Inbox.`}
+        </p>
+      )}
+      {report.data && report.data.failed > 0 && (
+        <p className="flex items-start gap-2 text-sm text-destructive" data-testid="daily-report-failed">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          {`The report failed for ${report.data.failed} account${report.data.failed === 1 ? "" : "s"} — usually the broker refusing a request. Try again in a minute.`}
+        </p>
+      )}
+      {report.data && report.data.sent === 0 && report.data.failed === 0 && (
+        <p className="flex items-start gap-2 text-sm text-muted-foreground" data-testid="daily-report-result">
+          Nothing sent — no account has a broker connected with transaction history.
         </p>
       )}
 

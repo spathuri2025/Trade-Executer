@@ -1617,15 +1617,18 @@ paths:
         be seen on demand. Does not suppress the scheduled one.
       responses:
         "200":
-          description: How many accounts were sent a report
+          description: How many accounts were sent a report, and how many failed
           content:
             application/json:
               schema:
                 type: object
-                required: [sent]
+                required: [sent, failed]
                 properties:
                   sent:
                     type: integer
+                  failed:
+                    type: integer
+                    description: Accounts whose report could not be built — usually the broker refusing a request.
 
   /admin/transactions-summary:
     get:
