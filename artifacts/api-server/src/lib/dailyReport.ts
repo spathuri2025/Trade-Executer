@@ -117,14 +117,18 @@ export function paperSection(
     byReason: { stopLoss: number; takeProfit: number };
   } | null,
   open: number,
-  currency: string | null
+  currency: string | null,
+  /** Positions closed with no result because the bot was off while they were open. */
+  unmeasured = 0
 ): string[] {
-  if (!paper || (paper.closed === 0 && open === 0)) return [];
+  if (!paper || (paper.closed === 0 && open === 0 && unmeasured === 0)) return [];
 
   const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
   const lines = ["", "Dry run — what the strategy would have done (no money at risk)"];
+  const unmeasuredLine = `  Unmeasured:   ${unmeasured} — the bot was off while ${unmeasured === 1 ? "it was" : "they were"} open, so the result is unknown and left out`;
   if (paper.closed === 0) {
-    lines.push(`  ${open} position${open === 1 ? "" : "s"} open, none closed yet.`);
+    if (open > 0) lines.push(`  ${open} position${open === 1 ? "" : "s"} open, none closed yet.`);
+    if (unmeasured > 0) lines.push(unmeasuredLine);
     return lines;
   }
   lines.push(`  Result:       ${money(paper.netPnl, currency)}`);
@@ -132,6 +136,7 @@ export function paperSection(
   lines.push(`  Average win:  ${money(paper.averageWin, currency)}      Average loss: ${money(paper.averageLoss, currency)}`);
   lines.push(`  Exits:        ${paper.byReason.takeProfit} take-profit, ${paper.byReason.stopLoss} stop-loss`);
   if (open > 0) lines.push(`  Still open:   ${open}`);
+  if (unmeasured > 0) lines.push(unmeasuredLine);
   lines.push("  Gross of spread — live trading would be worse by the spread on every trade.");
   return lines;
 }
@@ -151,6 +156,7 @@ export function buildDailyReport(
     /** Dry-run results, when the bot is paper trading. */
     paper?: Parameters<typeof paperSection>[0];
     paperOpen?: number;
+    paperUnmeasured?: number;
   }
 ): DailyReport {
   const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -272,7 +278,7 @@ export function buildDailyReport(
     ...spreadSection(context.spreads ?? [], context.stopLossPercent ?? 0, context.takeProfitPercent ?? 0)
   );
 
-  lines.push(...paperSection(context.paper ?? null, context.paperOpen ?? 0, currency));
+  lines.push(...paperSection(context.paper ?? null, context.paperOpen ?? 0, currency, context.paperUnmeasured ?? 0));
 
   lines.push("");
   lines.push(`Bot: ${context.botRunning ? "running" : "STOPPED"}${context.dryRun ? ", dry run (no real orders)" : ""}`);

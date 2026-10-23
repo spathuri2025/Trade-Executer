@@ -34,7 +34,14 @@ export const paperPositionsTable = pgTable(
     regime: text("regime"),
     exitPrice: real("exit_price"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
-    /** "stop-loss" | "take-profit" | "signal" — how it ended. Null while open. */
+    /**
+     * The last bar this open position has been checked against. Settlement
+     * needs every bar since the entry; if the bars fetched no longer reach back
+     * to here, the bot was off long enough to leave a hole and the position is
+     * closed as "unmeasured" rather than guessed. Null = not checked yet.
+     */
+    checkedThrough: timestamp("checked_through", { withTimezone: true }),
+    /** "stop-loss" | "take-profit" | "signal" | "unmeasured" — how it ended. Null while open. */
     exitReason: text("exit_reason"),
     /**
      * Realised result in account currency, GROSS of spread. Entry and exit come

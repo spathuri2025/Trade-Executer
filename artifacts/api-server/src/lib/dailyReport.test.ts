@@ -259,6 +259,21 @@ describe("paperSection", () => {
     expect(text).not.toMatch(/Result:/);
   });
 
+  it("says how many positions went unmeasured instead of silently dropping them", () => {
+    // A position open while the bot was off has an unknown path; it carries no
+    // result, so without this line it would simply vanish from the count.
+    const text = paperSection(paper, 0, "GBP", 2).join("\n");
+    expect(text).toMatch(/Unmeasured:\s+2 — the bot was off while they were open/);
+    expect(text).toMatch(/Trades:\s+10/); // not counted as trades
+  });
+
+  it("reports unmeasured positions even when nothing was measured", () => {
+    const none = { ...paper, closed: 0, wins: 0, losses: 0, winRate: null, netPnl: 0, averageWin: null, averageLoss: null, byReason: { stopLoss: 0, takeProfit: 0 } };
+    const text = paperSection(none, 0, "GBP", 1).join("\n");
+    expect(text).toMatch(/Unmeasured:\s+1 — the bot was off while it was open/);
+    expect(text).not.toMatch(/positions? open/);
+  });
+
   it("says nothing at all when there is no dry run to report", () => {
     expect(paperSection(null, 0, "GBP")).toEqual([]);
     const none = { ...paper, closed: 0, byReason: { stopLoss: 0, takeProfit: 0 } };

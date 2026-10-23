@@ -17,13 +17,14 @@ import {
   getBrokerPositions,
   getBrokerQuote,
   getBrokerCandles,
+  getBrokerCandlesPaged,
   type NormalizedPosition,
   getBrokerTransactions,
   closeBrokerPosition,
 } from "./broker";
 import { getUserBrokerCredentials, type UserBrokerCredentials } from "./brokerCredentialsService";
 import { summariseTransactions, parseUtc, cashFlowSince, type BrokerTransaction } from "./livePerformance";
-import { paperLevels, resolvePaperExit, paperPnl } from "./paperTrading";
+import { paperLevels, paperPnl, settlePaperPosition, barsToCover } from "./paperTrading";
 import { getPlanLimits } from "./planService";
 import { notifyUser } from "./notificationService";
 import { computeScalpSignal, scalpRequiredBars } from "./scalpStrategy";
@@ -382,35 +383,67 @@ async function settlePaperPositions(
   const byTicker = new Map<string, typeof open>();
   for (const p of open) byTicker.set(p.ticker, [...(byTicker.get(p.ticker) ?? []), p]);
 
+  const now = new Date();
   for (const [ticker, positions] of byTicker) {
+    // Enough bars to reach back to the oldest unchecked point. A normal cycle
+    // needs the usual 200; after the bot has been off, page back for the gap so
+    // the positions can still be measured rather than written off.
+    const oldest = Math.min(...positions.map((p) => (p.checkedThrough ?? p.openedAt).getTime()));
+    const needed = barsToCover(new Date(oldest), now, resolution);
     let candles;
     try {
-      candles = await getBrokerCandles(userId, credentials, ticker, 200, resolution);
+      candles =
+        needed <= 200
+          ? await getBrokerCandles(userId, credentials, ticker, 200, resolution)
+          : await getBrokerCandlesPaged(userId, credentials, ticker, Math.min(needed, 5000), resolution);
     } catch (err) {
       logger.warn({ err, userId, ticker }, "Could not fetch bars to settle paper positions");
       continue;
     }
 
     for (const pos of positions) {
-      // Only bars since the position opened: an earlier bar that touched the
-      // level says nothing about a trade entered after it.
-      const since = candles.filter((c) => c.time >= pos.openedAt.getTime());
-      const exit = resolvePaperExit(
-        { side: pos.side, entryPrice: pos.entryPrice, quantity: pos.quantity, stopLevel: pos.stopLevel, targetLevel: pos.targetLevel },
-        since
+      const result = settlePaperPosition(
+        {
+          side: pos.side,
+          entryPrice: pos.entryPrice,
+          quantity: pos.quantity,
+          stopLevel: pos.stopLevel,
+          targetLevel: pos.targetLevel,
+          openedAt: pos.openedAt,
+          checkedThrough: pos.checkedThrough,
+        },
+        candles
       );
-      if (!exit) continue;
+
+      if (result.kind === "skip") continue;
+      if (result.kind === "open") {
+        await db
+          .update(paperPositionsTable)
+          .set({ checkedThrough: result.checkedThrough })
+          .where(eq(paperPositionsTable.id, pos.id));
+        continue;
+      }
+      if (result.kind === "unmeasured") {
+        // No exit price and no P&L: the results only count what was measured.
+        await db
+          .update(paperPositionsTable)
+          .set({ closedAt: now, exitReason: "unmeasured" })
+          .where(eq(paperPositionsTable.id, pos.id));
+        logger.warn({ userId, ticker, openedAt: pos.openedAt }, "Paper position unmeasurable — bars missing since it was last checked");
+        continue;
+      }
 
       await db
         .update(paperPositionsTable)
         .set({
-          exitPrice: exit.price,
-          closedAt: new Date(),
-          exitReason: exit.reason,
-          pnl: paperPnl({ side: pos.side, entryPrice: pos.entryPrice, quantity: pos.quantity, stopLevel: null, targetLevel: null }, exit.price),
+          exitPrice: result.price,
+          closedAt: now,
+          exitReason: result.reason,
+          checkedThrough: now,
+          pnl: paperPnl({ side: pos.side, entryPrice: pos.entryPrice, quantity: pos.quantity, stopLevel: null, targetLevel: null }, result.price),
         })
         .where(eq(paperPositionsTable.id, pos.id));
-      logger.info({ userId, ticker, reason: exit.reason, price: exit.price }, "Paper position settled");
+      logger.info({ userId, ticker, reason: result.reason, price: result.price }, "Paper position settled");
     }
   }
 }
@@ -433,6 +466,27 @@ async function haltTrading(userId: number, state: BotState, reason: string, titl
   // product has. notifyUser never throws, so it cannot break the halt itself;
   // the body is the same wording the user sees in the app, no internal detail.
   await notifyUser(userId, { type: "circuit_breaker", title, body: reason, link: "/settings" });
+}
+
+/**
+ * What an equity limit does in dry run: note the breach, never halt.
+ *
+ * Every equity limit reads the REAL account, and a dry-run bot has nothing in
+ * it — so a breach in dry run is someone else's loss (on 6 Oct 2026, the
+ * user's manual trades). Halting protected nothing and stopped the paper
+ * measurement after 80 minutes of a planned week; nobody noticed for 17 days.
+ * Logged once per limit per UTC day, so a sustained breach is one line, not
+ * one every cycle. Switching to live re-arms the limit on the next cycle.
+ */
+const dryRunBreachNoted = new Map<number, Set<string>>();
+
+function noteDryRunBreach(userId: number, code: string, reason: string): void {
+  const key = `${utcDayKey(new Date())}|${code}`;
+  const seen = dryRunBreachNoted.get(userId) ?? new Set<string>();
+  if (seen.has(key)) return;
+  seen.add(key);
+  dryRunBreachNoted.set(userId, seen);
+  logger.warn({ userId, code, reason }, "Equity limit breached in dry run — not halting: the bot has no real positions");
 }
 
 /**
@@ -1448,12 +1502,16 @@ async function runCycleUnlocked(
     });
 
     if (hard) {
-      logger.error(
-        { userId, code: hard.code, equity, floor: cfg.equityFloor, weekStart: cb.weekStartEquity },
-        "Hard risk limit TRIPPED — stopping bot"
-      );
-      await haltTrading(userId, state, hard.reason, "Your trading bot was stopped by a risk limit");
-      return results;
+      if (dryRun) {
+        noteDryRunBreach(userId, hard.code, hard.reason);
+      } else {
+        logger.error(
+          { userId, code: hard.code, equity, floor: cfg.equityFloor, weekStart: cb.weekStartEquity },
+          "Hard risk limit TRIPPED — stopping bot"
+        );
+        await haltTrading(userId, state, hard.reason, "Your trading bot was stopped by a risk limit");
+        return results;
+      }
     }
 
     if (
@@ -1469,24 +1527,32 @@ async function runCycleUnlocked(
     ) {
       const ddPct = ((cb.dayPeakEquity - dayTradingEquity) / cb.dayPeakEquity) * 100;
       const reason = `Equity fell ${ddPct.toFixed(2)}% from today's peak, past the ${cfg.maxIntradayDrawdownPercent}% intraday limit. Trading is halted until you resume it.`;
-      logger.error(
-        { userId, ddPct, limit: cfg.maxIntradayDrawdownPercent, peak: cb.dayPeakEquity, total: equity },
-        "Intraday drawdown limit TRIPPED — stopping bot"
-      );
-      await haltTrading(userId, state, reason, "Your trading bot was stopped by the intraday drawdown limit");
-      return results;
+      if (dryRun) {
+        noteDryRunBreach(userId, "intraday_drawdown", reason);
+      } else {
+        logger.error(
+          { userId, ddPct, limit: cfg.maxIntradayDrawdownPercent, peak: cb.dayPeakEquity, total: equity },
+          "Intraday drawdown limit TRIPPED — stopping bot"
+        );
+        await haltTrading(userId, state, reason, "Your trading bot was stopped by the intraday drawdown limit");
+        return results;
+      }
     }
 
     if (cfg.maxDailyLossPercent > 0 && cb.dayStartEquity !== null && cb.dayStartEquity > 0) {
       const lossPct = ((cb.dayStartEquity - dayTradingEquity) / cb.dayStartEquity) * 100;
       if (lossPct >= cfg.maxDailyLossPercent) {
         const tripReason = `Daily loss of ${lossPct.toFixed(2)}% reached the ${cfg.maxDailyLossPercent}% limit. Trading is halted until you resume it.`;
-        logger.error(
-          { userId, lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: equity },
-          "Daily-loss circuit breaker TRIPPED — stopping bot"
-        );
-        await haltTrading(userId, state, tripReason, "Your trading bot was stopped by the daily-loss limit");
-        return results;
+        if (dryRun) {
+          noteDryRunBreach(userId, "daily_loss", tripReason);
+        } else {
+          logger.error(
+            { userId, lossPct, limit: cfg.maxDailyLossPercent, dayStartEquity: cb.dayStartEquity, total: equity },
+            "Daily-loss circuit breaker TRIPPED — stopping bot"
+          );
+          await haltTrading(userId, state, tripReason, "Your trading bot was stopped by the daily-loss limit");
+          return results;
+        }
       }
     }
   }

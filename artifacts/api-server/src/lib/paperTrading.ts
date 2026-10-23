@@ -134,3 +134,73 @@ export function summarisePaper(
     },
   };
 }
+
+/** Length of one bar at each resolution the engine trades on. */
+export const BAR_MS: Record<string, number> = {
+  MINUTE: 60_000,
+  MINUTE_5: 5 * 60_000,
+  MINUTE_15: 15 * 60_000,
+  MINUTE_30: 30 * 60_000,
+  HOUR: 60 * 60_000,
+  HOUR_4: 4 * 60 * 60_000,
+  DAY: 24 * 60 * 60_000,
+  WEEK: 7 * 24 * 60 * 60_000,
+};
+
+/** A bar as the broker returns it: `time` is the bar's open, in UNIX SECONDS. */
+export interface TimedBar extends Bar {
+  time: number;
+}
+
+export type PaperSettlement =
+  | { kind: "exit"; reason: PaperExitReason; price: number }
+  /** Still open; every bar up to `checkedThrough` has been examined. */
+  | { kind: "open"; checkedThrough: Date }
+  /** The bars no longer reach back to where checking stopped, so the path is unknown. */
+  | { kind: "unmeasured" }
+  /** No bars at all — nothing can be said this cycle. */
+  | { kind: "skip" };
+
+/**
+ * Decides one open paper position against the bars fetched for its instrument.
+ *
+ * Candle times are SECONDS. Until 23 Oct 2026 settlement compared them with
+ * `openedAt.getTime()` — milliseconds — so no bar was ever "after" the entry
+ * and no paper position could close. Every dry-run position stayed open
+ * forever, and the one-per-instrument gate then refused new entries on it.
+ *
+ * `checkedThrough` is the last bar already examined (null = never checked, so
+ * the entry is the start). If the earliest bar fetched is later than that,
+ * bars are missing in between — the bot was off, or the history ran out — and
+ * the position may have hit either level in the hole. Guessing from the bars
+ * after the hole would book an exit that might never have come first, so the
+ * position is written off as unmeasured and left out of the results.
+ */
+export function settlePaperPosition(
+  pos: PaperPositionLike & { openedAt: Date; checkedThrough: Date | null },
+  bars: TimedBar[]
+): PaperSettlement {
+  const valid = bars.filter((b) => Number.isFinite(b.time)).sort((a, b) => a.time - b.time);
+  if (valid.length === 0) return { kind: "skip" };
+
+  const coveredMs = (pos.checkedThrough ?? pos.openedAt).getTime();
+  if (valid[0]!.time * 1000 > coveredMs) return { kind: "unmeasured" };
+
+  // Only bars that opened after the entry: an earlier bar that touched a level
+  // says nothing about a trade entered after it.
+  const since = valid.filter((b) => b.time * 1000 >= pos.openedAt.getTime());
+  const exit = resolvePaperExit(pos, since);
+  if (exit) return { kind: "exit", ...exit };
+
+  const lastMs = valid[valid.length - 1]!.time * 1000;
+  return { kind: "open", checkedThrough: new Date(Math.max(lastMs, coveredMs)) };
+}
+
+/**
+ * How many bars to fetch so they reach back to `from`. Wall-clock time, so it
+ * over-counts across closed markets — the paged fetch simply stops early.
+ */
+export function barsToCover(from: Date, now: Date, resolution: string): number {
+  const barMs = BAR_MS[resolution] ?? BAR_MS["MINUTE_5"]!;
+  return Math.ceil((now.getTime() - from.getTime()) / barMs) + 10;
+}

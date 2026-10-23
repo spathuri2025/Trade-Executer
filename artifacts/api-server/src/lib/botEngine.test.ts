@@ -28,6 +28,10 @@ const mocks = vi.hoisted(() => ({
   signalInserts: [] as Array<Record<string, unknown>>,
   /** Simulated positions opened during a dry run. */
   paperInserts: [] as Array<Record<string, unknown>>,
+  /** Open paper positions the settlement pass reads. */
+  paperOpen: [] as Array<Record<string, unknown>>,
+  /** Every update written to paper_positions, in order. */
+  paperUpdates: [] as Array<Record<string, unknown>>,
   /** Every `running` value written via persistRunning, in order. */
   runningWrites: [] as boolean[],
   broker: {
@@ -38,6 +42,8 @@ const mocks = vi.hoisted(() => ({
     placeBrokerOrder: vi.fn(),
     getBrokerTransactions: vi.fn(),
     closeBrokerPosition: vi.fn(),
+    getBrokerCandles: vi.fn(),
+    getBrokerCandlesPaged: vi.fn(),
   },
   ma: { computeMASignal: vi.fn() },
   ai: { reviewSignal: vi.fn(), decideTrades: vi.fn() },
@@ -85,6 +91,7 @@ vi.mock("@workspace/db", () => ({
           if (table?.__name === "bot_config") return Promise.resolve(mocks.botConfigRows);
           if (table?.__name === "trades") return Promise.resolve(mocks.recentTrades);
           if (table?.__name === "equity_baselines") return Promise.resolve(mocks.equityBaselines);
+          if (table?.__name === "paper_positions") return Promise.resolve(mocks.paperOpen);
           return Promise.resolve(mocks.enabledInstruments);
         },
       }),
@@ -102,9 +109,10 @@ vi.mock("@workspace/db", () => ({
         return insertResult();
       },
     }),
-    update: () => ({
+    update: (table: { __name?: string }) => ({
       set: (values: { running?: boolean }) => ({
         where: () => {
+          if (table?.__name === "paper_positions") mocks.paperUpdates.push(values);
           if (typeof values.running === "boolean") mocks.runningWrites.push(values.running);
           return Promise.resolve();
         },
@@ -276,6 +284,8 @@ beforeEach(async () => {
   mocks.tradeInserts = [];
   mocks.signalInserts = [];
   mocks.paperInserts = [];
+  mocks.paperOpen = [];
+  mocks.paperUpdates = [];
   mocks.runningWrites = [];
   // mockReset, not just clearAllMocks: clearing resets call history but leaves
   // any queued mockReturnValueOnce/mockResolvedValueOnce values in place. A
@@ -288,6 +298,8 @@ beforeEach(async () => {
   broker.getBrokerPriceHistory.mockReset();
   broker.getBrokerQuote.mockReset();
   broker.placeBrokerOrder.mockReset();
+  broker.getBrokerCandles.mockReset().mockResolvedValue([]);
+  broker.getBrokerCandlesPaged.mockReset().mockResolvedValue([]);
   broker.getBrokerTransactions.mockReset();
   broker.closeBrokerPosition.mockReset();
   ma.computeMASignal.mockReset();
@@ -1404,6 +1416,91 @@ describe("dry run actually simulates a position", () => {
     expect(Number(pos["entryPrice"])).toBeCloseTo(100, 6);
     expect(Number(pos["stopLevel"])).toBeCloseTo(98.5, 6);
     expect(Number(pos["targetLevel"])).toBeCloseTo(103, 6);
+  });
+
+  describe("settling open paper positions", () => {
+    const MIN = 60_000;
+    /** A paper long at 100, stop 98.5, target 103, opened `minutesAgo`. */
+    const openLong = (minutesAgo: number) => ({
+      id: 7,
+      userId: TEST_USER_ID,
+      ticker: "GOLD",
+      side: "BUY",
+      quantity: 2,
+      entryPrice: 100,
+      openedAt: new Date(Date.now() - minutesAgo * MIN),
+      stopLevel: 98.5,
+      targetLevel: 103,
+      checkedThrough: null,
+      closedAt: null,
+    });
+    /** A bar as Capital.com sends it — time in SECONDS. */
+    const candle = (minutesAgo: number, high: number, low: number) => ({
+      time: Math.floor((Date.now() - minutesAgo * MIN) / 1000),
+      open: 100,
+      close: 100,
+      high,
+      low,
+    });
+
+    async function dryCycle() {
+      broker.getBrokerAccount.mockResolvedValue(account(5000));
+      broker.getBrokerPositions.mockResolvedValue([]);
+      await startLiveBot({ dryRun: true });
+      mocks.paperUpdates = [];
+      await engine.runCycle(TEST_USER_ID);
+    }
+
+    it("closes a position at its target from broker-shaped bars", async () => {
+      // Until 23 Oct 2026 this never happened: bar times are seconds, the entry
+      // time was compared in milliseconds, and no bar was ever after the entry.
+      mocks.paperOpen = [openLong(30)];
+      broker.getBrokerCandles.mockResolvedValue([candle(40, 100.2, 99.9), candle(20, 100.5, 99.8), candle(10, 103.3, 100.4)]);
+
+      await dryCycle();
+
+      const closed = mocks.paperUpdates.find((u) => u["exitReason"] !== undefined);
+      expect(closed).toMatchObject({ exitReason: "take-profit", exitPrice: 103 });
+      expect(Number(closed!["pnl"])).toBeCloseTo(6, 6); // (103 - 100) × 2
+    });
+
+    it("pages back after the bot was off, and measures rather than guesses", async () => {
+      // 6 Oct → 23 Oct 2026: 17 days off with positions open. The usual 200 bars
+      // start long after the entry; paging back finds the stop was hit first.
+      mocks.paperOpen = [openLong(17 * 24 * 60)];
+      broker.getBrokerCandlesPaged.mockResolvedValue([
+        candle(17 * 24 * 60 + 5, 100.1, 99.9),
+        candle(17 * 24 * 60 - 60, 100.2, 98.1), // stop
+        candle(60, 104, 100), // target, but much later
+      ]);
+
+      await dryCycle();
+
+      expect(broker.getBrokerCandles).not.toHaveBeenCalled();
+      expect(broker.getBrokerCandlesPaged).toHaveBeenCalled();
+      expect(mocks.paperUpdates.find((u) => u["exitReason"] !== undefined)).toMatchObject({ exitReason: "stop-loss", exitPrice: 98.5 });
+    });
+
+    it("writes a position off as unmeasured when no history reaches its entry", async () => {
+      mocks.paperOpen = [openLong(17 * 24 * 60)];
+      broker.getBrokerCandlesPaged.mockResolvedValue([candle(60, 104, 100)]);
+
+      await dryCycle();
+
+      const closed = mocks.paperUpdates.find((u) => u["exitReason"] !== undefined);
+      expect(closed).toMatchObject({ exitReason: "unmeasured" });
+      expect(closed!["pnl"]).toBeUndefined();
+    });
+
+    it("records how far an untouched position has been checked", async () => {
+      mocks.paperOpen = [openLong(30)];
+      const last = candle(5, 100.4, 99.6);
+      broker.getBrokerCandles.mockResolvedValue([candle(40, 100.2, 99.9), last]);
+
+      await dryCycle();
+
+      expect(mocks.paperUpdates).toEqual([{ checkedThrough: new Date(last.time * 1000) }]);
+    });
   });
 
   it("opens no paper position when trading live", async () => {
@@ -3037,5 +3134,76 @@ describe("fast engine — intraday drawdown halts from the peak, not the open", 
     await engine.runCycle(TEST_USER_ID);
 
     expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+  });
+});
+
+describe("equity limits in dry run — note the breach, keep measuring", () => {
+  // On 6 Oct 2026 the user's MANUAL trades took the real account 2.13% off its
+  // peak, and the intraday limit halted a dry-run bot that held nothing. The
+  // week of paper measurement ended after 80 minutes and nobody noticed for 17
+  // days. In dry run these limits guard money the bot is not risking.
+
+  it("does not halt on the intraday drawdown", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount
+      .mockResolvedValueOnce(account(1000)) // baseline + peak
+      .mockResolvedValueOnce(account(1100)) // new peak
+      .mockResolvedValue(account(1045)); // -5% from peak
+
+    await startLiveBot({ dryRun: true, maxIntradayDrawdownPercent: 2, maxDailyLossPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(false);
+    expect(status.running).toBe(true);
+    expect(mocks.notify.notifyUser).not.toHaveBeenCalledWith(
+      TEST_USER_ID,
+      expect.objectContaining({ type: "circuit_breaker" }),
+    );
+  });
+
+  it("does not halt on the daily loss", async () => {
+    broker.getBrokerAccount.mockReset();
+    broker.getBrokerAccount.mockResolvedValueOnce(account(1000)).mockResolvedValue(account(900)); // -10% on the day
+
+    await startLiveBot({ dryRun: true, maxDailyLossPercent: 3, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(false);
+    expect(status.running).toBe(true);
+  });
+
+  it("does not halt at the equity floor", async () => {
+    broker.getBrokerAccount.mockResolvedValue(account(4400));
+
+    await startLiveBot({ dryRun: true, equityFloor: 4500, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(false);
+    expect(status.running).toBe(true);
+  });
+
+  it("halts on the very next cycle once switched to live", async () => {
+    // The exemption is dry run only. The same breach, the moment real orders
+    // are possible, must stop the bot exactly as before.
+    broker.getBrokerAccount.mockResolvedValue(account(4400));
+
+    await startLiveBot({ dryRun: true, equityFloor: 4500, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 });
+    await engine.runCycle(TEST_USER_ID);
+    expect((await engine.getBotStatus(TEST_USER_ID)).circuitBreaker.tripped).toBe(false);
+
+    await engine.updateConfig(
+      TEST_USER_ID,
+      buildConfig({ dryRun: false, equityFloor: 4500, maxDailyLossPercent: 0, maxIntradayDrawdownPercent: 0 }),
+    );
+    await engine.runCycle(TEST_USER_ID);
+
+    const status = await engine.getBotStatus(TEST_USER_ID);
+    expect(status.circuitBreaker.tripped).toBe(true);
+    expect(status.circuitBreaker.reason).toMatch(/floor/i);
+    expect(status.running).toBe(false);
   });
 });

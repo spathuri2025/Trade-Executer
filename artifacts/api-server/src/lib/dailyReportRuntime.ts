@@ -110,6 +110,7 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
         .where(and(eq(paperPositionsTable.userId, userId), isNull(paperPositionsTable.closedAt)))
         .catch(() => [{ count: 0 }]);
 
+      const paperUnmeasured = paperRows.filter((r) => r.exitReason === "unmeasured").length;
       const paper = paperRows.length > 0 || paperOpen > 0
         ? summarisePaper(
             paperRows
@@ -132,6 +133,7 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
         takeProfitPercent: Number(r["take_profit_percent"] ?? 0),
         paper,
         paperOpen: Number(paperOpen ?? 0),
+        paperUnmeasured,
       });
 
       // notifyUser writes the in-app copy AND emails it — one path, so the
