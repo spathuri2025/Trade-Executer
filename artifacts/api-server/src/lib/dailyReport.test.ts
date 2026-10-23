@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDailyReport, breakEvenWinRate, spreadSection, paperSection, openPositionsSection } from "./dailyReport";
+import { buildDailyReport, breakEvenWinRate, spreadSection, paperSection, openPositionsSection, unitemisedSection } from "./dailyReport";
 import type { BrokerTransaction } from "./livePerformance";
 
 const row = (dateUtc: string, instrumentName: string, size: string, note = "Trade closed", transactionType = "TRADE"): BrokerTransaction => ({
@@ -342,5 +342,37 @@ describe("open positions", () => {
     const r = buildDailyReport(yesterday, NOW, { ...CONTEXT, openPositions: [] });
     expect(r.text).not.toContain("Open now");
     expect(r.subject).toBe("TradeBuzz daily: +£417.66 on 1 trade");
+  });
+});
+
+describe("not itemised by Capital.com", () => {
+  it("shows what moved the balance without a row, for each period measured", () => {
+    const text = unitemisedSection(
+      { state: "ok", periods: [{ since: new Date("2026-10-23T07:00:00Z"), amount: -649 }, { since: new Date("2026-10-16T07:00:00Z"), amount: -696.32 }] },
+      "GBP"
+    ).join("\n");
+    expect(text).toContain("Not itemised by Capital.com (e.g. oil price adjustments)");
+    expect(text).toMatch(/Since 2026-10-23 07:00 UTC:\s+−£649\.00/);
+    expect(text).toMatch(/Since 2026-10-16 07:00 UTC:\s+−£696\.32/);
+  });
+
+  it("says none rather than printing pennies of timing noise", () => {
+    expect(unitemisedSection({ state: "ok", periods: [{ since: new Date("2026-10-23T07:00:00Z"), amount: 0.4 }] }, "GBP").join("\n")).toMatch(/UTC:\s+none/);
+  });
+
+  it("says when it cannot be measured, never leaving the line out", () => {
+    expect(unitemisedSection({ state: "first" }, "GBP").join("\n")).toMatch(/first figure arrives with the next report/);
+    expect(unitemisedSection({ state: "inconsistent" }, "GBP").join("\n")).toMatch(/did not add up/);
+    expect(unitemisedSection({ state: "unavailable" }, "GBP").join("\n")).toMatch(/could not be read/);
+  });
+
+  it("sits after the open positions in the report", () => {
+    const text = buildDailyReport([row("2026-09-23T14:05:00.000", "OIL_CRUDE", "10")], NOW, {
+      ...CONTEXT,
+      openPositions: [{ ticker: "OIL_CRUDE", direction: "SELL", quantity: 200, pnl: -100, pnlCurrency: null, stopLevel: 95 }],
+      unitemised: { state: "first" },
+    }).text;
+    expect(text.indexOf("Not itemised")).toBeGreaterThan(text.indexOf("Open now"));
+    expect(text.indexOf("Not itemised")).toBeLessThan(text.indexOf("Last 7 days"));
   });
 });

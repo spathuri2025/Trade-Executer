@@ -215,6 +215,41 @@ export function openPositionsSection(
   return { lines, total };
 }
 
+/** What the report knows about money Capital.com moved without itemising it. */
+export type UnitemisedInput =
+  | { state: "ok"; periods: Array<{ since: Date; amount: number }> }
+  | { state: "first" | "inconsistent" | "unavailable" };
+
+/**
+ * Money that moved the balance with no row in Capital.com's feed.
+ *
+ * The feed omits spot-oil price adjustments entirely — −£696.32 in the week to
+ * 23 Oct 2026 by the account's own export, not one row from the API. They are
+ * measured instead, from the cash balance recorded at each report: see
+ * account_balance_snapshots. Said plainly when it cannot be measured, because
+ * a missing line here would read as "no hidden charges".
+ */
+export function unitemisedSection(input: UnitemisedInput | undefined, currency: string | null): string[] {
+  if (!input) return [];
+  const lines = ["", "Not itemised by Capital.com (e.g. oil price adjustments)"];
+  if (input.state !== "ok") {
+    lines.push(
+      input.state === "first"
+        ? "  Measuring from now — the first figure arrives with the next report."
+        : input.state === "inconsistent"
+          ? "  Could not be measured: the account's figures did not add up this time."
+          : "  Could not be measured: the account balance could not be read."
+    );
+    return lines;
+  }
+  for (const p of input.periods) {
+    const when = `${p.since.toISOString().slice(0, 10)} ${p.since.toISOString().slice(11, 16)} UTC`;
+    lines.push(`  Since ${when}:  ${Math.abs(p.amount) < 1 ? "none" : money(p.amount, currency)}`);
+  }
+  lines.push("  The balance moved by this much beyond the trades, funding and cash movements Capital.com lists.");
+  return lines;
+}
+
 export function buildDailyReport(
   rows: BrokerTransaction[],
   now: Date,
@@ -233,6 +268,8 @@ export function buildDailyReport(
     paperUnmeasured?: number;
     /** Open positions now; null = could not be read; undefined = not supplied. */
     openPositions?: OpenPositionLine[] | null;
+    /** Money moved without an itemised row; undefined = not supplied. */
+    unitemised?: UnitemisedInput;
   }
 ): DailyReport {
   const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -288,6 +325,7 @@ export function buildDailyReport(
 
   const open = context.openPositions === undefined ? null : openPositionsSection(context.openPositions, currency);
   if (open) lines.push(...open.lines);
+  lines.push(...unitemisedSection(context.unitemised, currency));
 
   /**
    * Every pound that moved the balance over the period, trading and otherwise.

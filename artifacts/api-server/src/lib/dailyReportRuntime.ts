@@ -1,10 +1,11 @@
-import { and, eq, gte, isNull, isNotNull, sql } from "drizzle-orm";
-import { db, notificationsTable, signalsTable, paperPositionsTable } from "@workspace/db";
+import { and, desc, eq, gte, isNull, isNotNull, sql } from "drizzle-orm";
+import { db, notificationsTable, signalsTable, paperPositionsTable, accountBalanceSnapshotsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { getUserBrokerCredentials } from "./brokerCredentialsService";
-import { getBrokerTransactions, getBrokerPositions } from "./broker";
+import { getBrokerTransactions, getBrokerPositions, getBrokerAccount } from "./broker";
 import { notifyUser } from "./notificationService";
-import { buildDailyReport } from "./dailyReport";
+import { buildDailyReport, type UnitemisedInput } from "./dailyReport";
+import { snapshotConsistent, unitemisedSince, pickSnapshotBaselines } from "./livePerformance";
 import { summarisePaper } from "./paperTrading";
 import { modesActiveBetween } from "./tradingProfiles";
 
@@ -47,6 +48,53 @@ async function alreadySentToday(userId: number, now: Date): Promise<boolean> {
     .limit(1);
   return row !== undefined;
 }
+
+/**
+ * Records this morning's cash balance and measures what moved it without an
+ * itemised row since earlier snapshots — the previous report, and about a week
+ * ago. See account_balance_snapshots for why this has to be measured.
+ *
+ * Never throws: a failure here costs one line of the report, not the report.
+ */
+async function measureUnitemised(
+  userId: number,
+  credentials: NonNullable<Awaited<ReturnType<typeof getUserBrokerCredentials>>>,
+  rows: Parameters<typeof unitemisedSince>[2],
+  now: Date
+): Promise<UnitemisedInput> {
+  try {
+    const account = await getBrokerAccount(userId, credentials);
+    // NormalizedAccount names Capital.com's `deposit` "invested"; it is the
+    // realised cash balance — cash + open P&L = balance, checked below.
+    const current = { cashBalance: account.invested, equity: account.total, openPnl: account.result };
+
+    const earlier = await db
+      .select()
+      .from(accountBalanceSnapshotsTable)
+      .where(and(eq(accountBalanceSnapshotsTable.userId, userId), gte(accountBalanceSnapshotsTable.takenAt, new Date(now.getTime() - 9 * DAY_MS))))
+      .orderBy(desc(accountBalanceSnapshotsTable.takenAt));
+
+    await db.insert(accountBalanceSnapshotsTable).values({ userId, takenAt: now, ...current, currency: account.currency });
+
+    if (!snapshotConsistent(current)) {
+      logger.warn({ userId, ...current }, "Account figures do not add up — not measuring unitemised movements");
+      return { state: "inconsistent" };
+    }
+    const baselines = pickSnapshotBaselines(earlier, now);
+    if (baselines.length === 0) return { state: "first" };
+
+    const periods = baselines.map((s) => ({
+      since: s.takenAt,
+      amount: unitemisedSince(s, current.cashBalance, rows),
+    }));
+    return { state: "ok", periods };
+  } catch (err) {
+    logger.warn({ err, userId }, "Could not measure unitemised balance movements");
+    return { state: "unavailable" };
+  }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** One pass. Exported for the admin "send now" path and for tests. */
 export async function sendDailyReports(now: Date = new Date(), force = false): Promise<number> {
@@ -126,6 +174,8 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
         return null;
       });
 
+      const unitemised = await measureUnitemised(userId, credentials, rows, now);
+
       const report = buildDailyReport(rows, now, {
         modes,
         botRunning: Boolean(r["running"]),
@@ -142,6 +192,7 @@ export async function sendDailyReports(now: Date = new Date(), force = false): P
         paperOpen: Number(paperOpen ?? 0),
         paperUnmeasured,
         openPositions,
+        unitemised,
       });
 
       // notifyUser writes the in-app copy AND emails it — one path, so the

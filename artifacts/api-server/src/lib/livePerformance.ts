@@ -50,11 +50,14 @@ export interface LivePerformance {
   /** Overnight funding charged (negative) or credited. */
   funding: number;
   /**
-   * Money charged or credited on positions while they are OPEN, other than
-   * funding — on spot commodities, Capital.com's daily price adjustment.
-   * Until 23 Oct 2026 these rows were dropped as "opening legs" and never
-   * reached any figure: −£696 on four oil shorts in the week to 22 Oct, while
-   * the report showed only −£52.55 of funding.
+   * TRADE rows about an open position that carry money. A safeguard: such rows
+   * used to be skipped as "opening legs" whatever their amount, and a row that
+   * moves money must never be discarded.
+   *
+   * NOT where spot-oil price adjustments arrive. Checked on 23 Oct 2026 with
+   * the admin transaction-labels view: Capital.com's feed has no row for them
+   * at all (−£696.32 in that week's export, nothing in the API). Those are
+   * measured from the cash balance instead — see account_balance_snapshots.
    */
   adjustments: number;
   /** Commissions and fees. */
@@ -297,4 +300,58 @@ export function transactionLabels(
   return [...groups.values()]
     .map((g) => ({ ...g, total: round(g.total) }))
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total) || b.count - a.count);
+}
+
+/**
+ * Whether an account snapshot's three figures agree: equity = cash + open P&L.
+ *
+ * The unitemised figure rests on `cash` being the realised balance. That is
+ * what Capital.com's own example shows (balance 124.95 = deposit 125.00 +
+ * profitLoss −0.05), but it is undocumented; a snapshot that does not add up
+ * is not used, so a wrong reading cannot become a confident wrong number.
+ */
+export function snapshotConsistent(s: { cashBalance: number; equity: number; openPnl: number }): boolean {
+  const tolerance = Math.max(1, Math.abs(s.equity) * 0.001);
+  return Math.abs(s.cashBalance + s.openPnl - s.equity) <= tolerance;
+}
+
+/**
+ * Money the broker moved without an itemised row, between a snapshot and now:
+ * the change in cash minus every row the feed reported in that window.
+ *
+ * On spot oil this is chiefly the daily price adjustment, which Capital.com's
+ * transaction API leaves out. Rows are counted whatever their type, because a
+ * deposit or a trade the feed DOES report is, by definition, itemised.
+ */
+export function unitemisedSince(
+  then: { takenAt: Date; cashBalance: number },
+  nowCash: number,
+  rows: BrokerTransaction[]
+): number {
+  let itemised = 0;
+  for (const row of rows) {
+    const when = parseUtc(row.dateUtc);
+    if (!Number.isFinite(when.getTime()) || when < then.takenAt) continue;
+    const amount = Number(row.size);
+    if (Number.isFinite(amount)) itemised += amount;
+  }
+  return round(nowCash - then.cashBalance - itemised);
+}
+
+/**
+ * Which earlier snapshots to measure from: the newest at least 12 hours old
+ * (the previous morning report — a "send now" an hour ago is too close to say
+ * anything), and the newest at least six and a half days old (about a week).
+ * Inconsistent snapshots are never used.
+ */
+export function pickSnapshotBaselines<S extends { id: number; takenAt: Date; cashBalance: number; equity: number; openPnl: number }>(
+  earlier: S[],
+  now: Date
+): S[] {
+  const usable = earlier.filter(snapshotConsistent).sort((a, b) => b.takenAt.getTime() - a.takenAt.getTime());
+  const age = (s: S) => now.getTime() - s.takenAt.getTime();
+  const last = usable.find((s) => age(s) >= 12 * 60 * 60 * 1000);
+  if (!last) return [];
+  const week = usable.find((s) => age(s) >= 6.5 * 24 * 60 * 60 * 1000);
+  return week && week.id !== last.id ? [last, week] : [last];
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { summariseTransactions, closeTypeFromNote, parseUtc, cashFlowSince, transactionLabels, type BrokerTransaction } from "./livePerformance";
+import { summariseTransactions, closeTypeFromNote, parseUtc, cashFlowSince, transactionLabels, unitemisedSince, snapshotConsistent, pickSnapshotBaselines, type BrokerTransaction } from "./livePerformance";
 
 const row = (dateUtc: string, instrumentName: string, transactionType: string, note: string, size: string): BrokerTransaction => ({
   dateUtc,
@@ -206,11 +206,9 @@ describe("cashFlowSince", () => {
 });
 
 describe("money on open positions", () => {
-  // 16 Oct 2026: −£649 of spot-oil price adjustments on four open shorts, in
-  // the account's own export and in no figure the app showed. The exact
-  // wording Capital.com's feed uses for these rows is still being confirmed
-  // (see /admin/transactions-summary); what matters here is the rule — a row
-  // about an open position that carries money is never discarded.
+  // A safeguard, not the oil adjustments: Capital.com's feed turned out not to
+  // send those at all (checked 23 Oct 2026). The rule is that a row about an
+  // open position which carries money is never discarded as an opening leg.
   const oct16 = [
     row("2026-10-16T20:59:00.000", "Crude Oil Spot", "TRADE", "Trade opened", "0"),
     row("2026-10-16T20:59:00.000", "Crude Oil Spot", "TRADE", "Price adjustment on open position", "-162.25"),
@@ -252,5 +250,62 @@ describe("transactionLabels", () => {
     expect(labels[0]).toEqual({ transactionType: "TRADE", note: "Price adjustment on open position", count: 1, total: -649 });
     expect(labels[1]).toEqual({ transactionType: "SWAP", note: "Overnight funding adjustment", count: 2, total: -10 });
     expect(labels[2]).toMatchObject({ transactionType: "(unlabelled)", note: "(no note)" });
+  });
+});
+
+describe("unitemised balance movements", () => {
+  // Week to 23 Oct 2026: the feed itemised closes and funding exactly, and the
+  // export held −£696.32 of oil price adjustments the feed never sent. Only
+  // the cash balance shows them.
+  const then = { takenAt: new Date("2026-10-16T12:32:00Z"), cashBalance: 5000 };
+  const feed = [
+    row("2026-10-20T10:00:00.000", "Crude Oil Spot", "TRADE", "Trade closed", "2340.81"),
+    row("2026-10-20T21:00:00.000", "Crude Oil Spot", "SWAP", "Overnight fee", "-52.55"),
+    row("2026-10-21T09:00:00.000", "", "DEPOSIT", "Deposit", "1500"),
+    row("2026-10-15T10:00:00.000", "Crude Oil Spot", "TRADE", "Trade closed", "999"), // before the snapshot
+  ];
+
+  it("is the change in cash minus everything the feed itemised since the snapshot", () => {
+    const nowCash = 5000 + 2340.81 - 52.55 + 1500 - 696.32;
+    expect(unitemisedSince(then, nowCash, feed)).toBeCloseTo(-696.32, 2);
+  });
+
+  it("is zero when the feed explains every pound", () => {
+    expect(unitemisedSince(then, 5000 + 2340.81 - 52.55 + 1500, feed)).toBeCloseTo(0, 2);
+  });
+
+  it("trusts a snapshot only when equity = cash + open P&L", () => {
+    expect(snapshotConsistent({ cashBalance: 4900, equity: 4300, openPnl: -600 })).toBe(true);
+    // If `deposit` were not the cash balance, the three would not add up — and a
+    // wrong reading must not become a confident wrong number.
+    expect(snapshotConsistent({ cashBalance: 1500, equity: 4300, openPnl: -600 })).toBe(false);
+  });
+});
+
+describe("pickSnapshotBaselines", () => {
+  const now = new Date("2026-10-30T07:00:00Z");
+  const snap = (id: number, hoursAgo: number, ok = true) => ({
+    id, takenAt: new Date(now.getTime() - hoursAgo * 3600_000), cashBalance: 5000, equity: ok ? 4400 : 9999, openPnl: -600,
+  });
+
+  it("measures from the previous report and from about a week ago", () => {
+    const picked = pickSnapshotBaselines([snap(1, 24 * 7), snap(2, 24 * 3), snap(3, 24)], now);
+    expect(picked.map((s) => s.id)).toEqual([3, 1]);
+  });
+
+  it("skips a snapshot from a send-now an hour ago — too close to say anything", () => {
+    expect(pickSnapshotBaselines([snap(1, 1), snap(2, 24)], now).map((s) => s.id)).toEqual([2]);
+  });
+
+  it("never measures from a snapshot whose figures did not add up", () => {
+    expect(pickSnapshotBaselines([snap(1, 24, false), snap(2, 30)], now).map((s) => s.id)).toEqual([2]);
+  });
+
+  it("has nothing to measure from on the first day", () => {
+    expect(pickSnapshotBaselines([snap(1, 2)], now)).toEqual([]);
+  });
+
+  it("does not list the same snapshot twice", () => {
+    expect(pickSnapshotBaselines([snap(1, 24 * 8)], now).map((s) => s.id)).toEqual([1]);
   });
 });
