@@ -12,9 +12,11 @@
  *    would actually close at: the bid for a long, the offer for a short.
  *  - The broker's own figure (`upl`) is preferred, because it is what the
  *    broker will settle — but only when it agrees in sign with the price move.
- *    Its currency is not documented, so a disagreement means we cannot trust
- *    it and the computed figure is used instead, labelled in the instrument's
- *    own currency rather than the account's.
+ *    Capital.com does not document its currency; verified on 23 Oct 2026 that
+ *    it is the ACCOUNT's (the morning report's −£6,401.06 on four OIL_CRUDE
+ *    shorts matched the Capital.com screen). A disagreement in sign means we
+ *    cannot trust it, and the computed figure is used instead, labelled in the
+ *    instrument's own currency rather than the account's.
  */
 export interface CapitalPositionLike {
   direction: "BUY" | "SELL";
